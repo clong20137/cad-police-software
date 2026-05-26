@@ -107,7 +107,17 @@ Default: `http://localhost:5001/api`
 
 ## Runtime IIS Config
 
-After building and deploying to IIS, edit `config.js` in the deployed `cad` folder to change backend endpoints without rebuilding:
+Preferred setup is through `.env` before building:
+
+```env
+REACT_APP_API_URL=http://localhost:5001/api
+REACT_APP_SOCKET_URL=http://localhost:5001
+REACT_APP_GOOGLE_API_KEY=
+```
+
+Then run `npm run build` and deploy the build folder to IIS.
+
+Optional: `config.js` can still be used as a runtime override if you explicitly load it in `public/index.html`.
 
 ```js
 window.CAD_CONFIG = {
