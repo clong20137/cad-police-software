@@ -84,13 +84,28 @@ export interface ChatMessage {
   senderId: string;
   recipientId: string;
   body: string;
+  encrypted: boolean;
+  attachments: MessageAttachment[];
   readAt?: Date;
   createdAt: Date;
+}
+
+export interface MessageAttachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  dataUrl: string;
 }
 
 export interface SendMessageRequest {
   recipientId: string;
   body: string;
+  attachments?: Array<{
+    fileName: string;
+    mimeType: string;
+    dataUrl: string;
+  }>;
 }
 
 export type IncidentPriority = 'Low' | 'Normal' | 'High' | 'Emergency';

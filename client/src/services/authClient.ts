@@ -10,6 +10,7 @@ import {
   RegisterRequest,
   RegisterResponse,
   ROLE_PERMISSIONS,
+  SendMessageAttachment,
   TokenPair,
   User
 } from '../types/auth';
@@ -95,8 +96,12 @@ class AuthClient {
     return response.data;
   }
 
-  async sendMessage(recipientId: string, body: string): Promise<ChatMessage> {
-    const response = await this.api.post<ChatMessage>('/auth/messages', { recipientId, body });
+  async sendMessage(
+    recipientId: string,
+    body: string,
+    attachments: SendMessageAttachment[] = []
+  ): Promise<ChatMessage> {
+    const response = await this.api.post<ChatMessage>('/auth/messages', { recipientId, body, attachments });
     return response.data;
   }
 

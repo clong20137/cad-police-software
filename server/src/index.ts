@@ -16,7 +16,7 @@ const server = http.createServer(app);
 
 // Middleware
 app.disable('x-powered-by');
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({ limit: '12mb' }));
 app.use(cors({ origin: securityConfig.frontendUrl, credentials: true }));
 app.use(cspMiddleware);
 

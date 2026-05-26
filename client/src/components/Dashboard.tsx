@@ -9,18 +9,29 @@ import {
   MessageCircle,
   Layers,
   LogOut,
+  Lock,
   MapPin,
+  Paperclip,
   Radio,
   Send,
   Settings,
   Shield,
+  CheckCheck,
   X,
   Users
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
-import { ChatMessage, Incident, IncidentPriority, IncidentStatus, UnitStatus, User } from '../types/auth';
+import {
+  ChatMessage,
+  Incident,
+  IncidentPriority,
+  IncidentStatus,
+  SendMessageAttachment,
+  UnitStatus,
+  User
+} from '../types/auth';
 
 declare global {
   interface Window {
@@ -96,6 +107,26 @@ const defaultQuickLaunchSlots: QuickLaunchSlot[] = [
   'map',
   'settings'
 ];
+
+const emojiCatalog = (() => {
+  const priorityEmoji = ['🚓', '🚔', '🚨', '🚑', '🚒', '📍', '✅', '⚠️', '❗', '🙏'];
+  const ranges = [
+    [0x1f300, 0x1f5ff],
+    [0x1f600, 0x1f64f],
+    [0x1f680, 0x1f6ff],
+    [0x1f700, 0x1f77f],
+    [0x1f780, 0x1f7ff],
+    [0x1f900, 0x1f9ff],
+    [0x1fa70, 0x1faff],
+    [0x2600, 0x27bf]
+  ];
+  const generated = ranges.flatMap(([start, end]) =>
+    Array.from({ length: end - start + 1 }, (_, index) => String.fromCodePoint(start + index)).filter((emoji) =>
+      /\p{Emoji}/u.test(emoji)
+    )
+  );
+  return Array.from(new Set([...priorityEmoji, ...generated]));
+})();
 
 const statusStyles: Record<UnitStatus, string> = {
   Available: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
@@ -279,6 +310,8 @@ export const Dashboard: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageBody, setMessageBody] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [emojiSearch, setEmojiSearch] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<SendMessageAttachment[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [addressSuggestions, setAddressSuggestions] = useState<GooglePlacePrediction[]>([]);
@@ -312,6 +345,7 @@ export const Dashboard: React.FC = () => {
   const [destinationLon, setDestinationLon] = useState('');
   const [destinationLabel, setDestinationLabel] = useState('');
   const mapRef = useRef<HTMLDivElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
@@ -474,6 +508,13 @@ export const Dashboard: React.FC = () => {
         }
         return [...current, message];
       });
+    });
+    socket.on('message:read', (receipt: { readerId: string; senderId: string; messageIds: string[] }) => {
+      setMessages((current) =>
+        current.map((message) =>
+          receipt.messageIds.includes(message.id) ? { ...message, readAt: new Date() } : message
+        )
+      );
     });
 
     return () => {
@@ -644,13 +685,44 @@ export const Dashboard: React.FC = () => {
       (message.senderId === user?.id && message.recipientId === selectedMessageUserId) ||
       (message.senderId === selectedMessageUserId && message.recipientId === user?.id)
   );
+  const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
 
   const sendChatMessage = async () => {
-    if (!selectedMessageUserId || !messageBody.trim()) return;
-    const sent = await authClient.sendMessage(selectedMessageUserId, messageBody);
+    if (!selectedMessageUserId || (!messageBody.trim() && pendingAttachments.length === 0)) return;
+    const sent = await authClient.sendMessage(selectedMessageUserId, messageBody, pendingAttachments);
     setMessages((current) => [...current.filter((item) => item.id !== sent.id), sent]);
     setMessageBody('');
+    setPendingAttachments([]);
     setEmojiOpen(false);
+  };
+
+  const attachFiles = async (files: FileList | null) => {
+    if (!files) return;
+    const nextAttachments = await Promise.all(
+      Array.from(files)
+        .slice(0, 5)
+        .map(
+          (file) =>
+            new Promise<SendMessageAttachment | null>((resolve) => {
+              if (file.size > 5 * 1024 * 1024) {
+                resolve(null);
+                return;
+              }
+              const reader = new FileReader();
+              reader.onload = () =>
+                resolve({
+                  fileName: file.name,
+                  mimeType: file.type || 'application/octet-stream',
+                  dataUrl: String(reader.result)
+                });
+              reader.onerror = () => resolve(null);
+              reader.readAsDataURL(file);
+            })
+        )
+    );
+    setPendingAttachments((current) =>
+      [...current, ...(nextAttachments.filter(Boolean) as SendMessageAttachment[])].slice(0, 5)
+    );
   };
 
   const createIncident = async () => {
@@ -856,7 +928,9 @@ export const Dashboard: React.FC = () => {
                     />
                     <span className="truncate">{item.name}</span>
                   </span>
-                  <span className="mt-1 block truncate text-xs text-slate-500">{item.status || 'No status'}</span>
+                  <span className="mt-1 block truncate text-xs text-slate-500">
+                    {onlineUserIds.includes(item.id) ? 'Active now' : `Last seen ${formatDateTime(item.lastSeenAt)}`}
+                  </span>
                 </button>
               ))}
           </div>
@@ -865,11 +939,13 @@ export const Dashboard: React.FC = () => {
               <>
                 <div className="border-b border-cad-line px-4 py-3">
                   <p className="text-sm font-bold">{selectedMessageUser.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {onlineUserIds.includes(selectedMessageUser.id)
-                      ? 'Online'
-                      : `Last seen ${formatDateTime(selectedMessageUser.lastSeenAt)}`}
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span>{onlineUserIds.includes(selectedMessageUser.id) ? 'Active now' : `Last seen ${formatDateTime(selectedMessageUser.lastSeenAt)}`}</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">
+                      <Lock size={12} />
+                      Encrypted
+                    </span>
+                  </div>
                 </div>
                 <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-white p-4">
                   {visibleMessages.map((message) => {
@@ -881,9 +957,29 @@ export const Dashboard: React.FC = () => {
                             mine ? 'bg-cad-blue text-white' : 'bg-slate-100 text-cad-ink'
                           }`}
                         >
-                          <p>{message.body}</p>
-                          <p className={`mt-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
+                          {message.body && <p>{message.body}</p>}
+                          {message.attachments?.map((attachment) => (
+                            <a
+                              key={attachment.id}
+                              href={attachment.dataUrl}
+                              download={attachment.fileName}
+                              className={`mt-2 flex items-center gap-2 rounded-md px-2 py-1 text-xs font-semibold ${
+                                mine ? 'bg-white/15 text-white' : 'bg-white text-cad-blue'
+                              }`}
+                            >
+                              <Paperclip size={13} />
+                              <span className="truncate">{attachment.fileName}</span>
+                            </a>
+                          ))}
+                          <p className={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
+                            <Lock size={10} />
                             {formatDateTime(message.createdAt)}
+                            {mine && message.readAt && (
+                              <>
+                                <CheckCheck size={12} />
+                                Read
+                              </>
+                            )}
                           </p>
                         </div>
                       </div>
@@ -892,26 +988,65 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <div className="border-t border-cad-line p-3">
                   {emojiOpen && (
-                    <div className="mb-2 flex flex-wrap gap-1 rounded-md border border-cad-line bg-slate-50 p-2">
-                      {['😀', '👍', '🚓', '🚑', '🚒', '📍', '✅', '⚠️', '❗', '🙏'].map((emoji) => (
+                    <div className="mb-2 rounded-md border border-cad-line bg-slate-50 p-2">
+                      <input
+                        value={emojiSearch}
+                        onChange={(event) => setEmojiSearch(event.target.value)}
+                        placeholder="Search or paste any emoji"
+                        className="mb-2 w-full rounded-md border border-cad-line px-2 py-1 text-sm outline-none focus:border-cad-blue"
+                      />
+                      <div className="grid max-h-36 grid-cols-8 gap-1 overflow-y-auto">
+                        {filteredEmojis.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => setMessageBody((value) => `${value}${emoji}`)}
+                            className="rounded px-2 py-1 text-lg hover:bg-white"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {pendingAttachments.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {pendingAttachments.map((attachment, index) => (
                         <button
-                          key={emoji}
+                          key={`${attachment.fileName}-${index}`}
                           type="button"
-                          onClick={() => setMessageBody((value) => `${value}${emoji}`)}
-                          className="rounded px-2 py-1 text-lg hover:bg-white"
+                          onClick={() => setPendingAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                          className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-cad-blue"
                         >
-                          {emoji}
+                          <Paperclip size={12} />
+                          {attachment.fileName}
+                          <X size={12} />
                         </button>
                       ))}
                     </div>
                   )}
                   <div className="flex gap-2">
+                    <input
+                      ref={attachmentInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(event) => attachFiles(event.target.files)}
+                    />
                     <button
                       type="button"
                       onClick={() => setEmojiOpen((value) => !value)}
                       className="rounded-md border border-cad-line px-3 py-2 text-sm"
                     >
                       Emoji
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => attachmentInputRef.current?.click()}
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm"
+                      aria-label="Attach files"
+                    >
+                      <Paperclip size={16} />
                     </button>
                     <input
                       value={messageBody}
@@ -1155,12 +1290,12 @@ export const Dashboard: React.FC = () => {
         <main className="min-w-0 flex-1 overflow-y-auto p-4">
           <section className="grid h-full min-h-[760px] gap-4 xl:grid-cols-[1fr_420px]">
             <div className="flex min-h-0 flex-col gap-4">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard icon={<Radio size={18} />} label="Available" value={statusCounts.Available} />
-                <MetricCard icon={<Shield size={18} />} label="Dispatched" value={statusCounts.Dispatched} />
-                <MetricCard icon={<Layers size={18} />} label="En Route" value={statusCounts['En Route']} />
+              <div className="grid gap-2 rounded-lg border border-cad-line bg-white p-2 shadow-control sm:grid-cols-4">
+                <MetricCard icon={<Radio size={14} />} label="Available" value={statusCounts.Available} />
+                <MetricCard icon={<Shield size={14} />} label="Dispatched" value={statusCounts.Dispatched} />
+                <MetricCard icon={<Layers size={14} />} label="En Route" value={statusCounts['En Route']} />
                 <MetricCard
-                  icon={<MapPin size={18} />}
+                  icon={<MapPin size={14} />}
                   label="Red Status"
                   value={statusCounts['On Scene'] + statusCounts['Traffic Stop']}
                 />
@@ -1517,12 +1652,12 @@ const MetricCard: React.FC<{ icon: React.ReactNode; label: string; value: number
   label,
   value
 }) => (
-  <div className="rounded-lg border border-cad-line bg-white p-4 shadow-control">
-    <div className="flex items-center justify-between">
-      <p className="text-sm font-semibold text-slate-600">{label}</p>
+  <div className="flex min-h-12 items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+    <div className="flex min-w-0 items-center gap-2">
       <span className="text-cad-blue">{icon}</span>
+      <p className="truncate text-xs font-semibold text-slate-600">{label}</p>
     </div>
-    <p className="mt-3 text-3xl font-bold">{value}</p>
+    <p className="text-lg font-bold">{value}</p>
   </div>
 );
 

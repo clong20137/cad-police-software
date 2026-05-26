@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS messages (
   sender_id VARCHAR(36) NOT NULL,
   recipient_id VARCHAR(36) NOT NULL,
   body TEXT NOT NULL,
+  body_iv VARCHAR(32) NULL,
+  body_tag VARCHAR(32) NULL,
+  encrypted BOOLEAN NOT NULL DEFAULT FALSE,
   read_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_messages_pair_created (sender_id, recipient_id, created_at),
@@ -59,6 +62,23 @@ CREATE TABLE IF NOT EXISTS messages (
     ON DELETE CASCADE,
   CONSTRAINT fk_messages_recipient_id
     FOREIGN KEY (recipient_id) REFERENCES users(id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS message_attachments (
+  id VARCHAR(36) PRIMARY KEY,
+  message_id VARCHAR(36) NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  mime_type VARCHAR(120) NOT NULL,
+  size_bytes INT UNSIGNED NOT NULL,
+  data MEDIUMBLOB NOT NULL,
+  data_iv VARCHAR(32) NULL,
+  data_tag VARCHAR(32) NULL,
+  encrypted BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_message_attachments_message_id (message_id),
+  CONSTRAINT fk_message_attachments_message_id
+    FOREIGN KEY (message_id) REFERENCES messages(id)
     ON DELETE CASCADE
 );
 

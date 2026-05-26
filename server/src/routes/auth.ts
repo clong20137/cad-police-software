@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
 import { MessageService } from '../services/MessageService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
-import { broadcastMessage, broadcastPresence, broadcastTrackedUnits } from '../realtime/socket';
+import { broadcastMessage, broadcastMessageRead, broadcastPresence, broadcastTrackedUnits } from '../realtime/socket';
 import {
   DestinationUpdateRequest,
   LocationUpdateRequest,
@@ -189,7 +189,8 @@ router.get(
   '/messages/:userId',
   authMiddleware,
   async (req: Request<{ userId: string }>, res: Response): Promise<void> => {
-    await MessageService.markRead(req.user?.id || '', req.params.userId);
+    const readMessageIds = await MessageService.markRead(req.user?.id || '', req.params.userId);
+    broadcastMessageRead(req.user?.id || '', req.params.userId, readMessageIds);
     const messages = await MessageService.getConversation(req.user?.id || '', req.params.userId);
     res.json(messages);
   }
@@ -199,10 +200,10 @@ router.post(
   '/messages',
   authMiddleware,
   async (req: Request<{}, {}, SendMessageRequest>, res: Response): Promise<void> => {
-    const { recipientId, body } = req.body;
+    const { recipientId, body, attachments = [] } = req.body;
 
-    if (!recipientId || !body?.trim()) {
-      res.status(400).json({ error: 'recipientId and body are required' });
+    if (!recipientId || (!body?.trim() && attachments.length === 0)) {
+      res.status(400).json({ error: 'recipientId and a message or attachment are required' });
       return;
     }
 
@@ -212,7 +213,7 @@ router.post(
       return;
     }
 
-    const message = await MessageService.createMessage(req.user?.id || '', recipientId, body);
+    const message = await MessageService.createMessage(req.user?.id || '', recipientId, body || '', attachments);
     broadcastMessage(message);
     res.status(201).json(message);
   }

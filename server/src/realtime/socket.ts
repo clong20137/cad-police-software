@@ -74,6 +74,15 @@ export const broadcastMessage = (message: ChatMessage): void => {
   io.to(`user:${message.recipientId}`).emit('message:new', message);
 };
 
+export const broadcastMessageRead = (readerId: string, senderId: string, messageIds: string[]): void => {
+  if (!io || messageIds.length === 0) {
+    return;
+  }
+
+  io.to(`user:${readerId}`).emit('message:read', { readerId, senderId, messageIds });
+  io.to(`user:${senderId}`).emit('message:read', { readerId, senderId, messageIds });
+};
+
 export const broadcastPresence = async (): Promise<void> => {
   if (!io) {
     return;
