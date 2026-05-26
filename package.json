@@ -1,0 +1,22 @@
+{
+  "name": "cad-police-software",
+  "version": "1.0.0",
+  "description": "Computer-Aided Dispatch system for law enforcement",
+  "private": true,
+  "scripts": {
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "dev": "concurrently \"cd server && npm run dev\" \"cd client && npm start\"",
+    "build": "npm run build --workspace=server && npm run build --workspace=client",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm start",
+    "lint": "npm run lint --workspace=server && npm run lint --workspace=client"
+  },
+  "workspaces": [
+    "server",
+    "client",
+    "shared"
+  ],
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
