@@ -18,13 +18,23 @@ export interface User {
   district?: string;
   lat?: number;
   lon?: number;
+  speedMph?: number;
+  destinationLat?: number;
+  destinationLon?: number;
+  destinationLabel?: string;
   lastLocationAt?: Date;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type UnitStatus = 'Available' | 'Dispatched' | 'En Route' | 'On Scene' | 'Transporting';
+export type UnitStatus =
+  | 'Available'
+  | 'Dispatched'
+  | 'En Route'
+  | 'On Scene'
+  | 'Transporting'
+  | 'Traffic Stop';
 
 export interface AuthPayload {
   id: string;
@@ -59,6 +69,13 @@ export interface RegisterRequest {
 export interface LocationUpdateRequest {
   lat: number;
   lon: number;
+  speedMph?: number | null;
+}
+
+export interface DestinationUpdateRequest {
+  destinationLat: number | null;
+  destinationLon: number | null;
+  destinationLabel?: string | null;
 }
 
 export interface RefreshTokenRequest {

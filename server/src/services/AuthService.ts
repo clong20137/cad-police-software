@@ -36,6 +36,10 @@ const toUser = (row: UserRow): User => ({
   district: row.district || undefined,
   lat: row.lat === null ? undefined : Number(row.lat),
   lon: row.lon === null ? undefined : Number(row.lon),
+  speedMph: row.speed_mph === null ? undefined : Number(row.speed_mph),
+  destinationLat: row.destination_lat === null ? undefined : Number(row.destination_lat),
+  destinationLon: row.destination_lon === null ? undefined : Number(row.destination_lon),
+  destinationLabel: row.destination_label || undefined,
   lastLocationAt: row.last_location_at || undefined,
   active: Boolean(row.active),
   createdAt: row.created_at,
@@ -140,7 +144,7 @@ export class AuthService {
     badge?: string,
     unitNumber?: string,
     cadUnitNumber?: string,
-    status: UnitStatus = 'Available',
+    status?: UnitStatus,
     group?: string,
     district?: string
   ): Promise<User> {
@@ -181,7 +185,7 @@ export class AuthService {
         normalizedBadge,
         normalizedUnitNumber,
         normalizedCadUnitNumber,
-        status,
+        status || null,
         normalizedGroup,
         normalizedDistrict,
         passwordHash
@@ -227,14 +231,41 @@ export class AuthService {
     return rows.map(toUser);
   }
 
-  static async updateLocation(userId: string, lat: number, lon: number): Promise<User | null> {
+  static async updateLocation(
+    userId: string,
+    lat: number,
+    lon: number,
+    speedMph?: number | null
+  ): Promise<User | null> {
     await pool.execute(
       `
         UPDATE users
-        SET lat = ?, lon = ?, last_location_at = UTC_TIMESTAMP()
+        SET lat = ?, lon = ?, speed_mph = ?, last_location_at = UTC_TIMESTAMP()
         WHERE id = ? AND active = TRUE
       `,
-      [lat, lon, userId]
+      [lat, lon, speedMph ?? null, userId]
+    );
+    return this.getUser(userId);
+  }
+
+  static async updateDestination(
+    userId: string,
+    destinationLat: number | null,
+    destinationLon: number | null,
+    destinationLabel?: string | null
+  ): Promise<User | null> {
+    await pool.execute(
+      `
+        UPDATE users
+        SET destination_lat = ?, destination_lon = ?, destination_label = ?
+        WHERE id = ? AND active = TRUE
+      `,
+      [
+        destinationLat,
+        destinationLon,
+        destinationLabel?.trim() || null,
+        userId
+      ]
     );
     return this.getUser(userId);
   }

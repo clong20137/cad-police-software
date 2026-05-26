@@ -18,13 +18,23 @@ export interface User {
   district?: string;
   lat?: number;
   lon?: number;
+  speedMph?: number;
+  destinationLat?: number;
+  destinationLon?: number;
+  destinationLabel?: string;
   lastLocationAt?: Date;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type UnitStatus = 'Available' | 'Dispatched' | 'En Route' | 'On Scene' | 'Transporting';
+export type UnitStatus =
+  | 'Available'
+  | 'Dispatched'
+  | 'En Route'
+  | 'On Scene'
+  | 'Transporting'
+  | 'Traffic Stop';
 
 export interface TokenPair {
   accessToken: string;

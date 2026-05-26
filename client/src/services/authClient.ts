@@ -79,8 +79,25 @@ class AuthClient {
     return response.data;
   }
 
-  async updateLocation(lat: number, lon: number): Promise<User> {
-    const response = await this.api.patch<User>('/auth/me/location', { lat, lon });
+  async updateLocation(lat: number, lon: number, speedMph?: number | null): Promise<User> {
+    const response = await this.api.patch<User>('/auth/me/location', { lat, lon, speedMph });
+    if (this.auth && response.data.id === this.auth.user.id) {
+      this.auth.user = response.data;
+      this.saveToStorage();
+    }
+    return response.data;
+  }
+
+  async updateDestination(
+    destinationLat: number | null,
+    destinationLon: number | null,
+    destinationLabel?: string | null
+  ): Promise<User> {
+    const response = await this.api.patch<User>('/auth/me/destination', {
+      destinationLat,
+      destinationLon,
+      destinationLabel
+    });
     if (this.auth && response.data.id === this.auth.user.id) {
       this.auth.user = response.data;
       this.saveToStorage();

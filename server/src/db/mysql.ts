@@ -51,11 +51,15 @@ export const initializeDatabase = async (): Promise<void> => {
       badge VARCHAR(64) NULL,
       unit_number VARCHAR(64) NULL,
       cad_unit_number VARCHAR(64) NULL,
-      status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting') NOT NULL DEFAULT 'Available',
+      status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop') NULL DEFAULT NULL,
       unit_group VARCHAR(80) NULL,
       district VARCHAR(80) NULL,
       lat DECIMAL(10, 7) NULL,
       lon DECIMAL(10, 7) NULL,
+      speed_mph DECIMAL(7, 2) NULL,
+      destination_lat DECIMAL(10, 7) NULL,
+      destination_lon DECIMAL(10, 7) NULL,
+      destination_label VARCHAR(160) NULL,
       last_location_at DATETIME NULL,
       password_hash VARCHAR(255) NOT NULL,
       active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -119,11 +123,15 @@ const ensureUserLocationColumns = async (): Promise<void> => {
   const columns = [
     "ADD COLUMN unit_number VARCHAR(64) NULL",
     "ADD COLUMN cad_unit_number VARCHAR(64) NULL",
-    "ADD COLUMN status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting') NOT NULL DEFAULT 'Available'",
+    "ADD COLUMN status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop') NULL DEFAULT NULL",
     "ADD COLUMN unit_group VARCHAR(80) NULL",
     "ADD COLUMN district VARCHAR(80) NULL",
     "ADD COLUMN lat DECIMAL(10, 7) NULL",
     "ADD COLUMN lon DECIMAL(10, 7) NULL",
+    "ADD COLUMN speed_mph DECIMAL(7, 2) NULL",
+    "ADD COLUMN destination_lat DECIMAL(10, 7) NULL",
+    "ADD COLUMN destination_lon DECIMAL(10, 7) NULL",
+    "ADD COLUMN destination_label VARCHAR(160) NULL",
     "ADD COLUMN last_location_at DATETIME NULL"
   ];
 
@@ -137,6 +145,10 @@ const ensureUserLocationColumns = async (): Promise<void> => {
       }
     }
   }
+
+  await pool.query(
+    "ALTER TABLE users MODIFY COLUMN status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop') NULL DEFAULT NULL"
+  );
 };
 
 export type UserRow = RowDataPacket & {
@@ -152,6 +164,10 @@ export type UserRow = RowDataPacket & {
   district: string | null;
   lat: string | number | null;
   lon: string | number | null;
+  speed_mph: string | number | null;
+  destination_lat: string | number | null;
+  destination_lon: string | number | null;
+  destination_label: string | null;
   last_location_at: Date | null;
   password_hash: string;
   active: number | boolean;

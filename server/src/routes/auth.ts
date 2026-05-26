@@ -3,6 +3,7 @@ import { AuthService } from '../services/AuthService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
 import { broadcastTrackedUnits } from '../realtime/socket';
 import {
+  DestinationUpdateRequest,
   LocationUpdateRequest,
   LoginRequest,
   RefreshTokenRequest,
@@ -178,13 +179,59 @@ router.patch(
   authMiddleware,
   async (req: Request<{}, {}, LocationUpdateRequest>, res: Response): Promise<void> => {
     const { lat, lon } = req.body;
+    const speedMph = req.body.speedMph;
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lon) ||
+      lat < -90 ||
+      lat > 90 ||
+      lon < -180 ||
+      lon > 180 ||
+      (speedMph !== undefined && speedMph !== null && (!Number.isFinite(speedMph) || speedMph < 0))
+    ) {
       res.status(400).json({ error: 'Valid lat and lon are required' });
       return;
     }
 
-    const user = await AuthService.updateLocation(req.user?.id || '', lat, lon);
+    const user = await AuthService.updateLocation(req.user?.id || '', lat, lon, speedMph);
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    await broadcastTrackedUnits();
+    res.json(user);
+  }
+);
+
+router.patch(
+  '/me/destination',
+  authMiddleware,
+  async (req: Request<{}, {}, DestinationUpdateRequest>, res: Response): Promise<void> => {
+    const { destinationLat, destinationLon, destinationLabel } = req.body;
+
+    const clearingDestination = destinationLat === null && destinationLon === null;
+    const validDestination =
+      Number.isFinite(destinationLat) &&
+      Number.isFinite(destinationLon) &&
+      Number(destinationLat) >= -90 &&
+      Number(destinationLat) <= 90 &&
+      Number(destinationLon) >= -180 &&
+      Number(destinationLon) <= 180;
+
+    if (!clearingDestination && !validDestination) {
+      res.status(400).json({ error: 'Valid destinationLat and destinationLon are required' });
+      return;
+    }
+
+    const user = await AuthService.updateDestination(
+      req.user?.id || '',
+      clearingDestination ? null : Number(destinationLat),
+      clearingDestination ? null : Number(destinationLon),
+      destinationLabel
+    );
+
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;

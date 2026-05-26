@@ -54,7 +54,32 @@ const statusStyles: Record<UnitStatus, string> = {
   Dispatched: 'bg-amber-50 text-amber-700 ring-amber-200',
   'En Route': 'bg-blue-50 text-blue-700 ring-blue-200',
   'On Scene': 'bg-red-50 text-red-700 ring-red-200',
-  Transporting: 'bg-violet-50 text-violet-700 ring-violet-200'
+  Transporting: 'bg-violet-50 text-violet-700 ring-violet-200',
+  'Traffic Stop': 'bg-red-50 text-red-700 ring-red-200'
+};
+
+const markerTone = (unit: User, currentUserId?: string): 'gray' | 'green' | 'blue' | 'yellow' | 'red' => {
+  const status = unit.status;
+  if (status === 'En Route') return 'yellow';
+  if (status === 'On Scene' || status === 'Traffic Stop') return 'red';
+  if (!status) return 'gray';
+  return unit.id === currentUserId ? 'green' : 'blue';
+};
+
+const markerToneClass = {
+  gray: 'bg-slate-500 text-white ring-white',
+  green: 'bg-emerald-500 text-white ring-white',
+  blue: 'bg-cad-blue text-white ring-white',
+  yellow: 'bg-amber-400 text-slate-950 ring-white',
+  red: 'bg-red-600 text-white ring-white'
+};
+
+const markerPulseClass = {
+  gray: 'bg-slate-400/55',
+  green: 'bg-emerald-400/60',
+  blue: 'bg-cad-blue/50',
+  yellow: 'bg-amber-300/65',
+  red: 'bg-red-500/60'
 };
 
 const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
@@ -77,6 +102,27 @@ const splitName = (name: string): { firstName: string; lastName: string } => {
   };
 };
 
+const distanceMiles = (fromLat: number, fromLon: number, toLat: number, toLon: number): number => {
+  const earthRadiusMiles = 3958.8;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRadians(toLat - fromLat);
+  const dLon = toRadians(toLon - fromLon);
+  const lat1 = toRadians(fromLat);
+  const lat2 = toRadians(toLat);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const etaText = (unit: TrackedUnit): string => {
+  if (unit.destinationLat === undefined || unit.destinationLon === undefined) return 'No destination';
+  const miles = distanceMiles(unit.lat, unit.lon, unit.destinationLat, unit.destinationLon);
+  if (!unit.speedMph || unit.speedMph <= 1) return `${miles.toFixed(1)} mi, ETA pending speed`;
+  const minutes = Math.max(1, Math.round((miles / unit.speedMph) * 60));
+  return `${miles.toFixed(1)} mi, ${minutes} min ETA`;
+};
+
 const addGooglePulseMarker = ({
   map,
   lat,
@@ -89,7 +135,7 @@ const addGooglePulseMarker = ({
   lat: number;
   lon: number;
   label: string;
-  tone: 'blue' | 'green';
+  tone: 'gray' | 'green' | 'blue' | 'yellow' | 'red';
   onClick?: () => void;
 }) => {
   if (!window.google?.maps) {
@@ -107,19 +153,15 @@ const addGooglePulseMarker = ({
         container.type = 'button';
       }
 
-      const baseColor =
-        tone === 'green' ? 'bg-emerald-500 text-white ring-white' : 'bg-cad-blue text-white ring-white';
-      const pulseColor = tone === 'green' ? 'bg-emerald-400/60' : 'bg-cad-blue/50';
-
-      container.className = `absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 text-xs font-bold shadow-lg ring-2 ${baseColor}`;
+      container.className = `absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 text-xs font-bold shadow-lg ring-2 ${markerToneClass[tone]}`;
       container.style.cursor = onClick ? 'pointer' : 'default';
 
       const pulse = document.createElement('span');
-      pulse.className = `pointer-events-none absolute inset-0 -z-10 rounded-full ${pulseColor} location-pulse`;
+      pulse.className = `pointer-events-none absolute inset-0 -z-10 rounded-full ${markerPulseClass[tone]} location-pulse`;
       container.appendChild(pulse);
 
       const pin = document.createElement('span');
-      pin.textContent = '•';
+      pin.textContent = 'o';
       pin.className = 'text-lg leading-none';
       container.appendChild(pin);
 
@@ -163,10 +205,14 @@ export const Dashboard: React.FC = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationError, setLocationError] = useState<string>('');
   const [unitLoadError, setUnitLoadError] = useState<string>('');
+  const [destinationLat, setDestinationLat] = useState('');
+  const [destinationLon, setDestinationLon] = useState('');
+  const [destinationLabel, setDestinationLabel] = useState('');
   const mapRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
+  const selectedIsCurrentUser = selectedUnit?.id === user?.id;
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
 
   const loadUnits = useCallback(async () => {
@@ -193,10 +239,23 @@ export const Dashboard: React.FC = () => {
           ...counts,
           [displayStatus(unit)]: counts[displayStatus(unit)] + 1
         }),
-        { Available: 0, Dispatched: 0, 'En Route': 0, 'On Scene': 0, Transporting: 0 }
+        { Available: 0, Dispatched: 0, 'En Route': 0, 'On Scene': 0, Transporting: 0, 'Traffic Stop': 0 }
       ),
     [units]
   );
+
+  useEffect(() => {
+    if (!selectedUnit) {
+      setDestinationLat('');
+      setDestinationLon('');
+      setDestinationLabel('');
+      return;
+    }
+
+    setDestinationLat(selectedUnit.destinationLat?.toString() || '');
+    setDestinationLon(selectedUnit.destinationLon?.toString() || '');
+    setDestinationLabel(selectedUnit.destinationLabel || '');
+  }, [selectedUnit]);
 
   useEffect(() => {
     loadUnits();
@@ -242,11 +301,15 @@ export const Dashboard: React.FC = () => {
           lat: position.coords.latitude,
           lon: position.coords.longitude
         };
+        const speedMph =
+          typeof position.coords.speed === 'number' && position.coords.speed >= 0
+            ? position.coords.speed * 2.236936
+            : null;
         setCurrentLocation(nextLocation);
         setLocationError('');
 
         try {
-          const updatedUser = await authClient.updateLocation(nextLocation.lat, nextLocation.lon);
+          const updatedUser = await authClient.updateLocation(nextLocation.lat, nextLocation.lon, speedMph);
           if (isTrackedUnit(updatedUser)) {
             setUnits((currentUnits) => {
               const others = currentUnits.filter((unit) => unit.id !== updatedUser.id);
@@ -295,12 +358,21 @@ export const Dashboard: React.FC = () => {
           lat: unit.lat,
           lon: unit.lon,
           label: displayCadUnitNumber(unit),
-          tone: 'blue',
+          tone: markerTone(unit, user?.id),
           onClick: () => {
             setSelectedUnitId(unit.id);
             infoWindow.open({ map, position: { lat: unit.lat, lng: unit.lon } });
           }
         });
+        if (unit.destinationLat !== undefined && unit.destinationLon !== undefined) {
+          addGooglePulseMarker({
+            map,
+            lat: unit.destinationLat,
+            lon: unit.destinationLon,
+            label: unit.destinationLabel || 'Destination',
+            tone: 'yellow'
+          });
+        }
       });
 
       if (currentLocation) {
@@ -328,7 +400,29 @@ export const Dashboard: React.FC = () => {
     script.async = true;
     script.onload = initializeMap;
     document.head.appendChild(script);
-  }, [center.lat, center.lon, currentLocation, units]);
+  }, [center.lat, center.lon, currentLocation, units, user?.id]);
+
+  const saveDestination = async () => {
+    if (!selectedIsCurrentUser) return;
+    const lat = Number(destinationLat);
+    const lon = Number(destinationLon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return;
+    }
+
+    const updatedUser = await authClient.updateDestination(lat, lon, destinationLabel);
+    if (isTrackedUnit(updatedUser)) {
+      setUnits((currentUnits) => [updatedUser, ...currentUnits.filter((unit) => unit.id !== updatedUser.id)]);
+    }
+  };
+
+  const clearDestination = async () => {
+    if (!selectedIsCurrentUser) return;
+    const updatedUser = await authClient.updateDestination(null, null, null);
+    if (isTrackedUnit(updatedUser)) {
+      setUnits((currentUnits) => [updatedUser, ...currentUnits.filter((unit) => unit.id !== updatedUser.id)]);
+    }
+  };
 
   return (
     <div className="flex h-screen flex-col bg-slate-100 text-cad-ink">
@@ -457,7 +551,11 @@ export const Dashboard: React.FC = () => {
                 <MetricCard icon={<Radio size={18} />} label="Available" value={statusCounts.Available} />
                 <MetricCard icon={<Shield size={18} />} label="Dispatched" value={statusCounts.Dispatched} />
                 <MetricCard icon={<Layers size={18} />} label="En Route" value={statusCounts['En Route']} />
-                <MetricCard icon={<MapPin size={18} />} label="On Scene" value={statusCounts['On Scene']} />
+                <MetricCard
+                  icon={<MapPin size={18} />}
+                  label="Red Status"
+                  value={statusCounts['On Scene'] + statusCounts['Traffic Stop']}
+                />
               </div>
 
               <div className="relative min-h-[520px] flex-1 overflow-hidden rounded-lg border border-cad-line bg-slate-900 shadow-control">
@@ -468,6 +566,7 @@ export const Dashboard: React.FC = () => {
                     units={units}
                     selectedUnit={selectedUnit}
                     currentLocation={currentLocation}
+                    currentUserId={user?.id}
                     onSelectUnit={(unit) => setSelectedUnitId(unit.id)}
                   />
                 )}
@@ -495,17 +594,76 @@ export const Dashboard: React.FC = () => {
               </div>
               <div className="p-4">
                 {selectedUnit ? (
-                  <dl className="grid gap-3 text-sm">
-                    <Detail label="Unit Number" value={displayUnitNumber(selectedUnit)} />
-                    <Detail label="First Name" value={splitName(selectedUnit.name).firstName || 'N/A'} />
-                    <Detail label="Last Name" value={splitName(selectedUnit.name).lastName || 'N/A'} />
-                    <Detail label="CAD Unit Number" value={displayCadUnitNumber(selectedUnit)} />
-                    <Detail label="Status" value={displayStatus(selectedUnit)} />
-                    <Detail label="Group" value={selectedUnit.group || 'Unassigned'} />
-                    <Detail label="District" value={selectedUnit.district || 'Unassigned'} />
-                    <Detail label="Lat" value={selectedUnit.lat.toFixed(6)} />
-                    <Detail label="Lon" value={selectedUnit.lon.toFixed(6)} />
-                  </dl>
+                  <>
+                    <dl className="grid gap-3 text-sm">
+                      <Detail label="Unit Number" value={displayUnitNumber(selectedUnit)} />
+                      <Detail label="First Name" value={splitName(selectedUnit.name).firstName || 'N/A'} />
+                      <Detail label="Last Name" value={splitName(selectedUnit.name).lastName || 'N/A'} />
+                      <Detail label="CAD Unit Number" value={displayCadUnitNumber(selectedUnit)} />
+                      <Detail label="Status" value={displayStatus(selectedUnit)} />
+                      <Detail label="Group" value={selectedUnit.group || 'Unassigned'} />
+                      <Detail label="District" value={selectedUnit.district || 'Unassigned'} />
+                      <Detail label="Lat" value={selectedUnit.lat.toFixed(6)} />
+                      <Detail label="Lon" value={selectedUnit.lon.toFixed(6)} />
+                      <Detail label="Speed" value={`${(selectedUnit.speedMph || 0).toFixed(1)} mph`} />
+                      <Detail
+                        label="Destination"
+                        value={
+                          selectedUnit.destinationLat !== undefined && selectedUnit.destinationLon !== undefined
+                            ? selectedUnit.destinationLabel ||
+                              `${selectedUnit.destinationLat.toFixed(5)}, ${selectedUnit.destinationLon.toFixed(5)}`
+                            : 'None'
+                        }
+                      />
+                      <Detail label="ETA" value={etaText(selectedUnit)} />
+                    </dl>
+
+                    {selectedIsCurrentUser && displayStatus(selectedUnit) === 'En Route' && (
+                      <div className="mt-5 border-t border-cad-line pt-4">
+                        <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">
+                          Destination
+                        </h3>
+                        <div className="mt-3 grid gap-3">
+                          <input
+                            value={destinationLabel}
+                            onChange={(event) => setDestinationLabel(event.target.value)}
+                            placeholder="Destination label"
+                            className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                          />
+                          <div className="grid grid-cols-2 gap-3">
+                            <input
+                              value={destinationLat}
+                              onChange={(event) => setDestinationLat(event.target.value)}
+                              placeholder="Destination lat"
+                              className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                            />
+                            <input
+                              value={destinationLon}
+                              onChange={(event) => setDestinationLon(event.target.value)}
+                              placeholder="Destination lon"
+                              className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={saveDestination}
+                              className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white"
+                            >
+                              Pin Destination
+                            </button>
+                            <button
+                              type="button"
+                              onClick={clearDestination}
+                              className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <p className="text-sm text-slate-600">
                     When a real user signs in and allows location access, they will appear here.
@@ -545,11 +703,19 @@ const FallbackMap: React.FC<{
   units: TrackedUnit[];
   selectedUnit: TrackedUnit | null;
   currentLocation: { lat: number; lon: number } | null;
+  currentUserId?: string;
   onSelectUnit: (unit: TrackedUnit) => void;
-}> = ({ units, selectedUnit, currentLocation, onSelectUnit }) => {
+}> = ({ units, selectedUnit, currentLocation, currentUserId, onSelectUnit }) => {
+  const destinations = units
+    .filter((unit) => unit.destinationLat !== undefined && unit.destinationLon !== undefined)
+    .map((unit) => ({
+      id: `${unit.id}-destination`,
+      lat: unit.destinationLat as number,
+      lon: unit.destinationLon as number
+    }));
   const points = currentLocation
-    ? [...units, { id: 'current-location', lat: currentLocation.lat, lon: currentLocation.lon }]
-    : units;
+    ? [...units, ...destinations, { id: 'current-location', lat: currentLocation.lat, lon: currentLocation.lon }]
+    : [...units, ...destinations];
   const minLat = Math.min(...points.map((point) => point.lat), 39.7);
   const maxLat = Math.max(...points.map((point) => point.lat), 39.85);
   const minLon = Math.min(...points.map((point) => point.lon), -86.25);
@@ -578,11 +744,32 @@ const FallbackMap: React.FC<{
           }`}
           style={position(unit.lat, unit.lon)}
         >
-          <span className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-cad-blue/50 location-pulse" />
-          <MapPin size={14} />
+          <span
+            className={`pointer-events-none absolute inset-0 -z-10 rounded-full ${
+              markerPulseClass[markerTone(unit, currentUserId)]
+            } location-pulse`}
+          />
+          <span
+            className={`h-3 w-3 rounded-full ring-2 ${markerToneClass[markerTone(unit, currentUserId)]}`}
+            aria-hidden="true"
+          />
           {displayCadUnitNumber(unit)}
         </button>
       ))}
+
+      {units
+        .filter((unit) => unit.destinationLat !== undefined && unit.destinationLon !== undefined)
+        .map((unit) => (
+          <div
+            key={`${unit.id}-destination`}
+            className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full bg-amber-400 px-2 py-1 text-xs font-bold text-slate-950 shadow-lg ring-2 ring-white"
+            style={position(unit.destinationLat as number, unit.destinationLon as number)}
+          >
+            <span className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-amber-300/65 location-pulse" />
+            <span className="h-3 w-3 rounded-full bg-slate-950" />
+            {unit.destinationLabel || 'Destination'}
+          </div>
+        ))}
 
       {currentLocation && (
         <div
