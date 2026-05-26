@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 import {
   ChevronLeft,
   ChevronRight,
@@ -49,7 +50,10 @@ const statusStyles: Record<UnitStatus, string> = {
   Transporting: 'bg-violet-50 text-violet-700 ring-violet-200'
 };
 
-const googleMapsApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+const realtimeUrl = process.env.REACT_APP_SOCKET_URL || apiUrl.replace(/\/api\/?$/, '');
+const googleMapsApiKey =
+  process.env.REACT_APP_GOOGLE_MAPS_API_KEY || process.env.REACT_APP_GOOGLE_API_KEY;
 
 const isTrackedUnit = (user: User): user is TrackedUnit =>
   typeof user.lat === 'number' && typeof user.lon === 'number';
@@ -76,6 +80,7 @@ export const Dashboard: React.FC = () => {
   const [locationError, setLocationError] = useState<string>('');
   const [unitLoadError, setUnitLoadError] = useState<string>('');
   const mapRef = useRef<HTMLDivElement | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
@@ -111,9 +116,35 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     loadUnits();
-    const intervalId = window.setInterval(loadUnits, 15000);
-    return () => window.clearInterval(intervalId);
   }, [loadUnits]);
+
+  useEffect(() => {
+    const socket = io(realtimeUrl, {
+      transports: ['websocket', 'polling'],
+      withCredentials: true
+    });
+
+    socketRef.current = socket;
+    socket.on('units:update', (nextUnits: User[]) => {
+      const trackedUnits = nextUnits.filter(isTrackedUnit);
+      setUnits(trackedUnits);
+      setUnitLoadError('');
+      setSelectedUnitId((current) => {
+        if (current && trackedUnits.some((unit) => unit.id === current)) {
+          return current;
+        }
+        return trackedUnits[0]?.id || '';
+      });
+    });
+    socket.on('connect_error', () => {
+      setUnitLoadError('Live unit stream unavailable. Retrying connection.');
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -130,7 +161,7 @@ export const Dashboard: React.FC = () => {
         setCurrentLocation(nextLocation);
         setLocationError('');
 
-        try {
+          try {
           const updatedUser = await authClient.updateLocation(nextLocation.lat, nextLocation.lon);
           if (isTrackedUnit(updatedUser)) {
             setUnits((currentUnits) => {
@@ -139,7 +170,6 @@ export const Dashboard: React.FC = () => {
             });
             setSelectedUnitId((current) => current || updatedUser.id);
           }
-          loadUnits();
         } catch {
           setLocationError('Location detected, but the server did not save it.');
         }
@@ -449,6 +479,7 @@ const FallbackMap: React.FC<{
           }`}
           style={position(unit.lat, unit.lon)}
         >
+          <span className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-cad-blue/50 location-pulse" />
           <MapPin size={14} />
           {displayCadUnitNumber(unit)}
         </button>
@@ -459,13 +490,14 @@ const FallbackMap: React.FC<{
           className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full bg-emerald-500 px-2 py-1 text-xs font-bold text-white shadow-lg ring-2 ring-white"
           style={position(currentLocation.lat, currentLocation.lon)}
         >
+          <span className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-emerald-400/60 location-pulse" />
           <Crosshair size={14} />
           You
         </div>
       )}
 
       <div className="absolute bottom-4 right-4 rounded bg-white/90 px-3 py-2 text-xs font-medium text-slate-600">
-        Add REACT_APP_GOOGLE_MAPS_API_KEY for Google Maps
+        Add REACT_APP_GOOGLE_API_KEY or REACT_APP_GOOGLE_MAPS_API_KEY for Google Maps
       </div>
     </div>
   );

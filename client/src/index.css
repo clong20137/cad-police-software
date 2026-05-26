@@ -29,3 +29,22 @@
     font: inherit;
   }
 }
+
+@layer utilities {
+  .location-pulse {
+    animation: location-pulse 1.8s ease-out infinite;
+  }
+
+  @keyframes location-pulse {
+    0% {
+      opacity: 0.75;
+      transform: scale(1);
+    }
+
+    70%,
+    100% {
+      opacity: 0;
+      transform: scale(2.8);
+    }
+  }
+}

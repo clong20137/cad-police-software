@@ -13,6 +13,8 @@ npm install
 ```env
 REACT_APP_API_URL=http://localhost:5001/api
 REACT_APP_GOOGLE_MAPS_API_KEY=
+REACT_APP_GOOGLE_API_KEY=
+REACT_APP_SOCKET_URL=http://localhost:5001
 ```
 
 ## Scripts
@@ -101,7 +103,7 @@ REACT_APP_API_URL=http://localhost:5001/api
 
 Default: `http://localhost:5001/api`
 
-`REACT_APP_GOOGLE_MAPS_API_KEY` enables the dashboard Google Map. Without it, the dashboard shows a local coordinate map fallback.
+`REACT_APP_GOOGLE_API_KEY` or `REACT_APP_GOOGLE_MAPS_API_KEY` enables the dashboard Google Map. Without it, the dashboard shows a local coordinate map fallback. `REACT_APP_SOCKET_URL` controls the live unit WebSocket endpoint.
 
 ## TypeScript
 

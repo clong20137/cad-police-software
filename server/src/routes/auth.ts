@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
+import { broadcastTrackedUnits } from '../realtime/socket';
 import {
   LocationUpdateRequest,
   LoginRequest,
@@ -189,6 +190,7 @@ router.patch(
       return;
     }
 
+    await broadcastTrackedUnits();
     res.json(user);
   }
 );
