@@ -299,6 +299,9 @@ export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [callsOverlayOpen, setCallsOverlayOpen] = useState(true);
+  const [callDetailOpen, setCallDetailOpen] = useState(true);
+  const [unitDetailOpen, setUnitDetailOpen] = useState(true);
   const [units, setUnits] = useState<TrackedUnit[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<string>('');
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
@@ -1213,350 +1216,246 @@ export const Dashboard: React.FC = () => {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <aside
-          className={`shrink-0 overflow-hidden border-r border-cad-line bg-white transition-all duration-200 ${
-            sidebarOpen ? 'w-80' : 'w-0'
-          }`}
-        >
-          <div className="flex h-full w-80 flex-col">
-            <div className="border-b border-cad-line p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
-                    Units
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">{units.length} tracked units</p>
-                </div>
-                <Users className="text-cad-blue" size={22} />
-              </div>
-            </div>
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-slate-900">
+        {googleMapsApiKey ? (
+          <div ref={mapRef} className="absolute inset-0 h-full w-full" />
+        ) : (
+          <FallbackMap
+            units={units}
+            incidents={incidents}
+            selectedUnit={selectedUnit}
+            currentLocation={currentLocation}
+            currentUserId={user?.id}
+            onSelectUnit={(unit) => setSelectedUnitId(unit.id)}
+            onSelectIncident={(incident) => setSelectedIncidentId(incident.id)}
+          />
+        )}
 
+        <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-wrap justify-center gap-2">
+          <MetricCard icon={<Radio size={14} />} label="Available" value={statusCounts.Available} />
+          <MetricCard icon={<Shield size={14} />} label="Dispatched" value={statusCounts.Dispatched} />
+          <MetricCard icon={<Layers size={14} />} label="En Route" value={statusCounts['En Route']} />
+          <MetricCard
+            icon={<MapPin size={14} />}
+            label="Red Status"
+            value={statusCounts['On Scene'] + statusCounts['Traffic Stop']}
+          />
+        </div>
+
+        {sidebarOpen && (
+          <div className="absolute bottom-24 left-4 top-20 z-10 flex w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur">
+            <div className="flex items-center justify-between border-b border-cad-line p-3">
+              <div>
+                <h2 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">Units</h2>
+                <p className="text-xs text-slate-600">{units.length} tracked units</p>
+              </div>
+              <button type="button" onClick={() => setSidebarOpen(false)} className="rounded-md p-2 hover:bg-slate-100">
+                <ChevronLeft size={16} />
+              </button>
+            </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {units.length === 0 && (
                 <div className="p-4 text-sm text-slate-600">
                   {unitLoadError || 'No users have shared a live location yet.'}
                 </div>
               )}
-
               {units.map((unit) => (
                 <button
                   key={unit.id}
                   type="button"
-                  onClick={() => setSelectedUnitId(unit.id)}
-                  className={`w-full border-b border-slate-100 p-4 text-left transition hover:bg-slate-50 ${
-                    selectedUnit?.id === unit.id ? 'bg-blue-50' : 'bg-white'
+                  onClick={() => {
+                    setSelectedUnitId(unit.id);
+                    setUnitDetailOpen(true);
+                  }}
+                  className={`w-full border-b border-slate-100 p-3 text-left transition hover:bg-slate-50 ${
+                    selectedUnit?.id === unit.id ? 'bg-blue-50' : 'bg-white/70'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-base font-bold">{displayCadUnitNumber(unit)}</p>
-                      <p className="text-sm text-slate-600">{unit.name}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold">{displayCadUnitNumber(unit)}</p>
+                      <p className="truncate text-xs text-slate-600">{unit.name}</p>
                     </div>
-                    <span
-                      className={`rounded-full px-2 py-1 text-xs font-bold ring-1 ${
-                        statusStyles[displayStatus(unit)]
-                      }`}
-                    >
+                    <span className={`rounded-full px-2 py-1 text-[11px] font-bold ring-1 ${statusStyles[displayStatus(unit)]}`}>
                       {displayStatus(unit)}
                     </span>
                   </div>
-                  <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
-                    <div>
-                      <dt className="font-semibold text-slate-500">Unit</dt>
-                      <dd>{displayUnitNumber(unit)}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold text-slate-500">District</dt>
-                      <dd>{unit.district || 'Unassigned'}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold text-slate-500">Group</dt>
-                      <dd>{unit.group || 'Unassigned'}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold text-slate-500">Location</dt>
-                      <dd>
-                        {unit.lat.toFixed(3)}, {unit.lon.toFixed(3)}
-                      </dd>
-                    </div>
-                  </dl>
                 </button>
               ))}
             </div>
           </div>
-        </aside>
+        )}
 
-        <main className="min-w-0 flex-1 overflow-y-auto p-4">
-          <section className="grid h-full min-h-[760px] gap-4 xl:grid-cols-[1fr_420px]">
-            <div className="flex min-h-0 flex-col gap-4">
-              <div className="grid gap-2 rounded-lg border border-cad-line bg-white p-2 shadow-control sm:grid-cols-4">
-                <MetricCard icon={<Radio size={14} />} label="Available" value={statusCounts.Available} />
-                <MetricCard icon={<Shield size={14} />} label="Dispatched" value={statusCounts.Dispatched} />
-                <MetricCard icon={<Layers size={14} />} label="En Route" value={statusCounts['En Route']} />
-                <MetricCard
-                  icon={<MapPin size={14} />}
-                  label="Red Status"
-                  value={statusCounts['On Scene'] + statusCounts['Traffic Stop']}
-                />
-              </div>
+        <div className="absolute bottom-24 left-4 z-10 rounded-lg border border-cad-line bg-white/95 p-3 shadow-control backdrop-blur">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Crosshair size={16} className="text-cad-blue" />
+            Location Tracking
+          </div>
+          <p className="mt-1 text-xs text-slate-600">
+            {currentLocation
+              ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}`
+              : locationError || 'Waiting for browser location'}
+          </p>
+        </div>
 
-              <div className="rounded-lg border border-cad-line bg-white shadow-control">
-                <div className="flex items-center justify-between border-b border-cad-line p-4">
-                  <div>
-                    <h2 className="text-lg font-bold">Active Calls</h2>
-                    <p className="mt-1 text-sm text-slate-600">{incidents.length} open incidents</p>
+        <div className="absolute right-4 top-20 z-10 flex flex-col items-end gap-3">
+          <OverlayPanel
+            title="Active Calls"
+            subtitle={`${incidents.length} open incidents`}
+            open={callsOverlayOpen}
+            onToggle={() => setCallsOverlayOpen((value) => !value)}
+            className="w-[min(28rem,calc(100vw-2rem))]"
+          >
+            {incidentError && <p className="px-1 py-2 text-sm font-medium text-red-600">{incidentError}</p>}
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {incidents.length === 0 && (
+                <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">No active calls are in the queue.</p>
+              )}
+              {incidents.map((incident) => (
+                <button
+                  key={incident.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedIncidentId(incident.id);
+                    setCallDetailOpen(true);
+                  }}
+                  className={`w-full rounded-lg border p-3 text-left transition ${
+                    selectedIncident?.id === incident.id
+                      ? 'border-cad-blue bg-blue-50'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold">{incident.callNumber} · {incident.type}</p>
+                      <p className="mt-1 truncate text-xs text-slate-600">{incident.address}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${incidentPriorityStyles[incident.priority]}`}>
+                      {incident.priority}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className={`rounded-full px-2 py-1 text-xs font-bold ring-1 ${incidentStatusStyles[incident.status]}`}>
+                      {incident.status}
+                    </span>
+                    <span className="text-xs text-slate-500">{incident.units.length} units</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </OverlayPanel>
+
+          <OverlayPanel
+            title="Call Detail"
+            subtitle={selectedIncident ? selectedIncident.callNumber : 'No active call selected'}
+            open={callDetailOpen}
+            onToggle={() => setCallDetailOpen((value) => !value)}
+            className="w-[min(28rem,calc(100vw-2rem))]"
+          >
+            {selectedIncident ? (
+              <div className="max-h-[42vh] space-y-4 overflow-y-auto pr-1">
+                <dl className="grid gap-3 text-sm">
+                  <Detail label="Type" value={selectedIncident.type} />
+                  <Detail label="Priority" value={selectedIncident.priority} />
+                  <Detail label="Status" value={selectedIncident.status} />
+                  <Detail label="Address" value={selectedIncident.address} />
+                  <Detail label="Caller" value={selectedIncident.callerName || 'Unknown'} />
+                  <Detail label="Phone" value={selectedIncident.callerPhone || 'Unknown'} />
+                </dl>
+                {selectedIncident.description && (
+                  <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">{selectedIncident.description}</p>
+                )}
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">Assigned Units</h3>
+                  <div className="mt-2 space-y-2">
+                    {selectedIncident.units.length === 0 && <p className="text-sm text-slate-600">No units assigned.</p>}
+                    {selectedIncident.units.map((assignedUnit) => (
+                      <div key={assignedUnit.userId} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm">
+                        <span className="font-semibold">{assignedUnit.cadUnitNumber || assignedUnit.name}</span>
+                        <span>{assignedUnit.status}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-
-                {incidentError && <p className="px-4 py-2 text-sm font-medium text-red-600">{incidentError}</p>}
-                <div className="grid max-h-72 gap-2 overflow-y-auto p-3 md:grid-cols-2">
-                  {incidents.length === 0 && (
-                    <p className="p-2 text-sm text-slate-600">No active calls are in the queue.</p>
-                  )}
-                  {incidents.map((incident) => (
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <select
+                    value={assignmentUnitId}
+                    onChange={(event) => setAssignmentUnitId(event.target.value)}
+                    className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                  >
+                    <option value="">Select unit</option>
+                    {units.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {displayCadUnitNumber(unit)} · {unit.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={assignIncidentUnit} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
+                    Assign
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['Dispatched', 'En Route', 'On Scene', 'Closed'] as IncidentStatus[]).map((status) => (
                     <button
-                      key={incident.id}
+                      key={status}
                       type="button"
-                      onClick={() => setSelectedIncidentId(incident.id)}
-                      className={`rounded-lg border p-3 text-left transition ${
-                        selectedIncident?.id === incident.id
-                          ? 'border-cad-blue bg-blue-50'
-                          : 'border-slate-200 bg-white hover:bg-slate-50'
-                      }`}
+                      onClick={() => updateIncidentStatus(status)}
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold">{incident.callNumber} · {incident.type}</p>
-                          <p className="mt-1 truncate text-xs text-slate-600">{incident.address}</p>
-                        </div>
-                        <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${incidentPriorityStyles[incident.priority]}`}>
-                          {incident.priority}
-                        </span>
-                      </div>
-                      <div className="mt-3 flex items-center justify-between">
-                        <span className={`rounded-full px-2 py-1 text-xs font-bold ring-1 ${incidentStatusStyles[incident.status]}`}>
-                          {incident.status}
-                        </span>
-                        <span className="text-xs text-slate-500">{incident.units.length} units</span>
-                      </div>
+                      {status}
                     </button>
                   ))}
                 </div>
               </div>
+            ) : (
+              <p className="text-sm text-slate-600">Create or select a call to manage assignments.</p>
+            )}
+          </OverlayPanel>
 
-              <div className="relative min-h-[520px] flex-1 overflow-hidden rounded-lg border border-cad-line bg-slate-900 shadow-control">
-                {googleMapsApiKey ? (
-                  <div ref={mapRef} className="h-full min-h-[520px] w-full" />
-                ) : (
-                  <FallbackMap
-                    units={units}
-                    incidents={incidents}
-                    selectedUnit={selectedUnit}
-                    currentLocation={currentLocation}
-                    currentUserId={user?.id}
-                    onSelectUnit={(unit) => setSelectedUnitId(unit.id)}
-                    onSelectIncident={(incident) => setSelectedIncidentId(incident.id)}
-                  />
-                )}
-
-                <div className="absolute left-4 top-4 rounded-lg border border-cad-line bg-white/95 p-3 shadow-control">
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <Crosshair size={16} className="text-cad-blue" />
-                    Location Tracking
-                  </div>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {currentLocation
-                      ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}`
-                      : locationError || 'Waiting for browser location'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex min-h-0 flex-col gap-4">
-            <div className="rounded-lg border border-cad-line bg-white shadow-control">
-              <div className="border-b border-cad-line p-4">
-                <h2 className="text-lg font-bold">Call Detail</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  {selectedIncident ? `${selectedIncident.callNumber} selected` : 'No active call selected'}
-                </p>
-              </div>
-              <div className="p-4">
-                {selectedIncident ? (
-                  <div className="space-y-4">
-                    <dl className="grid gap-3 text-sm">
-                      <Detail label="Type" value={selectedIncident.type} />
-                      <Detail label="Priority" value={selectedIncident.priority} />
-                      <Detail label="Status" value={selectedIncident.status} />
-                      <Detail label="Address" value={selectedIncident.address} />
-                      <Detail label="Caller" value={selectedIncident.callerName || 'Unknown'} />
-                      <Detail label="Phone" value={selectedIncident.callerPhone || 'Unknown'} />
-                      <Detail
-                        label="Location"
-                        value={
-                          selectedIncident.lat !== undefined && selectedIncident.lon !== undefined
-                            ? `${selectedIncident.lat.toFixed(6)}, ${selectedIncident.lon.toFixed(6)}`
-                            : 'Not pinned'
-                        }
-                      />
-                    </dl>
-
-                    {selectedIncident.description && (
-                      <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">{selectedIncident.description}</p>
-                    )}
-
-                    <div>
-                      <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">Assigned Units</h3>
-                      <div className="mt-2 space-y-2">
-                        {selectedIncident.units.length === 0 && (
-                          <p className="text-sm text-slate-600">No units assigned.</p>
-                        )}
-                        {selectedIncident.units.map((assignedUnit) => (
-                          <div
-                            key={assignedUnit.userId}
-                            className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm"
-                          >
-                            <span className="font-semibold">
-                              {assignedUnit.cadUnitNumber || assignedUnit.name}
-                            </span>
-                            <span>{assignedUnit.status}</span>
-                          </div>
-                        ))}
+          <OverlayPanel
+            title="Unit Detail"
+            subtitle={selectedUnit ? displayCadUnitNumber(selectedUnit) : 'No tracked unit selected'}
+            open={unitDetailOpen}
+            onToggle={() => setUnitDetailOpen((value) => !value)}
+            className="w-[min(28rem,calc(100vw-2rem))]"
+          >
+            {selectedUnit ? (
+              <div className="max-h-[42vh] space-y-4 overflow-y-auto pr-1">
+                <dl className="grid gap-3 text-sm">
+                  <Detail label="Unit Number" value={displayUnitNumber(selectedUnit)} />
+                  <Detail label="First Name" value={splitName(selectedUnit.name).firstName || 'N/A'} />
+                  <Detail label="Last Name" value={splitName(selectedUnit.name).lastName || 'N/A'} />
+                  <Detail label="CAD Unit Number" value={displayCadUnitNumber(selectedUnit)} />
+                  <Detail label="Status" value={displayStatus(selectedUnit)} />
+                  <Detail label="Group" value={selectedUnit.group || 'Unassigned'} />
+                  <Detail label="District" value={selectedUnit.district || 'Unassigned'} />
+                  <Detail label="Lat" value={selectedUnit.lat.toFixed(6)} />
+                  <Detail label="Lon" value={selectedUnit.lon.toFixed(6)} />
+                  <Detail label="Speed" value={`${(selectedUnit.speedMph || 0).toFixed(1)} mph`} />
+                  <Detail label="ETA" value={etaText(selectedUnit)} />
+                </dl>
+                {selectedIsCurrentUser && displayStatus(selectedUnit) === 'En Route' && (
+                  <div className="border-t border-cad-line pt-4">
+                    <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">Destination</h3>
+                    <div className="mt-3 grid gap-3">
+                      <input value={destinationLabel} onChange={(event) => setDestinationLabel(event.target.value)} placeholder="Destination label" className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100" />
+                      <div className="grid grid-cols-2 gap-3">
+                        <input value={destinationLat} onChange={(event) => setDestinationLat(event.target.value)} placeholder="Destination lat" className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100" />
+                        <input value={destinationLon} onChange={(event) => setDestinationLon(event.target.value)} placeholder="Destination lon" className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100" />
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={saveDestination} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">Pin Destination</button>
+                        <button type="button" onClick={clearDestination} className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700">Clear</button>
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-[1fr_auto] gap-2">
-                      <select
-                        value={assignmentUnitId}
-                        onChange={(event) => setAssignmentUnitId(event.target.value)}
-                        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                      >
-                        <option value="">Select unit</option>
-                        {units.map((unit) => (
-                          <option key={unit.id} value={unit.id}>
-                            {displayCadUnitNumber(unit)} · {unit.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={assignIncidentUnit}
-                        className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white"
-                      >
-                        Assign
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['Dispatched', 'En Route', 'On Scene', 'Closed'] as IncidentStatus[]).map((status) => (
-                        <button
-                          key={status}
-                          type="button"
-                          onClick={() => updateIncidentStatus(status)}
-                          className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                          {status}
-                        </button>
-                      ))}
-                    </div>
                   </div>
-                ) : (
-                  <p className="text-sm text-slate-600">Create or select a call to manage assignments.</p>
                 )}
               </div>
-            </div>
-
-            <div className="rounded-lg border border-cad-line bg-white shadow-control">
-              <div className="border-b border-cad-line p-4">
-                <h2 className="text-lg font-bold">Unit Detail</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  {selectedUnit ? `${displayCadUnitNumber(selectedUnit)} selected` : 'No tracked unit selected'}
-                </p>
-              </div>
-              <div className="p-4">
-                {selectedUnit ? (
-                  <>
-                    <dl className="grid gap-3 text-sm">
-                      <Detail label="Unit Number" value={displayUnitNumber(selectedUnit)} />
-                      <Detail label="First Name" value={splitName(selectedUnit.name).firstName || 'N/A'} />
-                      <Detail label="Last Name" value={splitName(selectedUnit.name).lastName || 'N/A'} />
-                      <Detail label="CAD Unit Number" value={displayCadUnitNumber(selectedUnit)} />
-                      <Detail label="Status" value={displayStatus(selectedUnit)} />
-                      <Detail label="Group" value={selectedUnit.group || 'Unassigned'} />
-                      <Detail label="District" value={selectedUnit.district || 'Unassigned'} />
-                      <Detail label="Lat" value={selectedUnit.lat.toFixed(6)} />
-                      <Detail label="Lon" value={selectedUnit.lon.toFixed(6)} />
-                      <Detail label="Speed" value={`${(selectedUnit.speedMph || 0).toFixed(1)} mph`} />
-                      <Detail
-                        label="Destination"
-                        value={
-                          selectedUnit.destinationLat !== undefined && selectedUnit.destinationLon !== undefined
-                            ? selectedUnit.destinationLabel ||
-                              `${selectedUnit.destinationLat.toFixed(5)}, ${selectedUnit.destinationLon.toFixed(5)}`
-                            : 'None'
-                        }
-                      />
-                      <Detail label="ETA" value={etaText(selectedUnit)} />
-                    </dl>
-
-                    {selectedIsCurrentUser && displayStatus(selectedUnit) === 'En Route' && (
-                      <div className="mt-5 border-t border-cad-line pt-4">
-                        <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">
-                          Destination
-                        </h3>
-                        <div className="mt-3 grid gap-3">
-                          <input
-                            value={destinationLabel}
-                            onChange={(event) => setDestinationLabel(event.target.value)}
-                            placeholder="Destination label"
-                            className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                          />
-                          <div className="grid grid-cols-2 gap-3">
-                            <input
-                              value={destinationLat}
-                              onChange={(event) => setDestinationLat(event.target.value)}
-                              placeholder="Destination lat"
-                              className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                            />
-                            <input
-                              value={destinationLon}
-                              onChange={(event) => setDestinationLon(event.target.value)}
-                              placeholder="Destination lon"
-                              className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={saveDestination}
-                              className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white"
-                            >
-                              Pin Destination
-                            </button>
-                            <button
-                              type="button"
-                              onClick={clearDestination}
-                              className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700"
-                            >
-                              Clear
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-slate-600">
-                    When a real user signs in and allows location access, they will appear here.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            </div>
-          </section>
-        </main>
+            ) : (
+              <p className="text-sm text-slate-600">When a real user signs in and allows location access, they will appear here.</p>
+            )}
+          </OverlayPanel>
+        </div>
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-3">
@@ -1652,12 +1551,39 @@ const MetricCard: React.FC<{ icon: React.ReactNode; label: string; value: number
   label,
   value
 }) => (
-  <div className="flex min-h-12 items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+  <div className="flex min-h-12 min-w-36 items-center justify-between rounded-md border border-cad-line bg-white/95 px-3 py-2 shadow-control backdrop-blur">
     <div className="flex min-w-0 items-center gap-2">
       <span className="text-cad-blue">{icon}</span>
       <p className="truncate text-xs font-semibold text-slate-600">{label}</p>
     </div>
     <p className="text-lg font-bold">{value}</p>
+  </div>
+);
+
+const OverlayPanel: React.FC<{
+  title: string;
+  subtitle?: string;
+  open: boolean;
+  onToggle: () => void;
+  className?: string;
+  children: React.ReactNode;
+}> = ({ title, subtitle, open, onToggle, className = '', children }) => (
+  <div className={`overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur ${className}`}>
+    <div className="flex items-center justify-between gap-3 border-b border-cad-line px-3 py-2">
+      <div className="min-w-0">
+        <h2 className="truncate text-sm font-bold">{title}</h2>
+        {subtitle && <p className="truncate text-xs text-slate-600">{subtitle}</p>}
+      </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50"
+        aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
+      >
+        {open ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+      </button>
+    </div>
+    {open && <div className="p-3">{children}</div>}
   </div>
 );
 
