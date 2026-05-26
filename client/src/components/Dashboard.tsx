@@ -281,7 +281,6 @@ export const Dashboard: React.FC = () => {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
-  const [incidentFormOpen, setIncidentFormOpen] = useState(false);
   const [addressSuggestions, setAddressSuggestions] = useState<GooglePlacePrediction[]>([]);
   const [addressSuggestionsOpen, setAddressSuggestionsOpen] = useState(false);
   const [incidentForm, setIncidentForm] = useState({
@@ -675,7 +674,7 @@ export const Dashboard: React.FC = () => {
       });
       setIncidents((current) => [incident, ...current.filter((item) => item.id !== incident.id)]);
       setSelectedIncidentId(incident.id);
-      setIncidentFormOpen(false);
+      setActiveQuickModal(null);
       setIncidentError('');
       setIncidentForm({
         type: '911 Call',
@@ -722,9 +721,6 @@ export const Dashboard: React.FC = () => {
   };
 
   const openQuickLaunch = (item: QuickLaunchId) => {
-    if (item === 'new-call') {
-      setIncidentFormOpen(true);
-    }
     if (item === 'settings') {
       setSettingsOpen(false);
     }
@@ -735,42 +731,221 @@ export const Dashboard: React.FC = () => {
     ? quickLaunchOptions.find((item) => item.id === activeQuickModal)?.label || 'Quick Launch'
     : '';
 
+  const renderNewCallForm = () => (
+    <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
+      <input
+        value={incidentForm.type}
+        onChange={(event) => setIncidentForm((value) => ({ ...value, type: event.target.value }))}
+        placeholder="Call type"
+        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+      />
+      <select
+        value={incidentForm.priority}
+        onChange={(event) =>
+          setIncidentForm((value) => ({ ...value, priority: event.target.value as IncidentPriority }))
+        }
+        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+      >
+        {(['Low', 'Normal', 'High', 'Emergency'] as IncidentPriority[]).map((priority) => (
+          <option key={priority} value={priority}>
+            {priority}
+          </option>
+        ))}
+      </select>
+      <div className="relative sm:col-span-2">
+        <input
+          value={incidentForm.address}
+          onChange={(event) => {
+            setIncidentForm((value) => ({ ...value, address: event.target.value }));
+            setAddressSuggestionsOpen(true);
+          }}
+          onFocus={() => setAddressSuggestionsOpen(true)}
+          placeholder="Address"
+          className="w-full rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+        />
+        {addressSuggestionsOpen && addressSuggestions.length > 0 && (
+          <div className="absolute inset-x-0 top-11 z-20 rounded-md border border-cad-line bg-white shadow-xl">
+            {addressSuggestions.map((suggestion) => (
+              <button
+                key={suggestion.place_id}
+                type="button"
+                onClick={() => {
+                  setIncidentForm((value) => ({ ...value, address: suggestion.description }));
+                  setAddressSuggestionsOpen(false);
+                }}
+                className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-blue-50"
+              >
+                {suggestion.description}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <input
+        value={incidentForm.callerName}
+        onChange={(event) => setIncidentForm((value) => ({ ...value, callerName: event.target.value }))}
+        placeholder="Caller name"
+        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+      />
+      <input
+        value={incidentForm.callerPhone}
+        onChange={(event) => setIncidentForm((value) => ({ ...value, callerPhone: event.target.value }))}
+        placeholder="Caller phone"
+        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+      />
+      <input
+        value={incidentForm.lat}
+        onChange={(event) => setIncidentForm((value) => ({ ...value, lat: event.target.value }))}
+        placeholder="Lat"
+        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+      />
+      <input
+        value={incidentForm.lon}
+        onChange={(event) => setIncidentForm((value) => ({ ...value, lon: event.target.value }))}
+        placeholder="Lon"
+        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+      />
+      <textarea
+        value={incidentForm.description}
+        onChange={(event) => setIncidentForm((value) => ({ ...value, description: event.target.value }))}
+        placeholder="Call notes"
+        className="min-h-28 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 sm:col-span-2"
+      />
+      {incidentError && <p className="text-sm font-medium text-red-600 sm:col-span-2">{incidentError}</p>}
+      <div className="flex justify-end gap-2 sm:col-span-2">
+        <button
+          type="button"
+          onClick={() => setActiveQuickModal(null)}
+          className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={createIncident}
+          className="inline-flex items-center gap-2 rounded-md bg-cad-navy px-3 py-2 text-sm font-semibold text-white"
+        >
+          <Send size={16} />
+          Create
+        </button>
+      </div>
+    </div>
+  );
+
   const renderQuickModalContent = () => {
     if (activeQuickModal === 'messages') {
       return (
-        <div className="max-h-[70vh] overflow-y-auto">
-          {selectedMessageUser ? (
-            <div className="space-y-3">
-              <p className="text-sm font-semibold">{selectedMessageUser.name}</p>
-              <div className="max-h-72 space-y-2 overflow-y-auto rounded-md bg-slate-50 p-3">
-                {visibleMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`rounded-md px-3 py-2 text-sm ${
-                      message.senderId === user?.id ? 'ml-auto bg-cad-blue text-white' : 'mr-auto bg-white text-cad-ink'
-                    } max-w-[85%]`}
-                  >
-                    {message.body}
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  value={messageBody}
-                  onChange={(event) => setMessageBody(event.target.value)}
-                  placeholder="Type a message"
-                  className="min-w-0 flex-1 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                />
-                <button type="button" onClick={sendChatMessage} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
-                  Send
+        <div className="grid min-h-[520px] overflow-hidden rounded-md border border-cad-line sm:grid-cols-[220px_1fr]">
+          <div className="max-h-[70vh] overflow-y-auto border-r border-cad-line bg-slate-50">
+            {directory
+              .filter((item) => item.id !== user?.id)
+              .map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedMessageUserId(item.id)}
+                  className={`w-full border-b border-slate-200 px-3 py-3 text-left text-sm ${
+                    selectedMessageUserId === item.id ? 'bg-blue-50' : 'hover:bg-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 font-semibold">
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${
+                        onlineUserIds.includes(item.id) ? 'bg-emerald-500' : 'bg-slate-300'
+                      }`}
+                    />
+                    <span className="truncate">{item.name}</span>
+                  </span>
+                  <span className="mt-1 block truncate text-xs text-slate-500">{item.status || 'No status'}</span>
                 </button>
+              ))}
+          </div>
+          <div className="flex min-w-0 flex-col">
+            {selectedMessageUser ? (
+              <>
+                <div className="border-b border-cad-line px-4 py-3">
+                  <p className="text-sm font-bold">{selectedMessageUser.name}</p>
+                  <p className="text-xs text-slate-500">
+                    {onlineUserIds.includes(selectedMessageUser.id)
+                      ? 'Online'
+                      : `Last seen ${formatDateTime(selectedMessageUser.lastSeenAt)}`}
+                  </p>
+                </div>
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-white p-4">
+                  {visibleMessages.map((message) => {
+                    const mine = message.senderId === user?.id;
+                    return (
+                      <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                        <div
+                          className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                            mine ? 'bg-cad-blue text-white' : 'bg-slate-100 text-cad-ink'
+                          }`}
+                        >
+                          <p>{message.body}</p>
+                          <p className={`mt-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
+                            {formatDateTime(message.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="border-t border-cad-line p-3">
+                  {emojiOpen && (
+                    <div className="mb-2 flex flex-wrap gap-1 rounded-md border border-cad-line bg-slate-50 p-2">
+                      {['😀', '👍', '🚓', '🚑', '🚒', '📍', '✅', '⚠️', '❗', '🙏'].map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => setMessageBody((value) => `${value}${emoji}`)}
+                          className="rounded px-2 py-1 text-lg hover:bg-white"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEmojiOpen((value) => !value)}
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm"
+                    >
+                      Emoji
+                    </button>
+                    <input
+                      value={messageBody}
+                      onChange={(event) => setMessageBody(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          sendChatMessage();
+                        }
+                      }}
+                      placeholder="Type a message"
+                      className="min-w-0 flex-1 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={sendChatMessage}
+                      className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white"
+                    >
+                      Send
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex min-h-80 items-center justify-center p-4 text-sm text-slate-600">
+                Select a user to start messaging.
               </div>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-600">Select a user in messages first.</p>
-          )}
+            )}
+          </div>
         </div>
       );
+    }
+
+    if (activeQuickModal === 'new-call') {
+      return renderNewCallForm();
     }
 
     if (activeQuickModal === 'calls') {
@@ -793,10 +968,6 @@ export const Dashboard: React.FC = () => {
           {incidents.length === 0 && <p className="text-sm text-slate-600">No active calls.</p>}
         </div>
       );
-    }
-
-    if (activeQuickModal === 'new-call') {
-      return <p className="text-sm text-slate-600">The new call form is open in the Active Calls panel.</p>;
     }
 
     if (activeQuickModal === 'units') {
@@ -1001,104 +1172,7 @@ export const Dashboard: React.FC = () => {
                     <h2 className="text-lg font-bold">Active Calls</h2>
                     <p className="mt-1 text-sm text-slate-600">{incidents.length} open incidents</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIncidentFormOpen((value) => !value)}
-                    className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white"
-                  >
-                    <ClipboardList size={16} />
-                    New Call
-                  </button>
                 </div>
-
-                {incidentFormOpen && (
-                  <div className="grid gap-3 border-b border-cad-line bg-slate-50 p-4 lg:grid-cols-4">
-                    <input
-                      value={incidentForm.type}
-                      onChange={(event) => setIncidentForm((value) => ({ ...value, type: event.target.value }))}
-                      placeholder="Call type"
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                    />
-                    <select
-                      value={incidentForm.priority}
-                      onChange={(event) =>
-                        setIncidentForm((value) => ({ ...value, priority: event.target.value as IncidentPriority }))
-                      }
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                    >
-                      {(['Low', 'Normal', 'High', 'Emergency'] as IncidentPriority[]).map((priority) => (
-                        <option key={priority} value={priority}>
-                          {priority}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      value={incidentForm.address}
-                      onChange={(event) => {
-                        setIncidentForm((value) => ({ ...value, address: event.target.value }));
-                        setAddressSuggestionsOpen(true);
-                      }}
-                      onFocus={() => setAddressSuggestionsOpen(true)}
-                      placeholder="Address"
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 lg:col-span-2"
-                    />
-                    {addressSuggestionsOpen && addressSuggestions.length > 0 && (
-                      <div className="z-20 rounded-md border border-cad-line bg-white shadow-xl lg:col-span-4">
-                        {addressSuggestions.map((suggestion) => (
-                          <button
-                            key={suggestion.place_id}
-                            type="button"
-                            onClick={() => {
-                              setIncidentForm((value) => ({ ...value, address: suggestion.description }));
-                              setAddressSuggestionsOpen(false);
-                            }}
-                            className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-blue-50"
-                          >
-                            {suggestion.description}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <input
-                      value={incidentForm.callerName}
-                      onChange={(event) => setIncidentForm((value) => ({ ...value, callerName: event.target.value }))}
-                      placeholder="Caller name"
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                    />
-                    <input
-                      value={incidentForm.callerPhone}
-                      onChange={(event) => setIncidentForm((value) => ({ ...value, callerPhone: event.target.value }))}
-                      placeholder="Caller phone"
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                    />
-                    <input
-                      value={incidentForm.lat}
-                      onChange={(event) => setIncidentForm((value) => ({ ...value, lat: event.target.value }))}
-                      placeholder="Lat"
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                    />
-                    <input
-                      value={incidentForm.lon}
-                      onChange={(event) => setIncidentForm((value) => ({ ...value, lon: event.target.value }))}
-                      placeholder="Lon"
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                    />
-                    <textarea
-                      value={incidentForm.description}
-                      onChange={(event) => setIncidentForm((value) => ({ ...value, description: event.target.value }))}
-                      placeholder="Call notes"
-                      className="min-h-20 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 lg:col-span-3"
-                    />
-                    <button
-                      type="button"
-                      onClick={createIncident}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-cad-navy px-3 py-2 text-sm font-semibold text-white"
-                    >
-                      <Send size={16} />
-                      Create
-                    </button>
-                  </div>
-                )}
 
                 {incidentError && <p className="px-4 py-2 text-sm font-medium text-red-600">{incidentError}</p>}
                 <div className="grid max-h-72 gap-2 overflow-y-auto p-3 md:grid-cols-2">
@@ -1345,130 +1419,6 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="min-h-[420px] rounded-lg border border-cad-line bg-white shadow-control">
-              <div className="flex items-center justify-between border-b border-cad-line p-4">
-                <div>
-                  <h2 className="text-lg font-bold">Messages</h2>
-                  <p className="mt-1 text-sm text-slate-600">Live direct user messaging</p>
-                </div>
-                <MessageCircle className="text-cad-blue" size={22} />
-              </div>
-
-              <div className="grid min-h-[360px] grid-cols-[150px_1fr]">
-                <div className="border-r border-cad-line">
-                  {directory
-                    .filter((item) => item.id !== user?.id)
-                    .map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setSelectedMessageUserId(item.id)}
-                        className={`w-full border-b border-slate-100 px-3 py-3 text-left text-sm ${
-                          selectedMessageUserId === item.id ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2 font-semibold">
-                          <span
-                            className={`h-2.5 w-2.5 rounded-full ${
-                              onlineUserIds.includes(item.id) ? 'bg-emerald-500' : 'bg-slate-300'
-                            }`}
-                          />
-                          <span className="truncate">{item.name}</span>
-                        </span>
-                        <span className="mt-1 block truncate text-xs text-slate-500">
-                          {item.status || 'No status'}
-                        </span>
-                      </button>
-                    ))}
-                </div>
-
-                <div className="flex min-w-0 flex-col">
-                  <div className="border-b border-cad-line px-4 py-3">
-                    {selectedMessageUser ? (
-                      <>
-                        <p className="text-sm font-bold">{selectedMessageUser.name}</p>
-                        <p className="text-xs text-slate-500">
-                          {onlineUserIds.includes(selectedMessageUser.id)
-                            ? 'Online'
-                            : `Last seen ${formatDateTime(selectedMessageUser.lastSeenAt)}`}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {selectedMessageUser.lat !== undefined && selectedMessageUser.lon !== undefined
-                            ? `${selectedMessageUser.lat.toFixed(4)}, ${selectedMessageUser.lon.toFixed(4)}`
-                            : 'No shared location'}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-slate-500">Select a user</p>
-                    )}
-                  </div>
-
-                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-                    {visibleMessages.map((message) => {
-                      const mine = message.senderId === user?.id;
-                      return (
-                        <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                          <div
-                            className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                              mine ? 'bg-cad-blue text-white' : 'bg-slate-100 text-cad-ink'
-                            }`}
-                          >
-                            <p>{message.body}</p>
-                            <p className={`mt-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
-                              {formatDateTime(message.createdAt)}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="border-t border-cad-line p-3">
-                    {emojiOpen && (
-                      <div className="mb-2 flex flex-wrap gap-1 rounded-md border border-cad-line bg-slate-50 p-2">
-                        {['😀', '👍', '🚓', '🚑', '🚒', '📍', '✅', '⚠️', '❗', '🙏'].map((emoji) => (
-                          <button
-                            key={emoji}
-                            type="button"
-                            onClick={() => setMessageBody((value) => `${value}${emoji}`)}
-                            className="rounded px-2 py-1 text-lg hover:bg-white"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setEmojiOpen((value) => !value)}
-                        className="rounded-md border border-cad-line px-3 py-2 text-sm"
-                      >
-                        🙂
-                      </button>
-                      <input
-                        value={messageBody}
-                        onChange={(event) => setMessageBody(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            sendChatMessage();
-                          }
-                        }}
-                        placeholder="Type a message"
-                        className="min-w-0 flex-1 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
-                      />
-                      <button
-                        type="button"
-                        onClick={sendChatMessage}
-                        className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white"
-                      >
-                        Send
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
             </div>
           </section>
         </main>
