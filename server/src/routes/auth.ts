@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
-import { LoginRequest, RefreshTokenRequest, RegisterRequest, UserRole } from 'cad-shared';
+import { LoginRequest, RefreshTokenRequest, RegisterRequest, UserRole } from '../types/auth';
 
 const router = Router();
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();

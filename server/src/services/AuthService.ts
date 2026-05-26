@@ -12,7 +12,7 @@ import {
   TokenPair,
   User,
   UserRole
-} from 'cad-shared';
+} from '../types/auth';
 
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';

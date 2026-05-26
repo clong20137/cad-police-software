@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { AuthPayload } from 'cad-shared';
+import { AuthPayload } from '../types/auth';
 import { securityConfig } from '../config/security';
 
 declare global {
