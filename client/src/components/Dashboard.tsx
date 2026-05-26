@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ClipboardList,
   Crosshair,
+  GripVertical,
   MessageCircle,
   Layers,
   LogOut,
@@ -13,6 +14,7 @@ import {
   Send,
   Settings,
   Shield,
+  X,
   Users
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +30,12 @@ declare global {
         InfoWindow: new (options: Record<string, unknown>) => GoogleInfoWindowInstance;
         LatLng: new (lat: number, lng: number) => GoogleLatLngInstance;
         OverlayView: new () => GoogleOverlayViewInstance;
+        places?: {
+          AutocompleteService: new () => GoogleAutocompleteService;
+          PlacesServiceStatus: {
+            OK: string;
+          };
+        };
       };
     };
   }
@@ -51,7 +59,43 @@ interface GoogleOverlayViewInstance {
   };
 }
 
+interface GooglePlacePrediction {
+  description: string;
+  place_id: string;
+}
+
+interface GoogleAutocompleteService {
+  getPlacePredictions: (
+    request: Record<string, unknown>,
+    callback: (predictions: GooglePlacePrediction[] | null, status: string) => void
+  ) => void;
+}
+
 type TrackedUnit = User & { lat: number; lon: number };
+type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'map' | 'settings';
+type QuickLaunchSlot = QuickLaunchId | null;
+
+const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.ReactNode }> = [
+  { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
+  { id: 'calls', label: 'Calls', icon: <ClipboardList size={18} /> },
+  { id: 'new-call', label: 'New Call', icon: <Send size={18} /> },
+  { id: 'units', label: 'Units', icon: <Users size={18} /> },
+  { id: 'unit-detail', label: 'Unit', icon: <Radio size={18} /> },
+  { id: 'call-detail', label: 'Call', icon: <Shield size={18} /> },
+  { id: 'map', label: 'Map', icon: <MapPin size={18} /> },
+  { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
+];
+
+const defaultQuickLaunchSlots: QuickLaunchSlot[] = [
+  'messages',
+  'calls',
+  'new-call',
+  'units',
+  'unit-detail',
+  'call-detail',
+  'map',
+  'settings'
+];
 
 const statusStyles: Record<UnitStatus, string> = {
   Available: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
@@ -186,8 +230,7 @@ const addGooglePulseMarker = ({
       container.appendChild(pulse);
 
       const pin = document.createElement('span');
-      pin.textContent = 'o';
-      pin.className = 'text-lg leading-none';
+      pin.className = 'h-3 w-3 rounded-full bg-current ring-2 ring-white/70';
       container.appendChild(pin);
 
       const text = document.createElement('span');
@@ -239,6 +282,8 @@ export const Dashboard: React.FC = () => {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [incidentFormOpen, setIncidentFormOpen] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<GooglePlacePrediction[]>([]);
+  const [addressSuggestionsOpen, setAddressSuggestionsOpen] = useState(false);
   const [incidentForm, setIncidentForm] = useState({
     type: '911 Call',
     priority: 'Normal' as IncidentPriority,
@@ -251,6 +296,19 @@ export const Dashboard: React.FC = () => {
   });
   const [incidentError, setIncidentError] = useState('');
   const [assignmentUnitId, setAssignmentUnitId] = useState('');
+  const [quickLaunchSlots, setQuickLaunchSlots] = useState<QuickLaunchSlot[]>(() => {
+    const stored = localStorage.getItem('cad_quick_launch_slots');
+    if (!stored) return defaultQuickLaunchSlots;
+    try {
+      const parsed = JSON.parse(stored) as QuickLaunchSlot[];
+      return Array.from({ length: 8 }, (_, index) => parsed[index] || null);
+    } catch {
+      return defaultQuickLaunchSlots;
+    }
+  });
+  const [activeQuickModal, setActiveQuickModal] = useState<QuickLaunchId | null>(null);
+  const [customizingSlot, setCustomizingSlot] = useState<number | null>(null);
+  const [draggedSlotIndex, setDraggedSlotIndex] = useState<number | null>(null);
   const [destinationLat, setDestinationLat] = useState('');
   const [destinationLon, setDestinationLon] = useState('');
   const [destinationLabel, setDestinationLabel] = useState('');
@@ -337,6 +395,38 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     loadDirectory();
   }, [loadDirectory]);
+
+  useEffect(() => {
+    localStorage.setItem('cad_quick_launch_slots', JSON.stringify(quickLaunchSlots));
+  }, [quickLaunchSlots]);
+
+  useEffect(() => {
+    const query = incidentForm.address.trim();
+    if (query.length < 3 || !window.google?.maps.places?.AutocompleteService) {
+      setAddressSuggestions([]);
+      return;
+    }
+
+    const service = new window.google.maps.places.AutocompleteService();
+    const timer = window.setTimeout(() => {
+      service.getPlacePredictions(
+        {
+          input: query,
+          componentRestrictions: { country: 'us' },
+          types: ['geocode']
+        },
+        (predictions, status) => {
+          if (status === window.google?.maps.places?.PlacesServiceStatus.OK && predictions) {
+            setAddressSuggestions(predictions.slice(0, 5));
+            return;
+          }
+          setAddressSuggestions([]);
+        }
+      );
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [incidentForm.address]);
 
   useEffect(() => {
     const socket = io(realtimeUrl, {
@@ -510,16 +600,6 @@ export const Dashboard: React.FC = () => {
           });
         });
 
-      if (currentLocation) {
-        addGooglePulseMarker({
-          map,
-          lat: currentLocation.lat,
-          lon: currentLocation.lon,
-          label: 'You',
-          tone: 'green'
-        });
-      }
-
       map.setCenter({ lat: center.lat, lng: center.lon });
     };
 
@@ -531,7 +611,7 @@ export const Dashboard: React.FC = () => {
 
     const script = document.createElement('script');
     script.id = scriptId;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&libraries=places`;
     script.async = true;
     script.onload = initializeMap;
     document.head.appendChild(script);
@@ -622,6 +702,163 @@ export const Dashboard: React.FC = () => {
     if (!selectedIncident || !assignmentUnitId) return;
     const incident = await authClient.assignIncidentUnit(selectedIncident.id, assignmentUnitId, 'Assigned');
     setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+  };
+
+  const assignQuickLaunchSlot = (index: number, value: QuickLaunchSlot) => {
+    setQuickLaunchSlots((current) => current.map((slot, slotIndex) => (slotIndex === index ? value : slot)));
+    setCustomizingSlot(null);
+  };
+
+  const swapQuickLaunchSlots = (targetIndex: number) => {
+    if (draggedSlotIndex === null || draggedSlotIndex === targetIndex) return;
+    setQuickLaunchSlots((current) => {
+      const next = [...current];
+      const source = next[draggedSlotIndex];
+      next[draggedSlotIndex] = next[targetIndex];
+      next[targetIndex] = source;
+      return next;
+    });
+    setDraggedSlotIndex(null);
+  };
+
+  const openQuickLaunch = (item: QuickLaunchId) => {
+    if (item === 'new-call') {
+      setIncidentFormOpen(true);
+    }
+    if (item === 'settings') {
+      setSettingsOpen(false);
+    }
+    setActiveQuickModal(item);
+  };
+
+  const quickModalTitle = activeQuickModal
+    ? quickLaunchOptions.find((item) => item.id === activeQuickModal)?.label || 'Quick Launch'
+    : '';
+
+  const renderQuickModalContent = () => {
+    if (activeQuickModal === 'messages') {
+      return (
+        <div className="max-h-[70vh] overflow-y-auto">
+          {selectedMessageUser ? (
+            <div className="space-y-3">
+              <p className="text-sm font-semibold">{selectedMessageUser.name}</p>
+              <div className="max-h-72 space-y-2 overflow-y-auto rounded-md bg-slate-50 p-3">
+                {visibleMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`rounded-md px-3 py-2 text-sm ${
+                      message.senderId === user?.id ? 'ml-auto bg-cad-blue text-white' : 'mr-auto bg-white text-cad-ink'
+                    } max-w-[85%]`}
+                  >
+                    {message.body}
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={messageBody}
+                  onChange={(event) => setMessageBody(event.target.value)}
+                  placeholder="Type a message"
+                  className="min-w-0 flex-1 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                />
+                <button type="button" onClick={sendChatMessage} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
+                  Send
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-600">Select a user in messages first.</p>
+          )}
+        </div>
+      );
+    }
+
+    if (activeQuickModal === 'calls') {
+      return (
+        <div className="max-h-[70vh] space-y-2 overflow-y-auto">
+          {incidents.map((incident) => (
+            <button
+              key={incident.id}
+              type="button"
+              onClick={() => {
+                setSelectedIncidentId(incident.id);
+                setActiveQuickModal('call-detail');
+              }}
+              className="w-full rounded-md border border-slate-200 p-3 text-left hover:bg-slate-50"
+            >
+              <p className="text-sm font-bold">{incident.callNumber} · {incident.type}</p>
+              <p className="mt-1 text-xs text-slate-600">{incident.address}</p>
+            </button>
+          ))}
+          {incidents.length === 0 && <p className="text-sm text-slate-600">No active calls.</p>}
+        </div>
+      );
+    }
+
+    if (activeQuickModal === 'new-call') {
+      return <p className="text-sm text-slate-600">The new call form is open in the Active Calls panel.</p>;
+    }
+
+    if (activeQuickModal === 'units') {
+      return (
+        <div className="max-h-[70vh] space-y-2 overflow-y-auto">
+          {units.map((unit) => (
+            <button
+              key={unit.id}
+              type="button"
+              onClick={() => {
+                setSelectedUnitId(unit.id);
+                setActiveQuickModal('unit-detail');
+              }}
+              className="flex w-full items-center justify-between rounded-md border border-slate-200 p-3 text-left hover:bg-slate-50"
+            >
+              <span className="text-sm font-bold">{displayCadUnitNumber(unit)}</span>
+              <span className="text-xs text-slate-600">{displayStatus(unit)}</span>
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    if (activeQuickModal === 'unit-detail') {
+      return selectedUnit ? (
+        <dl className="grid gap-3 text-sm">
+          <Detail label="Unit" value={displayCadUnitNumber(selectedUnit)} />
+          <Detail label="Name" value={selectedUnit.name} />
+          <Detail label="Status" value={displayStatus(selectedUnit)} />
+          <Detail label="Location" value={`${selectedUnit.lat.toFixed(6)}, ${selectedUnit.lon.toFixed(6)}`} />
+        </dl>
+      ) : (
+        <p className="text-sm text-slate-600">No tracked unit selected.</p>
+      );
+    }
+
+    if (activeQuickModal === 'call-detail') {
+      return selectedIncident ? (
+        <dl className="grid gap-3 text-sm">
+          <Detail label="Call" value={selectedIncident.callNumber} />
+          <Detail label="Type" value={selectedIncident.type} />
+          <Detail label="Status" value={selectedIncident.status} />
+          <Detail label="Address" value={selectedIncident.address} />
+        </dl>
+      ) : (
+        <p className="text-sm text-slate-600">No call selected.</p>
+      );
+    }
+
+    if (activeQuickModal === 'map') {
+      return <p className="text-sm text-slate-600">The live map is centered on the dashboard.</p>;
+    }
+
+    return (
+      <div className="space-y-3 text-sm text-slate-700">
+        <p>{user?.name}</p>
+        <p>{user?.email}</p>
+        <button type="button" onClick={logout} className="rounded-md bg-cad-navy px-3 py-2 font-semibold text-white">
+          Sign out
+        </button>
+      </div>
+    );
   };
 
   return (
@@ -797,10 +1034,31 @@ export const Dashboard: React.FC = () => {
                     </select>
                     <input
                       value={incidentForm.address}
-                      onChange={(event) => setIncidentForm((value) => ({ ...value, address: event.target.value }))}
+                      onChange={(event) => {
+                        setIncidentForm((value) => ({ ...value, address: event.target.value }));
+                        setAddressSuggestionsOpen(true);
+                      }}
+                      onFocus={() => setAddressSuggestionsOpen(true)}
                       placeholder="Address"
                       className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 lg:col-span-2"
                     />
+                    {addressSuggestionsOpen && addressSuggestions.length > 0 && (
+                      <div className="z-20 rounded-md border border-cad-line bg-white shadow-xl lg:col-span-4">
+                        {addressSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion.place_id}
+                            type="button"
+                            onClick={() => {
+                              setIncidentForm((value) => ({ ...value, address: suggestion.description }));
+                              setAddressSuggestionsOpen(false);
+                            }}
+                            className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-blue-50"
+                          >
+                            {suggestion.description}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <input
                       value={incidentForm.callerName}
                       onChange={(event) => setIncidentForm((value) => ({ ...value, callerName: event.target.value }))}
@@ -1215,6 +1473,91 @@ export const Dashboard: React.FC = () => {
           </section>
         </main>
       </div>
+
+      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-3">
+        <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-xl border border-white/30 bg-cad-navy/95 p-2 shadow-2xl backdrop-blur md:grid-cols-8">
+          {quickLaunchSlots.map((slot, index) => {
+            const item = quickLaunchOptions.find((option) => option.id === slot);
+            return (
+              <div
+                key={`quick-slot-${index}`}
+                draggable
+                onDragStart={() => setDraggedSlotIndex(index)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => swapQuickLaunchSlots(index)}
+                className="relative flex h-16 w-16 items-center justify-center rounded-lg border border-white/15 bg-white/10 text-white"
+              >
+                <GripVertical className="absolute left-1 top-1 text-white/45" size={12} />
+                <button
+                  type="button"
+                  onClick={() => (item ? openQuickLaunch(item.id) : setCustomizingSlot(index))}
+                  className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-semibold hover:bg-white/10"
+                  aria-label={item ? `Open ${item.label}` : `Customize slot ${index + 1}`}
+                >
+                  {item?.icon || <Settings size={18} />}
+                  <span className="max-w-full truncate px-1">{item?.label || 'Empty'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomizingSlot(index)}
+                  className="absolute right-1 top-1 rounded bg-white/10 p-1 text-white/70 hover:text-white"
+                  aria-label={`Customize slot ${index + 1}`}
+                >
+                  <Settings size={11} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {customizingSlot !== null && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4 sm:items-center">
+          <div className="w-full max-w-lg rounded-lg border border-cad-line bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-cad-line p-4">
+              <h2 className="text-lg font-bold">Customize Slot {customizingSlot + 1}</h2>
+              <button type="button" onClick={() => setCustomizingSlot(null)} className="rounded-md p-2 hover:bg-slate-100">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid gap-2 p-4 sm:grid-cols-2">
+              {quickLaunchOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => assignQuickLaunchSlot(customizingSlot, option.id)}
+                  className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left text-sm font-semibold hover:bg-blue-50"
+                >
+                  <span className="text-cad-blue">{option.icon}</span>
+                  {option.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => assignQuickLaunchSlot(customizingSlot, null)}
+                className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left text-sm font-semibold hover:bg-slate-50"
+              >
+                <X size={18} className="text-slate-500" />
+                Empty
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeQuickModal && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4 sm:items-center">
+          <div className="w-full max-w-2xl rounded-lg border border-cad-line bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-cad-line p-4">
+              <h2 className="text-lg font-bold">{quickModalTitle}</h2>
+              <button type="button" onClick={() => setActiveQuickModal(null)} className="rounded-md p-2 hover:bg-slate-100">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4">{renderQuickModalContent()}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1346,17 +1689,6 @@ const FallbackMap: React.FC<{
           {incident.callNumber}
         </button>
       ))}
-
-      {currentLocation && (
-        <div
-          className="absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full bg-emerald-500 px-2 py-1 text-xs font-bold text-white shadow-lg ring-2 ring-white"
-          style={position(currentLocation.lat, currentLocation.lon)}
-        >
-          <span className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-emerald-400/60 location-pulse" />
-          <Crosshair size={14} />
-          You
-        </div>
-      )}
 
       <div className="absolute bottom-4 right-4 rounded bg-white/90 px-3 py-2 text-xs font-medium text-slate-600">
         Add REACT_APP_GOOGLE_API_KEY or REACT_APP_GOOGLE_MAPS_API_KEY for Google Maps
