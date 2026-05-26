@@ -3,13 +3,16 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginPage } from './components/LoginPage';
 import { Dashboard } from './components/Dashboard';
-import './App.css';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
-    return <div className="loading">Loading...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-cad-panel text-sm font-medium text-slate-600">
+        Loading...
+      </div>
+    );
   }
 
   if (!isAuthenticated) {

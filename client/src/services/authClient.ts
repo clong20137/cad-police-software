@@ -1,10 +1,11 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { AuthPayload, TokenPair } from '../../../shared/src/types';
+import { LoginResponse, Permission, ROLE_PERMISSIONS, TokenPair, User } from 'cad-shared';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 interface StoredAuth {
-  user: any;
+  user: User;
+  permissions: Permission[];
   tokens: TokenPair;
   expiresAt: number;
 }
@@ -56,9 +57,10 @@ class AuthClient {
   }
 
   async login(email: string, password: string): Promise<StoredAuth> {
-    const response = await this.api.post('/auth/login', { email, password });
+    const response = await this.api.post<LoginResponse>('/auth/login', { email, password });
     this.auth = {
       user: response.data.user,
+      permissions: ROLE_PERMISSIONS[response.data.user.role] || [],
       tokens: response.data.tokens,
       expiresAt: Date.now() + 15 * 60 * 1000 // 15 minutes
     };
@@ -85,7 +87,9 @@ class AuthClient {
 
   async logout(): Promise<void> {
     try {
-      await this.api.post('/auth/logout');
+      await this.api.post('/auth/logout', {
+        refreshToken: this.auth?.tokens.refreshToken
+      });
     } catch (error) {
       // Logout anyway even if request fails
     }
@@ -112,6 +116,9 @@ class AuthClient {
     if (stored) {
       try {
         this.auth = JSON.parse(stored);
+        if (this.auth && !this.auth.permissions) {
+          this.auth.permissions = ROLE_PERMISSIONS[this.auth.user.role] || [];
+        }
         if (!this.isAuthenticated()) {
           this.logout();
         }

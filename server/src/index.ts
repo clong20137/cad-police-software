@@ -1,16 +1,18 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth';
 import { cspMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
+import { securityConfig } from './config/security';
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 5000;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 // Middleware
-app.use(express.json());
-app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+app.disable('x-powered-by');
+app.use(express.json({ limit: '100kb' }));
+app.use(cors({ origin: securityConfig.frontendUrl, credentials: true }));
 app.use(cspMiddleware);
 
 // Routes

@@ -4,14 +4,36 @@ import { authMiddleware, requirePermission } from '../middleware/auth';
 import { LoginRequest, RefreshTokenRequest } from 'cad-shared';
 
 const router = Router();
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const MAX_LOGIN_ATTEMPTS = 8;
+
+const isRateLimited = (key: string): boolean => {
+  const now = Date.now();
+  const attempt = loginAttempts.get(key);
+
+  if (!attempt || attempt.resetAt <= now) {
+    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return false;
+  }
+
+  attempt.count += 1;
+  return attempt.count > MAX_LOGIN_ATTEMPTS;
+};
 
 // Public routes
 router.post('/login', async (req: Request<{}, {}, LoginRequest>, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
+    const rateLimitKey = `${req.ip}:${email || 'unknown'}`;
 
     if (!email || !password) {
       res.status(400).json({ error: 'Email and password required' });
+      return;
+    }
+
+    if (isRateLimited(rateLimitKey)) {
+      res.status(429).json({ error: 'Too many login attempts. Try again later.' });
       return;
     }
 
@@ -62,6 +84,10 @@ router.post('/refresh', (req: Request<{}, {}, RefreshTokenRequest>, res: Respons
 // Protected routes
 router.post('/logout', authMiddleware, (req: Request, res: Response): void => {
   if (req.user) {
+    const refreshToken = req.body?.refreshToken;
+    if (typeof refreshToken === 'string') {
+      AuthService.revokeRefreshToken(req.user.id, refreshToken);
+    }
     res.json({ success: true, message: 'Logged out' });
   }
 });

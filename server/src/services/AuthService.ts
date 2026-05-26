@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { securityConfig } from '../config/security';
 import {
   User,
   UserRole,
@@ -10,8 +11,6 @@ import {
   Permission
 } from 'cad-shared';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'your-super-secret-refresh-token-key';
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
 
@@ -74,13 +73,13 @@ export class AuthService {
       permissions: ROLE_PERMISSIONS[user.role] as Permission[]
     };
 
-    const accessToken = jwt.sign(payload, JWT_SECRET, {
+    const accessToken = jwt.sign(payload, securityConfig.jwtSecret, {
       expiresIn: ACCESS_TOKEN_EXPIRY
     });
 
     const refreshToken = jwt.sign(
       { id: user.id, email: user.email },
-      REFRESH_TOKEN_SECRET,
+      securityConfig.refreshTokenSecret,
       { expiresIn: REFRESH_TOKEN_EXPIRY }
     );
 
@@ -95,7 +94,15 @@ export class AuthService {
 
   static verifyRefreshToken(token: string): { id: string; email: string } | null {
     try {
-      return jwt.verify(token, REFRESH_TOKEN_SECRET) as { id: string; email: string };
+      const payload = jwt.verify(token, securityConfig.refreshTokenSecret) as {
+        id: string;
+        email: string;
+      };
+      const user = users.get(payload.id);
+      if (!user || !user.refreshTokens.includes(token)) {
+        return null;
+      }
+      return payload;
     } catch {
       return null;
     }
@@ -109,8 +116,9 @@ export class AuthService {
   }
 
   static async authenticateUser(email: string, password: string): Promise<User | null> {
+    const normalizedEmail = email.trim().toLowerCase();
     for (const user of users.values()) {
-      if (user.email === email && bcrypt.compareSync(password, user.passwordHash)) {
+      if (user.email === normalizedEmail && bcrypt.compareSync(password, user.passwordHash)) {
         const { passwordHash, refreshTokens, ...userWithoutSensitive } = user;
         return userWithoutSensitive;
       }

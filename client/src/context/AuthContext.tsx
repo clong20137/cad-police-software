@@ -25,7 +25,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const auth = authClient.getAuth();
     if (auth && authClient.isAuthenticated()) {
       setUser(auth.user);
-      setPermissions(auth.user.permissions || []);
+      setPermissions(auth.permissions);
     }
     setIsLoading(false);
   }, []);
@@ -35,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(true);
       const auth = await authClient.login(email, password);
       setUser(auth.user);
-      setPermissions(auth.user.permissions || []);
+      setPermissions(auth.permissions);
       return true;
     } catch (error) {
       console.error('Login failed:', error);

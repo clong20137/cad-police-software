@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AuthPayload } from 'cad-shared';
+import { securityConfig } from '../config/security';
 
 declare global {
   namespace Express {
@@ -15,18 +16,15 @@ export const authMiddleware = (
   res: Response,
   next: NextFunction
 ): void => {
-  const token = req.headers.authorization?.split(' ')[1];
+  const [scheme, token] = req.headers.authorization?.split(' ') || [];
 
-  if (!token) {
+  if (scheme !== 'Bearer' || !token) {
     res.status(401).json({ error: 'No token provided' });
     return;
   }
 
   try {
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'your-super-secret-jwt-key'
-    ) as AuthPayload;
+    const decoded = jwt.verify(token, securityConfig.jwtSecret) as AuthPayload;
     req.user = decoded;
     next();
   } catch (error) {
@@ -58,11 +56,11 @@ export const cspMiddleware = (
   res.setHeader(
     'Content-Security-Policy',
     "default-src 'self'; " +
-    "script-src 'self' 'nonce-{NONCE}'; " +
-    "style-src 'self' 'nonce-{NONCE}'; " +
+    "script-src 'self'; " +
+    "style-src 'self'; " +
     "img-src 'self' data: https:; " +
     "font-src 'self'; " +
-    "connect-src 'self' " + (process.env.FRONTEND_URL || 'http://localhost:3000') + "; " +
+    "connect-src 'self' " + securityConfig.frontendUrl + "; " +
     "frame-ancestors 'none'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
@@ -70,7 +68,10 @@ export const cspMiddleware = (
   );
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (securityConfig.isProduction) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   next();
 };
