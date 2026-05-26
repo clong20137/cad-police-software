@@ -49,6 +49,14 @@ export const initializeDatabase = async (): Promise<void> => {
       name VARCHAR(120) NOT NULL,
       role ENUM('admin', 'dispatcher', 'officer', 'viewer') NOT NULL DEFAULT 'viewer',
       badge VARCHAR(64) NULL,
+      unit_number VARCHAR(64) NULL,
+      cad_unit_number VARCHAR(64) NULL,
+      status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting') NOT NULL DEFAULT 'Available',
+      unit_group VARCHAR(80) NULL,
+      district VARCHAR(80) NULL,
+      lat DECIMAL(10, 7) NULL,
+      lon DECIMAL(10, 7) NULL,
+      last_location_at DATETIME NULL,
       password_hash VARCHAR(255) NOT NULL,
       active BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -57,6 +65,8 @@ export const initializeDatabase = async (): Promise<void> => {
       INDEX idx_users_role (role)
     )
   `);
+
+  await ensureUserLocationColumns();
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -105,12 +115,44 @@ const seedInitialAdmin = async (): Promise<void> => {
   }
 };
 
+const ensureUserLocationColumns = async (): Promise<void> => {
+  const columns = [
+    "ADD COLUMN unit_number VARCHAR(64) NULL",
+    "ADD COLUMN cad_unit_number VARCHAR(64) NULL",
+    "ADD COLUMN status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting') NOT NULL DEFAULT 'Available'",
+    "ADD COLUMN unit_group VARCHAR(80) NULL",
+    "ADD COLUMN district VARCHAR(80) NULL",
+    "ADD COLUMN lat DECIMAL(10, 7) NULL",
+    "ADD COLUMN lon DECIMAL(10, 7) NULL",
+    "ADD COLUMN last_location_at DATETIME NULL"
+  ];
+
+  for (const column of columns) {
+    try {
+      await pool.query(`ALTER TABLE users ${column}`);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+  }
+};
+
 export type UserRow = RowDataPacket & {
   id: string;
   email: string;
   name: string;
   role: string;
   badge: string | null;
+  unit_number: string | null;
+  cad_unit_number: string | null;
+  status: string | null;
+  unit_group: string | null;
+  district: string | null;
+  lat: string | number | null;
+  lon: string | number | null;
+  last_location_at: Date | null;
   password_hash: string;
   active: number | boolean;
   created_at: Date;

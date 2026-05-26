@@ -11,10 +11,20 @@ export interface User {
   name: string;
   role: UserRole;
   badge?: string;
+  unitNumber?: string;
+  cadUnitNumber?: string;
+  status?: UnitStatus;
+  group?: string;
+  district?: string;
+  lat?: number;
+  lon?: number;
+  lastLocationAt?: Date;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type UnitStatus = 'Available' | 'Dispatched' | 'En Route' | 'On Scene' | 'Transporting';
 
 export interface AuthPayload {
   id: string;
@@ -39,6 +49,16 @@ export interface RegisterRequest {
   name: string;
   role?: UserRole;
   badge?: string;
+  unitNumber?: string;
+  cadUnitNumber?: string;
+  status?: UnitStatus;
+  group?: string;
+  district?: string;
+}
+
+export interface LocationUpdateRequest {
+  lat: number;
+  lon: number;
 }
 
 export interface RefreshTokenRequest {

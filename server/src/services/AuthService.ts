@@ -10,6 +10,7 @@ import {
   Permission,
   ROLE_PERMISSIONS,
   TokenPair,
+  UnitStatus,
   User,
   UserRole
 } from '../types/auth';
@@ -28,6 +29,14 @@ const toUser = (row: UserRow): User => ({
   name: row.name,
   role: row.role as UserRole,
   badge: row.badge || undefined,
+  unitNumber: row.unit_number || undefined,
+  cadUnitNumber: row.cad_unit_number || undefined,
+  status: (row.status as UnitStatus | null) || 'Available',
+  group: row.unit_group || undefined,
+  district: row.district || undefined,
+  lat: row.lat === null ? undefined : Number(row.lat),
+  lon: row.lon === null ? undefined : Number(row.lon),
+  lastLocationAt: row.last_location_at || undefined,
   active: Boolean(row.active),
   createdAt: row.created_at,
   updatedAt: row.updated_at
@@ -128,21 +137,55 @@ export class AuthService {
     name: string,
     role: UserRole,
     password: string,
-    badge?: string
+    badge?: string,
+    unitNumber?: string,
+    cadUnitNumber?: string,
+    status: UnitStatus = 'Available',
+    group?: string,
+    district?: string
   ): Promise<User> {
     const normalizedEmail = normalizeEmail(email);
     const normalizedName = name.trim();
     const normalizedBadge = badge?.trim() || null;
+    const normalizedUnitNumber = unitNumber?.trim() || normalizedBadge;
+    const normalizedCadUnitNumber =
+      cadUnitNumber?.trim() || (normalizedUnitNumber ? `CAD-${normalizedUnitNumber}` : null);
+    const normalizedGroup = group?.trim() || null;
+    const normalizedDistrict = district?.trim() || null;
     const safeRole = allowedRegistrationRoles.has(role) ? role : UserRole.VIEWER;
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const userId = uuidv4();
 
     await pool.execute<ResultSetHeader>(
       `
-        INSERT INTO users (id, email, name, role, badge, password_hash)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO users (
+          id,
+          email,
+          name,
+          role,
+          badge,
+          unit_number,
+          cad_unit_number,
+          status,
+          unit_group,
+          district,
+          password_hash
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [userId, normalizedEmail, normalizedName, safeRole, normalizedBadge, passwordHash]
+      [
+        userId,
+        normalizedEmail,
+        normalizedName,
+        safeRole,
+        normalizedBadge,
+        normalizedUnitNumber,
+        normalizedCadUnitNumber,
+        status,
+        normalizedGroup,
+        normalizedDistrict,
+        passwordHash
+      ]
     );
 
     const user = await this.getUser(userId);
@@ -168,6 +211,32 @@ export class AuthService {
       'SELECT * FROM users ORDER BY created_at DESC LIMIT 200'
     );
     return rows.map(toUser);
+  }
+
+  static async getTrackedUnits(): Promise<User[]> {
+    const [rows] = await pool.execute<UserRow[]>(
+      `
+        SELECT *
+        FROM users
+        WHERE active = TRUE
+          AND lat IS NOT NULL
+          AND lon IS NOT NULL
+        ORDER BY last_location_at DESC, updated_at DESC
+      `
+    );
+    return rows.map(toUser);
+  }
+
+  static async updateLocation(userId: string, lat: number, lon: number): Promise<User | null> {
+    await pool.execute(
+      `
+        UPDATE users
+        SET lat = ?, lon = ?, last_location_at = UTC_TIMESTAMP()
+        WHERE id = ? AND active = TRUE
+      `,
+      [lat, lon, userId]
+    );
+    return this.getUser(userId);
   }
 
   private static async getUserWithPasswordByEmail(email: string): Promise<UserRow | null> {

@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
-import { LoginRequest, RefreshTokenRequest, RegisterRequest, UserRole } from '../types/auth';
+import {
+  LocationUpdateRequest,
+  LoginRequest,
+  RefreshTokenRequest,
+  RegisterRequest,
+  UserRole
+} from '../types/auth';
 
 const router = Router();
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -24,7 +30,18 @@ const isRateLimited = (key: string): boolean => {
 // Public routes
 router.post('/register', async (req: Request<{}, {}, RegisterRequest>, res: Response): Promise<void> => {
   try {
-    const { email, password, name, role = UserRole.VIEWER, badge } = req.body;
+    const {
+      email,
+      password,
+      name,
+      role = UserRole.VIEWER,
+      badge,
+      unitNumber,
+      cadUnitNumber,
+      status,
+      group,
+      district
+    } = req.body;
 
     if (!email || !password || !name) {
       res.status(400).json({ error: 'Name, email, and password are required' });
@@ -42,7 +59,18 @@ router.post('/register', async (req: Request<{}, {}, RegisterRequest>, res: Resp
       return;
     }
 
-    const user = await AuthService.createUser(email, name, role, password, badge);
+    const user = await AuthService.createUser(
+      email,
+      name,
+      role,
+      password,
+      badge,
+      unitNumber,
+      cadUnitNumber,
+      status,
+      group,
+      district
+    );
     const tokens = await AuthService.generateTokens(user);
     res.status(201).json({ success: true, user, tokens });
   } catch (error) {
@@ -141,6 +169,37 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const allUsers = await AuthService.getUsers();
     res.json(allUsers);
+  }
+);
+
+router.patch(
+  '/me/location',
+  authMiddleware,
+  async (req: Request<{}, {}, LocationUpdateRequest>, res: Response): Promise<void> => {
+    const { lat, lon } = req.body;
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      res.status(400).json({ error: 'Valid lat and lon are required' });
+      return;
+    }
+
+    const user = await AuthService.updateLocation(req.user?.id || '', lat, lon);
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    res.json(user);
+  }
+);
+
+router.get(
+  '/units',
+  authMiddleware,
+  requirePermission('view_officers'),
+  async (req: Request, res: Response): Promise<void> => {
+    const units = await AuthService.getTrackedUnits();
+    res.json(units);
   }
 );
 

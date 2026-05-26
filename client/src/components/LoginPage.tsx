@@ -9,6 +9,10 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [badge, setBadge] = useState('');
+  const [unitNumber, setUnitNumber] = useState('');
+  const [cadUnitNumber, setCadUnitNumber] = useState('');
+  const [group, setGroup] = useState('');
+  const [district, setDistrict] = useState('');
   const [role, setRole] = useState<UserRole>(UserRole.VIEWER);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,7 +28,18 @@ export const LoginPage: React.FC = () => {
 
     try {
       const success = isRegistering
-        ? await register({ email, password, name, role, badge })
+        ? await register({
+            email,
+            password,
+            name,
+            role,
+            badge,
+            unitNumber,
+            cadUnitNumber,
+            status: 'Available',
+            group,
+            district
+          })
         : await login(email, password);
 
       if (success) {
@@ -128,6 +143,66 @@ export const LoginPage: React.FC = () => {
                     type="text"
                     value={badge}
                     onChange={(event) => setBadge(event.target.value)}
+                    disabled={loading}
+                    className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm text-cad-ink shadow-control outline-none transition focus:border-cad-blue focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700" htmlFor="unitNumber">
+                    Unit Number
+                  </label>
+                  <input
+                    id="unitNumber"
+                    type="text"
+                    value={unitNumber}
+                    onChange={(event) => setUnitNumber(event.target.value)}
+                    disabled={loading}
+                    className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm text-cad-ink shadow-control outline-none transition focus:border-cad-blue focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700" htmlFor="cadUnitNumber">
+                    CAD Unit Number
+                  </label>
+                  <input
+                    id="cadUnitNumber"
+                    type="text"
+                    value={cadUnitNumber}
+                    onChange={(event) => setCadUnitNumber(event.target.value)}
+                    disabled={loading}
+                    className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm text-cad-ink shadow-control outline-none transition focus:border-cad-blue focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700" htmlFor="group">
+                    Group
+                  </label>
+                  <input
+                    id="group"
+                    type="text"
+                    value={group}
+                    onChange={(event) => setGroup(event.target.value)}
+                    disabled={loading}
+                    className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm text-cad-ink shadow-control outline-none transition focus:border-cad-blue focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700" htmlFor="district">
+                    District
+                  </label>
+                  <input
+                    id="district"
+                    type="text"
+                    value={district}
+                    onChange={(event) => setDistrict(event.target.value)}
                     disabled={loading}
                     className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm text-cad-ink shadow-control outline-none transition focus:border-cad-blue focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100"
                   />

@@ -74,6 +74,20 @@ class AuthClient {
     return this.storeAuth(response.data);
   }
 
+  async getTrackedUnits(): Promise<User[]> {
+    const response = await this.api.get<User[]>('/auth/units');
+    return response.data;
+  }
+
+  async updateLocation(lat: number, lon: number): Promise<User> {
+    const response = await this.api.patch<User>('/auth/me/location', { lat, lon });
+    if (this.auth && response.data.id === this.auth.user.id) {
+      this.auth.user = response.data;
+      this.saveToStorage();
+    }
+    return response.data;
+  }
+
   private storeAuth(data: LoginResponse | RegisterResponse): StoredAuth {
     this.auth = {
       user: data.user,

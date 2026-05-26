@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -12,20 +12,8 @@ import {
   Users
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-
-type UnitStatus = 'Available' | 'Dispatched' | 'En Route' | 'On Scene' | 'Transporting';
-
-interface UnitLocation {
-  unitNumber: string;
-  firstName: string;
-  lastName: string;
-  cadUnitNumber: string;
-  status: UnitStatus;
-  group: string;
-  district: string;
-  lat: number;
-  lon: number;
-}
+import { authClient } from '../services/authClient';
+import { UnitStatus, User } from '../types/auth';
 
 declare global {
   interface Window {
@@ -51,63 +39,7 @@ interface GoogleInfoWindowInstance {
   open: (options: { map: GoogleMapInstance; anchor: GoogleMarkerInstance }) => void;
 }
 
-const units: UnitLocation[] = [
-  {
-    unitNumber: '214',
-    firstName: 'Avery',
-    lastName: 'Johnson',
-    cadUnitNumber: 'CAD-214',
-    status: 'Available',
-    group: 'Patrol',
-    district: 'North',
-    lat: 39.7792,
-    lon: -86.1511
-  },
-  {
-    unitNumber: '318',
-    firstName: 'Morgan',
-    lastName: 'Reed',
-    cadUnitNumber: 'CAD-318',
-    status: 'Dispatched',
-    group: 'Traffic',
-    district: 'Central',
-    lat: 39.7684,
-    lon: -86.1581
-  },
-  {
-    unitNumber: '422',
-    firstName: 'Taylor',
-    lastName: 'Brooks',
-    cadUnitNumber: 'CAD-422',
-    status: 'En Route',
-    group: 'Patrol',
-    district: 'East',
-    lat: 39.791,
-    lon: -86.107
-  },
-  {
-    unitNumber: '519',
-    firstName: 'Jordan',
-    lastName: 'Carter',
-    cadUnitNumber: 'CAD-519',
-    status: 'On Scene',
-    group: 'Investigations',
-    district: 'West',
-    lat: 39.755,
-    lon: -86.205
-  },
-  {
-    unitNumber: '612',
-    firstName: 'Casey',
-    lastName: 'Parker',
-    cadUnitNumber: 'CAD-612',
-    status: 'Transporting',
-    group: 'EMS Assist',
-    district: 'South',
-    lat: 39.724,
-    lon: -86.148
-  }
-];
+type TrackedUnit = User & { lat: number; lon: number };
 
 const statusStyles: Record<UnitStatus, string> = {
   Available: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
@@ -119,25 +51,69 @@ const statusStyles: Record<UnitStatus, string> = {
 
 const googleMapsApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 
+const isTrackedUnit = (user: User): user is TrackedUnit =>
+  typeof user.lat === 'number' && typeof user.lon === 'number';
+
+const displayStatus = (unit: User): UnitStatus => unit.status || 'Available';
+const displayUnitNumber = (unit: User): string => unit.unitNumber || unit.badge || 'Unassigned';
+const displayCadUnitNumber = (unit: User): string =>
+  unit.cadUnitNumber || (unit.unitNumber ? `CAD-${unit.unitNumber}` : unit.name);
+const splitName = (name: string): { firstName: string; lastName: string } => {
+  const parts = name.trim().split(/\s+/);
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' ') || ''
+  };
+};
+
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [selectedUnit, setSelectedUnit] = useState<UnitLocation>(units[0]);
+  const [units, setUnits] = useState<TrackedUnit[]>([]);
+  const [selectedUnitId, setSelectedUnitId] = useState<string>('');
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationError, setLocationError] = useState<string>('');
+  const [unitLoadError, setUnitLoadError] = useState<string>('');
   const mapRef = useRef<HTMLDivElement | null>(null);
 
-  const center = currentLocation || { lat: selectedUnit.lat, lon: selectedUnit.lon };
+  const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
+  const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
+
+  const loadUnits = useCallback(async () => {
+    try {
+      const response = await authClient.getTrackedUnits();
+      const trackedUnits = response.filter(isTrackedUnit);
+      setUnits(trackedUnits);
+      setUnitLoadError('');
+      setSelectedUnitId((current) => {
+        if (current && trackedUnits.some((unit) => unit.id === current)) {
+          return current;
+        }
+        return trackedUnits[0]?.id || '';
+      });
+    } catch {
+      setUnitLoadError('Unable to load tracked units.');
+    }
+  }, []);
 
   const statusCounts = useMemo(
     () =>
       units.reduce<Record<UnitStatus, number>>(
-        (counts, unit) => ({ ...counts, [unit.status]: counts[unit.status] + 1 }),
+        (counts, unit) => ({
+          ...counts,
+          [displayStatus(unit)]: counts[displayStatus(unit)] + 1
+        }),
         { Available: 0, Dispatched: 0, 'En Route': 0, 'On Scene': 0, Transporting: 0 }
       ),
-    []
+    [units]
   );
+
+  useEffect(() => {
+    loadUnits();
+    const intervalId = window.setInterval(loadUnits, 15000);
+    return () => window.clearInterval(intervalId);
+  }, [loadUnits]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -146,19 +122,34 @@ export const Dashboard: React.FC = () => {
     }
 
     const watcherId = navigator.geolocation.watchPosition(
-      (position) => {
-        setCurrentLocation({
+      async (position) => {
+        const nextLocation = {
           lat: position.coords.latitude,
           lon: position.coords.longitude
-        });
+        };
+        setCurrentLocation(nextLocation);
         setLocationError('');
+
+        try {
+          const updatedUser = await authClient.updateLocation(nextLocation.lat, nextLocation.lon);
+          if (isTrackedUnit(updatedUser)) {
+            setUnits((currentUnits) => {
+              const others = currentUnits.filter((unit) => unit.id !== updatedUser.id);
+              return [updatedUser, ...others];
+            });
+            setSelectedUnitId((current) => current || updatedUser.id);
+          }
+          loadUnits();
+        } catch {
+          setLocationError('Location detected, but the server did not save it.');
+        }
       },
       () => setLocationError('Allow browser location access to track your position.'),
       { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
     );
 
     return () => navigator.geolocation.clearWatch(watcherId);
-  }, []);
+  }, [loadUnits]);
 
   useEffect(() => {
     if (!googleMapsApiKey || !mapRef.current) {
@@ -185,21 +176,13 @@ export const Dashboard: React.FC = () => {
         const marker = new window.google!.maps.Marker({
           map,
           position: { lat: unit.lat, lng: unit.lon },
-          title: `${unit.cadUnitNumber} ${unit.status}`
+          title: `${displayCadUnitNumber(unit)} ${displayStatus(unit)}`
         });
         const infoWindow = new window.google!.maps.InfoWindow({
-          content: `<strong>${unit.cadUnitNumber}</strong><br>${unit.firstName} ${unit.lastName}<br>${unit.status}`
+          content: `<strong>${displayCadUnitNumber(unit)}</strong><br>${unit.name}<br>${displayStatus(unit)}`
         });
         marker.addListener('click', () => infoWindow.open({ map, anchor: marker }));
       });
-
-      if (currentLocation) {
-        new window.google.maps.Marker({
-          map,
-          position: { lat: currentLocation.lat, lng: currentLocation.lon },
-          title: 'Current location'
-        });
-      }
 
       map.setCenter({ lat: center.lat, lng: center.lon });
     };
@@ -216,7 +199,7 @@ export const Dashboard: React.FC = () => {
     script.async = true;
     script.onload = initializeMap;
     document.head.appendChild(script);
-  }, [center.lat, center.lon, currentLocation]);
+  }, [center.lat, center.lon, units]);
 
   return (
     <div className="flex h-screen flex-col bg-slate-100 text-cad-ink">
@@ -277,49 +260,53 @@ export const Dashboard: React.FC = () => {
                   <h2 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
                     Units
                   </h2>
-                  <p className="mt-1 text-sm text-slate-600">{units.length} active units</p>
+                  <p className="mt-1 text-sm text-slate-600">{units.length} tracked units</p>
                 </div>
                 <Users className="text-cad-blue" size={22} />
               </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
+              {units.length === 0 && (
+                <div className="p-4 text-sm text-slate-600">
+                  {unitLoadError || 'No users have shared a live location yet.'}
+                </div>
+              )}
+
               {units.map((unit) => (
                 <button
-                  key={unit.cadUnitNumber}
+                  key={unit.id}
                   type="button"
-                  onClick={() => setSelectedUnit(unit)}
+                  onClick={() => setSelectedUnitId(unit.id)}
                   className={`w-full border-b border-slate-100 p-4 text-left transition hover:bg-slate-50 ${
-                    selectedUnit.cadUnitNumber === unit.cadUnitNumber ? 'bg-blue-50' : 'bg-white'
+                    selectedUnit?.id === unit.id ? 'bg-blue-50' : 'bg-white'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-base font-bold">{unit.cadUnitNumber}</p>
-                      <p className="text-sm text-slate-600">
-                        {unit.firstName} {unit.lastName}
-                      </p>
+                      <p className="text-base font-bold">{displayCadUnitNumber(unit)}</p>
+                      <p className="text-sm text-slate-600">{unit.name}</p>
                     </div>
                     <span
                       className={`rounded-full px-2 py-1 text-xs font-bold ring-1 ${
-                        statusStyles[unit.status]
+                        statusStyles[displayStatus(unit)]
                       }`}
                     >
-                      {unit.status}
+                      {displayStatus(unit)}
                     </span>
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
                     <div>
                       <dt className="font-semibold text-slate-500">Unit</dt>
-                      <dd>{unit.unitNumber}</dd>
+                      <dd>{displayUnitNumber(unit)}</dd>
                     </div>
                     <div>
                       <dt className="font-semibold text-slate-500">District</dt>
-                      <dd>{unit.district}</dd>
+                      <dd>{unit.district || 'Unassigned'}</dd>
                     </div>
                     <div>
                       <dt className="font-semibold text-slate-500">Group</dt>
-                      <dd>{unit.group}</dd>
+                      <dd>{unit.group || 'Unassigned'}</dd>
                     </div>
                     <div>
                       <dt className="font-semibold text-slate-500">Location</dt>
@@ -352,7 +339,7 @@ export const Dashboard: React.FC = () => {
                     units={units}
                     selectedUnit={selectedUnit}
                     currentLocation={currentLocation}
-                    onSelectUnit={setSelectedUnit}
+                    onSelectUnit={(unit) => setSelectedUnitId(unit.id)}
                   />
                 )}
 
@@ -374,21 +361,27 @@ export const Dashboard: React.FC = () => {
               <div className="border-b border-cad-line p-4">
                 <h2 className="text-lg font-bold">Unit Detail</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  {selectedUnit.cadUnitNumber} selected
+                  {selectedUnit ? `${displayCadUnitNumber(selectedUnit)} selected` : 'No tracked unit selected'}
                 </p>
               </div>
               <div className="p-4">
-                <dl className="grid gap-3 text-sm">
-                  <Detail label="Unit Number" value={selectedUnit.unitNumber} />
-                  <Detail label="First Name" value={selectedUnit.firstName} />
-                  <Detail label="Last Name" value={selectedUnit.lastName} />
-                  <Detail label="CAD Unit Number" value={selectedUnit.cadUnitNumber} />
-                  <Detail label="Status" value={selectedUnit.status} />
-                  <Detail label="Group" value={selectedUnit.group} />
-                  <Detail label="District" value={selectedUnit.district} />
-                  <Detail label="Lat" value={selectedUnit.lat.toFixed(6)} />
-                  <Detail label="Lon" value={selectedUnit.lon.toFixed(6)} />
-                </dl>
+                {selectedUnit ? (
+                  <dl className="grid gap-3 text-sm">
+                    <Detail label="Unit Number" value={displayUnitNumber(selectedUnit)} />
+                    <Detail label="First Name" value={splitName(selectedUnit.name).firstName || 'N/A'} />
+                    <Detail label="Last Name" value={splitName(selectedUnit.name).lastName || 'N/A'} />
+                    <Detail label="CAD Unit Number" value={displayCadUnitNumber(selectedUnit)} />
+                    <Detail label="Status" value={displayStatus(selectedUnit)} />
+                    <Detail label="Group" value={selectedUnit.group || 'Unassigned'} />
+                    <Detail label="District" value={selectedUnit.district || 'Unassigned'} />
+                    <Detail label="Lat" value={selectedUnit.lat.toFixed(6)} />
+                    <Detail label="Lon" value={selectedUnit.lon.toFixed(6)} />
+                  </dl>
+                ) : (
+                  <p className="text-sm text-slate-600">
+                    When a real user signs in and allows location access, they will appear here.
+                  </p>
+                )}
               </div>
             </div>
           </section>
@@ -420,18 +413,18 @@ const Detail: React.FC<{ label: string; value: string | number }> = ({ label, va
 );
 
 const FallbackMap: React.FC<{
-  units: UnitLocation[];
-  selectedUnit: UnitLocation;
+  units: TrackedUnit[];
+  selectedUnit: TrackedUnit | null;
   currentLocation: { lat: number; lon: number } | null;
-  onSelectUnit: (unit: UnitLocation) => void;
+  onSelectUnit: (unit: TrackedUnit) => void;
 }> = ({ units, selectedUnit, currentLocation, onSelectUnit }) => {
   const points = currentLocation
-    ? [...units, { ...units[0], cadUnitNumber: 'YOU', lat: currentLocation.lat, lon: currentLocation.lon }]
+    ? [...units, { id: 'current-location', lat: currentLocation.lat, lon: currentLocation.lon }]
     : units;
-  const minLat = Math.min(...points.map((point) => point.lat));
-  const maxLat = Math.max(...points.map((point) => point.lat));
-  const minLon = Math.min(...points.map((point) => point.lon));
-  const maxLon = Math.max(...points.map((point) => point.lon));
+  const minLat = Math.min(...points.map((point) => point.lat), 39.7);
+  const maxLat = Math.max(...points.map((point) => point.lat), 39.85);
+  const minLon = Math.min(...points.map((point) => point.lon), -86.25);
+  const maxLon = Math.max(...points.map((point) => point.lon), -86.05);
 
   const position = (lat: number, lon: number) => ({
     left: `${((lon - minLon) / Math.max(maxLon - minLon, 0.01)) * 82 + 9}%`,
@@ -446,18 +439,18 @@ const FallbackMap: React.FC<{
 
       {units.map((unit) => (
         <button
-          key={unit.cadUnitNumber}
+          key={unit.id}
           type="button"
           onClick={() => onSelectUnit(unit)}
           className={`absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 text-xs font-bold shadow-lg ring-2 ${
-            selectedUnit.cadUnitNumber === unit.cadUnitNumber
+            selectedUnit?.id === unit.id
               ? 'bg-cad-blue text-white ring-white'
               : 'bg-white text-cad-ink ring-slate-300'
           }`}
           style={position(unit.lat, unit.lon)}
         >
           <MapPin size={14} />
-          {unit.cadUnitNumber}
+          {displayCadUnitNumber(unit)}
         </button>
       ))}
 
