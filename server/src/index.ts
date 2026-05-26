@@ -5,6 +5,7 @@ import authRoutes from './routes/auth';
 import { cspMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
 import { securityConfig } from './config/security';
+import { initializeDatabase } from './db/mysql';
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 5000;
@@ -26,7 +27,16 @@ app.get('/api/health', (req, res) => {
 // Error handling
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`CAD Backend running on http://localhost:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+const startServer = async (): Promise<void> => {
+  await initializeDatabase();
+
+  app.listen(PORT, () => {
+    console.log(`CAD Backend running on http://localhost:${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+};
+
+startServer().catch((error) => {
+  console.error('Failed to start CAD backend:', error);
+  process.exit(1);
 });

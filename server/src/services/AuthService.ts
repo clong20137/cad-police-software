@@ -1,71 +1,48 @@
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { ResultSetHeader } from 'mysql2';
 import { securityConfig } from '../config/security';
+import { pool, UserRow } from '../db/mysql';
 import {
-  User,
-  UserRole,
   AuthPayload,
-  TokenPair,
+  Permission,
   ROLE_PERMISSIONS,
-  Permission
+  TokenPair,
+  User,
+  UserRole
 } from 'cad-shared';
 
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
+const REFRESH_TOKEN_DAYS = 7;
+const BCRYPT_ROUNDS = 12;
 
-// In-memory user store (replace with database in production)
-const users = new Map<string, User & { passwordHash: string; refreshTokens: string[] }>();
+const tokenHash = (token: string): string =>
+  crypto.createHash('sha256').update(token).digest('hex');
 
-// Initialize demo users
-const initializeDemoUsers = () => {
-  const adminHash = bcrypt.hashSync('admin123', 10);
-  users.set('admin-1', {
-    id: 'admin-1',
-    email: 'admin@dispatch.local',
-    name: 'Admin User',
-    role: UserRole.ADMIN,
-    badge: 'ADM001',
-    active: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    passwordHash: adminHash,
-    refreshTokens: []
-  });
+const toUser = (row: UserRow): User => ({
+  id: row.id,
+  email: row.email,
+  name: row.name,
+  role: row.role as UserRole,
+  badge: row.badge || undefined,
+  active: Boolean(row.active),
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+});
 
-  const dispatcherHash = bcrypt.hashSync('dispatcher123', 10);
-  users.set('dispatcher-1', {
-    id: 'dispatcher-1',
-    email: 'dispatcher@dispatch.local',
-    name: 'Dispatcher User',
-    role: UserRole.DISPATCHER,
-    badge: 'DIS001',
-    active: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    passwordHash: dispatcherHash,
-    refreshTokens: []
-  });
+const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
-  const officerHash = bcrypt.hashSync('officer123', 10);
-  users.set('officer-1', {
-    id: 'officer-1',
-    email: 'officer@dispatch.local',
-    name: 'Officer User',
-    role: UserRole.OFFICER,
-    badge: 'OF001',
-    active: true,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    passwordHash: officerHash,
-    refreshTokens: []
-  });
-};
-
-initializeDemoUsers();
+const allowedRegistrationRoles = new Set<UserRole>([
+  UserRole.DISPATCHER,
+  UserRole.OFFICER,
+  UserRole.VIEWER
+]);
 
 export class AuthService {
-  static generateTokens(user: User): TokenPair {
+  static async generateTokens(user: User): Promise<TokenPair> {
     const payload: AuthPayload = {
       id: user.id,
       email: user.email,
@@ -83,90 +60,121 @@ export class AuthService {
       { expiresIn: REFRESH_TOKEN_EXPIRY }
     );
 
-    // Store refresh token
-    const userData = users.get(user.id);
-    if (userData) {
-      userData.refreshTokens.push(refreshToken);
-    }
+    await pool.execute(
+      `
+        INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+        VALUES (?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? DAY))
+      `,
+      [user.id, tokenHash(refreshToken), REFRESH_TOKEN_DAYS]
+    );
 
     return { accessToken, refreshToken };
   }
 
-  static verifyRefreshToken(token: string): { id: string; email: string } | null {
+  static async verifyRefreshToken(token: string): Promise<{ id: string; email: string } | null> {
     try {
       const payload = jwt.verify(token, securityConfig.refreshTokenSecret) as {
         id: string;
         email: string;
       };
-      const user = users.get(payload.id);
-      if (!user || !user.refreshTokens.includes(token)) {
+
+      const [rows] = await pool.execute<UserRow[]>(
+        `
+          SELECT users.*
+          FROM refresh_tokens
+          INNER JOIN users ON users.id = refresh_tokens.user_id
+          WHERE refresh_tokens.token_hash = ?
+            AND refresh_tokens.revoked_at IS NULL
+            AND refresh_tokens.expires_at > UTC_TIMESTAMP()
+            AND users.active = TRUE
+          LIMIT 1
+        `,
+        [tokenHash(token)]
+      );
+
+      if (!rows[0] || rows[0].id !== payload.id) {
         return null;
       }
+
       return payload;
     } catch {
       return null;
     }
   }
 
-  static revokeRefreshToken(userId: string, token: string): void {
-    const user = users.get(userId);
-    if (user) {
-      user.refreshTokens = user.refreshTokens.filter((t: string) => t !== token);
-    }
+  static async revokeRefreshToken(userId: string, token: string): Promise<void> {
+    await pool.execute(
+      `
+        UPDATE refresh_tokens
+        SET revoked_at = UTC_TIMESTAMP()
+        WHERE user_id = ? AND token_hash = ? AND revoked_at IS NULL
+      `,
+      [userId, tokenHash(token)]
+    );
   }
 
   static async authenticateUser(email: string, password: string): Promise<User | null> {
-    const normalizedEmail = email.trim().toLowerCase();
-    for (const user of users.values()) {
-      if (user.email === normalizedEmail && bcrypt.compareSync(password, user.passwordHash)) {
-        const { passwordHash, refreshTokens, ...userWithoutSensitive } = user;
-        return userWithoutSensitive;
-      }
+    const user = await this.getUserWithPasswordByEmail(email);
+    if (!user || !user.active) {
+      return null;
     }
-    return null;
+
+    const passwordMatches = await bcrypt.compare(password, user.password_hash);
+    return passwordMatches ? toUser(user) : null;
   }
 
-  static createUser(email: string, name: string, role: UserRole, password: string): User {
+  static async createUser(
+    email: string,
+    name: string,
+    role: UserRole,
+    password: string,
+    badge?: string
+  ): Promise<User> {
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedName = name.trim();
+    const normalizedBadge = badge?.trim() || null;
+    const safeRole = allowedRegistrationRoles.has(role) ? role : UserRole.VIEWER;
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const userId = uuidv4();
-    const passwordHash = bcrypt.hashSync(password, 10);
-    
-    users.set(userId, {
-      id: userId,
-      email,
-      name,
-      role,
-      active: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      passwordHash,
-      refreshTokens: []
-    });
 
-    return {
-      id: userId,
-      email,
-      name,
-      role,
-      active: true,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-  }
+    await pool.execute<ResultSetHeader>(
+      `
+        INSERT INTO users (id, email, name, role, badge, password_hash)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+      [userId, normalizedEmail, normalizedName, safeRole, normalizedBadge, passwordHash]
+    );
 
-  static getUser(id: string): User | null {
-    const user = users.get(id);
-    if (!user) return null;
-    const { passwordHash, refreshTokens, ...userWithoutSensitive } = user;
-    return userWithoutSensitive;
-  }
-
-  static getUserByEmail(email: string): User | null {
-    for (const user of users.values()) {
-      if (user.email === email) {
-        const { passwordHash, refreshTokens, ...userWithoutSensitive } = user;
-        return userWithoutSensitive;
-      }
+    const user = await this.getUser(userId);
+    if (!user) {
+      throw new Error('User was not created.');
     }
-    return null;
+
+    return user;
+  }
+
+  static async getUser(id: string): Promise<User | null> {
+    const [rows] = await pool.execute<UserRow[]>('SELECT * FROM users WHERE id = ? LIMIT 1', [id]);
+    return rows[0] ? toUser(rows[0]) : null;
+  }
+
+  static async getUserByEmail(email: string): Promise<User | null> {
+    const user = await this.getUserWithPasswordByEmail(email);
+    return user ? toUser(user) : null;
+  }
+
+  static async getUsers(): Promise<User[]> {
+    const [rows] = await pool.execute<UserRow[]>(
+      'SELECT * FROM users ORDER BY created_at DESC LIMIT 200'
+    );
+    return rows.map(toUser);
+  }
+
+  private static async getUserWithPasswordByEmail(email: string): Promise<UserRow | null> {
+    const [rows] = await pool.execute<UserRow[]>(
+      'SELECT * FROM users WHERE email = ? LIMIT 1',
+      [normalizeEmail(email)]
+    );
+    return rows[0] || null;
   }
 }

@@ -1,5 +1,13 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { LoginResponse, Permission, ROLE_PERMISSIONS, TokenPair, User } from 'cad-shared';
+import {
+  LoginResponse,
+  Permission,
+  RegisterRequest,
+  RegisterResponse,
+  ROLE_PERMISSIONS,
+  TokenPair,
+  User
+} from 'cad-shared';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -58,10 +66,19 @@ class AuthClient {
 
   async login(email: string, password: string): Promise<StoredAuth> {
     const response = await this.api.post<LoginResponse>('/auth/login', { email, password });
+    return this.storeAuth(response.data);
+  }
+
+  async register(input: RegisterRequest): Promise<StoredAuth> {
+    const response = await this.api.post<RegisterResponse>('/auth/register', input);
+    return this.storeAuth(response.data);
+  }
+
+  private storeAuth(data: LoginResponse | RegisterResponse): StoredAuth {
     this.auth = {
-      user: response.data.user,
-      permissions: ROLE_PERMISSIONS[response.data.user.role] || [],
-      tokens: response.data.tokens,
+      user: data.user,
+      permissions: ROLE_PERMISSIONS[data.user.role] || [],
+      tokens: data.tokens,
       expiresAt: Date.now() + 15 * 60 * 1000 // 15 minutes
     };
     this.saveToStorage();

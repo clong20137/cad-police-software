@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
-import { LoginRequest, RefreshTokenRequest } from 'cad-shared';
+import { LoginRequest, RefreshTokenRequest, RegisterRequest, UserRole } from 'cad-shared';
 
 const router = Router();
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -22,6 +22,34 @@ const isRateLimited = (key: string): boolean => {
 };
 
 // Public routes
+router.post('/register', async (req: Request<{}, {}, RegisterRequest>, res: Response): Promise<void> => {
+  try {
+    const { email, password, name, role = UserRole.VIEWER, badge } = req.body;
+
+    if (!email || !password || !name) {
+      res.status(400).json({ error: 'Name, email, and password are required' });
+      return;
+    }
+
+    if (password.length < 8) {
+      res.status(400).json({ error: 'Password must be at least 8 characters' });
+      return;
+    }
+
+    const existingUser = await AuthService.getUserByEmail(email);
+    if (existingUser) {
+      res.status(409).json({ error: 'An account with this email already exists' });
+      return;
+    }
+
+    const user = await AuthService.createUser(email, name, role, password, badge);
+    const tokens = await AuthService.generateTokens(user);
+    res.status(201).json({ success: true, user, tokens });
+  } catch (error) {
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
 router.post('/login', async (req: Request<{}, {}, LoginRequest>, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
@@ -43,14 +71,14 @@ router.post('/login', async (req: Request<{}, {}, LoginRequest>, res: Response):
       return;
     }
 
-    const tokens = AuthService.generateTokens(user);
+    const tokens = await AuthService.generateTokens(user);
     res.json({ success: true, user, tokens });
   } catch (error) {
     res.status(500).json({ error: 'Login failed' });
   }
 });
 
-router.post('/refresh', (req: Request<{}, {}, RefreshTokenRequest>, res: Response): void => {
+router.post('/refresh', async (req: Request<{}, {}, RefreshTokenRequest>, res: Response): Promise<void> => {
   try {
     const { refreshToken } = req.body;
 
@@ -59,21 +87,21 @@ router.post('/refresh', (req: Request<{}, {}, RefreshTokenRequest>, res: Respons
       return;
     }
 
-    const payload = AuthService.verifyRefreshToken(refreshToken);
+    const payload = await AuthService.verifyRefreshToken(refreshToken);
     if (!payload) {
       res.status(401).json({ error: 'Invalid refresh token' });
       return;
     }
 
-    const user = AuthService.getUser(payload.id);
+    const user = await AuthService.getUser(payload.id);
     if (!user) {
       res.status(401).json({ error: 'User not found' });
       return;
     }
 
     // Revoke old refresh token and generate new pair
-    AuthService.revokeRefreshToken(user.id, refreshToken);
-    const newTokens = AuthService.generateTokens(user);
+    await AuthService.revokeRefreshToken(user.id, refreshToken);
+    const newTokens = await AuthService.generateTokens(user);
 
     res.json({ success: true, tokens: newTokens });
   } catch (error) {
@@ -82,11 +110,11 @@ router.post('/refresh', (req: Request<{}, {}, RefreshTokenRequest>, res: Respons
 });
 
 // Protected routes
-router.post('/logout', authMiddleware, (req: Request, res: Response): void => {
+router.post('/logout', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   if (req.user) {
     const refreshToken = req.body?.refreshToken;
     if (typeof refreshToken === 'string') {
-      AuthService.revokeRefreshToken(req.user.id, refreshToken);
+      await AuthService.revokeRefreshToken(req.user.id, refreshToken);
     }
     res.json({ success: true, message: 'Logged out' });
   }
@@ -95,8 +123,8 @@ router.post('/logout', authMiddleware, (req: Request, res: Response): void => {
 router.get(
   '/me',
   authMiddleware,
-  (req: Request, res: Response): void => {
-    const user = AuthService.getUser(req.user?.id || '');
+  async (req: Request, res: Response): Promise<void> => {
+    const user = await AuthService.getUser(req.user?.id || '');
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -110,9 +138,8 @@ router.get(
   '/users',
   authMiddleware,
   requirePermission('manage_users'),
-  (req: Request, res: Response): void => {
-    // Return all users (sensitive data filtered)
-    const allUsers = Array.from({ length: 0 }).map(() => ({}));
+  async (req: Request, res: Response): Promise<void> => {
+    const allUsers = await AuthService.getUsers();
     res.json(allUsers);
   }
 );

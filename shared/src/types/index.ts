@@ -39,6 +39,20 @@ export interface LoginResponse {
   tokens: TokenPair;
 }
 
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  name: string;
+  role?: UserRole;
+  badge?: string;
+}
+
+export interface RegisterResponse {
+  success: boolean;
+  user: User;
+  tokens: TokenPair;
+}
+
 export interface RefreshTokenRequest {
   refreshToken: string;
 }

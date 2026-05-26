@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { User, UserRole, Permission } from 'cad-shared';
+import { User, UserRole, Permission, RegisterRequest } from 'cad-shared';
 import { authClient } from '../services/authClient';
 
 interface AuthContextType {
@@ -8,6 +8,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
+  register: (input: RegisterRequest) => Promise<boolean>;
   logout: () => Promise<void>;
   hasPermission: (permission: Permission) => boolean;
   hasRole: (role: UserRole) => boolean;
@@ -45,6 +46,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const register = useCallback(async (input: RegisterRequest): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      const auth = await authClient.register(input);
+      setUser(auth.user);
+      setPermissions(auth.permissions);
+      return true;
+    } catch (error) {
+      console.error('Registration failed:', error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const logout = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     await authClient.logout();
@@ -67,6 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isAuthenticated: authClient.isAuthenticated(),
     isLoading,
     login,
+    register,
     logout,
     hasPermission,
     hasRole
