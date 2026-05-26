@@ -91,6 +91,7 @@ export const initializeDatabase = async (): Promise<void> => {
 
   await seedInitialAdmin();
   await initializeMessagingTables();
+  await initializeIncidentTables();
 };
 
 const seedInitialAdmin = async (): Promise<void> => {
@@ -175,6 +176,55 @@ export const initializeMessagingTables = async (): Promise<void> => {
   `);
 };
 
+export const initializeIncidentTables = async (): Promise<void> => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS incidents (
+      id VARCHAR(36) PRIMARY KEY,
+      call_number VARCHAR(32) NOT NULL UNIQUE,
+      type VARCHAR(120) NOT NULL,
+      priority ENUM('Low', 'Normal', 'High', 'Emergency') NOT NULL DEFAULT 'Normal',
+      status ENUM('Pending', 'Dispatched', 'En Route', 'On Scene', 'Closed', 'Canceled') NOT NULL DEFAULT 'Pending',
+      address VARCHAR(255) NOT NULL,
+      description TEXT NULL,
+      caller_name VARCHAR(120) NULL,
+      caller_phone VARCHAR(40) NULL,
+      lat DECIMAL(10, 7) NULL,
+      lon DECIMAL(10, 7) NULL,
+      created_by VARCHAR(36) NOT NULL,
+      closed_at DATETIME NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_incidents_status_created (status, created_at),
+      INDEX idx_incidents_call_number (call_number),
+      CONSTRAINT fk_incidents_created_by
+        FOREIGN KEY (created_by) REFERENCES users(id)
+        ON DELETE RESTRICT
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS incident_units (
+      incident_id VARCHAR(36) NOT NULL,
+      user_id VARCHAR(36) NOT NULL,
+      assigned_by VARCHAR(36) NOT NULL,
+      status ENUM('Assigned', 'En Route', 'On Scene', 'Cleared') NOT NULL DEFAULT 'Assigned',
+      assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      cleared_at DATETIME NULL,
+      PRIMARY KEY (incident_id, user_id),
+      INDEX idx_incident_units_user_id (user_id),
+      CONSTRAINT fk_incident_units_incident_id
+        FOREIGN KEY (incident_id) REFERENCES incidents(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_incident_units_user_id
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_incident_units_assigned_by
+        FOREIGN KEY (assigned_by) REFERENCES users(id)
+        ON DELETE RESTRICT
+    )
+  `);
+};
+
 export type UserRow = RowDataPacket & {
   id: string;
   email: string;
@@ -198,4 +248,32 @@ export type UserRow = RowDataPacket & {
   active: number | boolean;
   created_at: Date;
   updated_at: Date;
+};
+
+export type IncidentRow = RowDataPacket & {
+  id: string;
+  call_number: string;
+  type: string;
+  priority: string;
+  status: string;
+  address: string;
+  description: string | null;
+  caller_name: string | null;
+  caller_phone: string | null;
+  lat: string | number | null;
+  lon: string | number | null;
+  created_by: string;
+  closed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+export type IncidentUnitRow = RowDataPacket & {
+  incident_id: string;
+  user_id: string;
+  name: string;
+  cad_unit_number: string | null;
+  status: string;
+  assigned_at: Date;
+  cleared_at: Date | null;
 };

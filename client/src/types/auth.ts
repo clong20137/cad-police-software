@@ -76,6 +76,49 @@ export interface ChatMessage {
   createdAt: Date;
 }
 
+export type IncidentPriority = 'Low' | 'Normal' | 'High' | 'Emergency';
+export type IncidentStatus = 'Pending' | 'Dispatched' | 'En Route' | 'On Scene' | 'Closed' | 'Canceled';
+export type IncidentUnitStatus = 'Assigned' | 'En Route' | 'On Scene' | 'Cleared';
+
+export interface IncidentUnit {
+  userId: string;
+  name: string;
+  cadUnitNumber?: string;
+  status: IncidentUnitStatus;
+  assignedAt: Date;
+  clearedAt?: Date;
+}
+
+export interface Incident {
+  id: string;
+  callNumber: string;
+  type: string;
+  priority: IncidentPriority;
+  status: IncidentStatus;
+  address: string;
+  description?: string;
+  callerName?: string;
+  callerPhone?: string;
+  lat?: number;
+  lon?: number;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+  closedAt?: Date;
+  units: IncidentUnit[];
+}
+
+export interface CreateIncidentRequest {
+  type: string;
+  priority?: IncidentPriority;
+  address: string;
+  description?: string;
+  callerName?: string;
+  callerPhone?: string;
+  lat?: number | null;
+  lon?: number | null;
+}
+
 export type Permission =
   | 'view_dispatch'
   | 'create_dispatch'

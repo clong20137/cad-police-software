@@ -1,6 +1,7 @@
 import { Server as HttpServer } from 'http';
 import { Server } from 'socket.io';
 import { AuthService } from '../services/AuthService';
+import { IncidentService } from '../services/IncidentService';
 import { securityConfig } from '../config/security';
 import { ChatMessage } from '../types/auth';
 import jwt from 'jsonwebtoken';
@@ -35,6 +36,7 @@ export const initializeRealtime = (server: HttpServer): Server => {
 
   io.on('connection', async (socket) => {
     socket.join('units');
+    socket.join('incidents');
     if (socket.data.userId) {
       socket.join(`user:${socket.data.userId}`);
       onlineUsers.set(socket.data.userId, (onlineUsers.get(socket.data.userId) || 0) + 1);
@@ -42,6 +44,7 @@ export const initializeRealtime = (server: HttpServer): Server => {
       await broadcastPresence();
     }
     socket.emit('units:update', await AuthService.getTrackedUnits());
+    socket.emit('incidents:update', await IncidentService.getActiveIncidents());
 
     socket.on('disconnect', async () => {
       if (!socket.data.userId) {
@@ -88,4 +91,12 @@ export const broadcastTrackedUnits = async (): Promise<void> => {
   }
 
   io.to('units').emit('units:update', await AuthService.getTrackedUnits());
+};
+
+export const broadcastIncidents = async (): Promise<void> => {
+  if (!io) {
+    return;
+  }
+
+  io.to('incidents').emit('incidents:update', await IncidentService.getActiveIncidents());
 };

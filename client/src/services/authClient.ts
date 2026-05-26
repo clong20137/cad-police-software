@@ -1,6 +1,10 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import {
   ChatMessage,
+  CreateIncidentRequest,
+  Incident,
+  IncidentStatus,
+  IncidentUnitStatus,
   LoginResponse,
   Permission,
   RegisterRequest,
@@ -93,6 +97,33 @@ class AuthClient {
 
   async sendMessage(recipientId: string, body: string): Promise<ChatMessage> {
     const response = await this.api.post<ChatMessage>('/auth/messages', { recipientId, body });
+    return response.data;
+  }
+
+  async getIncidents(): Promise<Incident[]> {
+    const response = await this.api.get<Incident[]>('/incidents');
+    return response.data;
+  }
+
+  async createIncident(input: CreateIncidentRequest): Promise<Incident> {
+    const response = await this.api.post<Incident>('/incidents', input);
+    return response.data;
+  }
+
+  async updateIncidentStatus(incidentId: string, status: IncidentStatus): Promise<Incident> {
+    const response = await this.api.patch<Incident>(`/incidents/${incidentId}/status`, { status });
+    return response.data;
+  }
+
+  async assignIncidentUnit(
+    incidentId: string,
+    userId: string,
+    status: IncidentUnitStatus = 'Assigned'
+  ): Promise<Incident> {
+    const response = await this.api.post<Incident>(`/incidents/${incidentId}/assignments`, {
+      userId,
+      status
+    });
     return response.data;
   }
 

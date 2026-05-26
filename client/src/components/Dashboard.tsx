@@ -3,12 +3,14 @@ import { io, Socket } from 'socket.io-client';
 import {
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Crosshair,
   MessageCircle,
   Layers,
   LogOut,
   MapPin,
   Radio,
+  Send,
   Settings,
   Shield,
   Users
@@ -16,7 +18,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
-import { ChatMessage, UnitStatus, User } from '../types/auth';
+import { ChatMessage, Incident, IncidentPriority, IncidentStatus, UnitStatus, User } from '../types/auth';
 
 declare global {
   interface Window {
@@ -58,6 +60,22 @@ const statusStyles: Record<UnitStatus, string> = {
   'On Scene': 'bg-red-50 text-red-700 ring-red-200',
   Transporting: 'bg-violet-50 text-violet-700 ring-violet-200',
   'Traffic Stop': 'bg-red-50 text-red-700 ring-red-200'
+};
+
+const incidentStatusStyles: Record<IncidentStatus, string> = {
+  Pending: 'bg-slate-50 text-slate-700 ring-slate-200',
+  Dispatched: 'bg-amber-50 text-amber-700 ring-amber-200',
+  'En Route': 'bg-blue-50 text-blue-700 ring-blue-200',
+  'On Scene': 'bg-red-50 text-red-700 ring-red-200',
+  Closed: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  Canceled: 'bg-slate-100 text-slate-500 ring-slate-200'
+};
+
+const incidentPriorityStyles: Record<IncidentPriority, string> = {
+  Low: 'bg-slate-100 text-slate-600',
+  Normal: 'bg-blue-50 text-blue-700',
+  High: 'bg-amber-50 text-amber-700',
+  Emergency: 'bg-red-600 text-white'
 };
 
 const markerTone = (unit: User, currentUserId?: string): 'gray' | 'green' | 'blue' | 'yellow' | 'red' => {
@@ -218,6 +236,21 @@ export const Dashboard: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageBody, setMessageBody] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
+  const [incidentFormOpen, setIncidentFormOpen] = useState(false);
+  const [incidentForm, setIncidentForm] = useState({
+    type: '911 Call',
+    priority: 'Normal' as IncidentPriority,
+    address: '',
+    description: '',
+    callerName: '',
+    callerPhone: '',
+    lat: '',
+    lon: ''
+  });
+  const [incidentError, setIncidentError] = useState('');
+  const [assignmentUnitId, setAssignmentUnitId] = useState('');
   const [destinationLat, setDestinationLat] = useState('');
   const [destinationLon, setDestinationLon] = useState('');
   const [destinationLabel, setDestinationLabel] = useState('');
@@ -226,6 +259,7 @@ export const Dashboard: React.FC = () => {
 
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
   const selectedIsCurrentUser = selectedUnit?.id === user?.id;
+  const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || incidents[0] || null;
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
 
   const loadUnits = useCallback(async () => {
@@ -274,6 +308,26 @@ export const Dashboard: React.FC = () => {
     loadUnits();
   }, [loadUnits]);
 
+  const loadIncidents = useCallback(async () => {
+    try {
+      const response = await authClient.getIncidents();
+      setIncidents(response);
+      setIncidentError('');
+      setSelectedIncidentId((current) => {
+        if (current && response.some((incident) => incident.id === current)) {
+          return current;
+        }
+        return response[0]?.id || '';
+      });
+    } catch {
+      setIncidentError('Unable to load active calls.');
+    }
+  }, []);
+
+  useEffect(() => {
+    loadIncidents();
+  }, [loadIncidents]);
+
   const loadDirectory = useCallback(async () => {
     const users = await authClient.getDirectory();
     setDirectory(users);
@@ -308,6 +362,16 @@ export const Dashboard: React.FC = () => {
     socket.on('presence:update', (presence: { onlineUserIds: string[]; users: User[] }) => {
       setOnlineUserIds(presence.onlineUserIds || []);
       setDirectory(presence.users || []);
+    });
+    socket.on('incidents:update', (nextIncidents: Incident[]) => {
+      setIncidents(nextIncidents || []);
+      setIncidentError('');
+      setSelectedIncidentId((current) => {
+        if (current && nextIncidents.some((incident) => incident.id === current)) {
+          return current;
+        }
+        return nextIncidents[0]?.id || '';
+      });
     });
     socket.on('message:new', (message: ChatMessage) => {
       setMessages((current) => {
@@ -433,6 +497,19 @@ export const Dashboard: React.FC = () => {
         }
       });
 
+      incidents
+        .filter((incident) => incident.lat !== undefined && incident.lon !== undefined)
+        .forEach((incident) => {
+          addGooglePulseMarker({
+            map,
+            lat: incident.lat as number,
+            lon: incident.lon as number,
+            label: incident.callNumber,
+            tone: incident.priority === 'Emergency' || incident.priority === 'High' ? 'red' : 'yellow',
+            onClick: () => setSelectedIncidentId(incident.id)
+          });
+        });
+
       if (currentLocation) {
         addGooglePulseMarker({
           map,
@@ -458,7 +535,7 @@ export const Dashboard: React.FC = () => {
     script.async = true;
     script.onload = initializeMap;
     document.head.appendChild(script);
-  }, [center.lat, center.lon, currentLocation, units, user?.id]);
+  }, [center.lat, center.lon, currentLocation, incidents, units, user?.id]);
 
   const saveDestination = async () => {
     if (!selectedIsCurrentUser) return;
@@ -495,6 +572,56 @@ export const Dashboard: React.FC = () => {
     setMessages((current) => [...current.filter((item) => item.id !== sent.id), sent]);
     setMessageBody('');
     setEmojiOpen(false);
+  };
+
+  const createIncident = async () => {
+    if (!incidentForm.type.trim() || !incidentForm.address.trim()) {
+      setIncidentError('Call type and address are required.');
+      return;
+    }
+
+    try {
+      const lat = incidentForm.lat ? Number(incidentForm.lat) : null;
+      const lon = incidentForm.lon ? Number(incidentForm.lon) : null;
+      const incident = await authClient.createIncident({
+        type: incidentForm.type,
+        priority: incidentForm.priority,
+        address: incidentForm.address,
+        description: incidentForm.description,
+        callerName: incidentForm.callerName,
+        callerPhone: incidentForm.callerPhone,
+        lat,
+        lon
+      });
+      setIncidents((current) => [incident, ...current.filter((item) => item.id !== incident.id)]);
+      setSelectedIncidentId(incident.id);
+      setIncidentFormOpen(false);
+      setIncidentError('');
+      setIncidentForm({
+        type: '911 Call',
+        priority: 'Normal',
+        address: '',
+        description: '',
+        callerName: '',
+        callerPhone: '',
+        lat: '',
+        lon: ''
+      });
+    } catch {
+      setIncidentError('Unable to create the call. Check the required fields and coordinates.');
+    }
+  };
+
+  const updateIncidentStatus = async (status: IncidentStatus) => {
+    if (!selectedIncident) return;
+    const incident = await authClient.updateIncidentStatus(selectedIncident.id, status);
+    setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+  };
+
+  const assignIncidentUnit = async () => {
+    if (!selectedIncident || !assignmentUnitId) return;
+    const incident = await authClient.assignIncidentUnit(selectedIncident.id, assignmentUnitId, 'Assigned');
+    setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
   };
 
   return (
@@ -631,16 +758,138 @@ export const Dashboard: React.FC = () => {
                 />
               </div>
 
+              <div className="rounded-lg border border-cad-line bg-white shadow-control">
+                <div className="flex items-center justify-between border-b border-cad-line p-4">
+                  <div>
+                    <h2 className="text-lg font-bold">Active Calls</h2>
+                    <p className="mt-1 text-sm text-slate-600">{incidents.length} open incidents</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIncidentFormOpen((value) => !value)}
+                    className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white"
+                  >
+                    <ClipboardList size={16} />
+                    New Call
+                  </button>
+                </div>
+
+                {incidentFormOpen && (
+                  <div className="grid gap-3 border-b border-cad-line bg-slate-50 p-4 lg:grid-cols-4">
+                    <input
+                      value={incidentForm.type}
+                      onChange={(event) => setIncidentForm((value) => ({ ...value, type: event.target.value }))}
+                      placeholder="Call type"
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                    />
+                    <select
+                      value={incidentForm.priority}
+                      onChange={(event) =>
+                        setIncidentForm((value) => ({ ...value, priority: event.target.value as IncidentPriority }))
+                      }
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                    >
+                      {(['Low', 'Normal', 'High', 'Emergency'] as IncidentPriority[]).map((priority) => (
+                        <option key={priority} value={priority}>
+                          {priority}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={incidentForm.address}
+                      onChange={(event) => setIncidentForm((value) => ({ ...value, address: event.target.value }))}
+                      placeholder="Address"
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 lg:col-span-2"
+                    />
+                    <input
+                      value={incidentForm.callerName}
+                      onChange={(event) => setIncidentForm((value) => ({ ...value, callerName: event.target.value }))}
+                      placeholder="Caller name"
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                    />
+                    <input
+                      value={incidentForm.callerPhone}
+                      onChange={(event) => setIncidentForm((value) => ({ ...value, callerPhone: event.target.value }))}
+                      placeholder="Caller phone"
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                    />
+                    <input
+                      value={incidentForm.lat}
+                      onChange={(event) => setIncidentForm((value) => ({ ...value, lat: event.target.value }))}
+                      placeholder="Lat"
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                    />
+                    <input
+                      value={incidentForm.lon}
+                      onChange={(event) => setIncidentForm((value) => ({ ...value, lon: event.target.value }))}
+                      placeholder="Lon"
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                    />
+                    <textarea
+                      value={incidentForm.description}
+                      onChange={(event) => setIncidentForm((value) => ({ ...value, description: event.target.value }))}
+                      placeholder="Call notes"
+                      className="min-h-20 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 lg:col-span-3"
+                    />
+                    <button
+                      type="button"
+                      onClick={createIncident}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-cad-navy px-3 py-2 text-sm font-semibold text-white"
+                    >
+                      <Send size={16} />
+                      Create
+                    </button>
+                  </div>
+                )}
+
+                {incidentError && <p className="px-4 py-2 text-sm font-medium text-red-600">{incidentError}</p>}
+                <div className="grid max-h-72 gap-2 overflow-y-auto p-3 md:grid-cols-2">
+                  {incidents.length === 0 && (
+                    <p className="p-2 text-sm text-slate-600">No active calls are in the queue.</p>
+                  )}
+                  {incidents.map((incident) => (
+                    <button
+                      key={incident.id}
+                      type="button"
+                      onClick={() => setSelectedIncidentId(incident.id)}
+                      className={`rounded-lg border p-3 text-left transition ${
+                        selectedIncident?.id === incident.id
+                          ? 'border-cad-blue bg-blue-50'
+                          : 'border-slate-200 bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold">{incident.callNumber} · {incident.type}</p>
+                          <p className="mt-1 truncate text-xs text-slate-600">{incident.address}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${incidentPriorityStyles[incident.priority]}`}>
+                          {incident.priority}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between">
+                        <span className={`rounded-full px-2 py-1 text-xs font-bold ring-1 ${incidentStatusStyles[incident.status]}`}>
+                          {incident.status}
+                        </span>
+                        <span className="text-xs text-slate-500">{incident.units.length} units</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="relative min-h-[520px] flex-1 overflow-hidden rounded-lg border border-cad-line bg-slate-900 shadow-control">
                 {googleMapsApiKey ? (
                   <div ref={mapRef} className="h-full min-h-[520px] w-full" />
                 ) : (
                   <FallbackMap
                     units={units}
+                    incidents={incidents}
                     selectedUnit={selectedUnit}
                     currentLocation={currentLocation}
                     currentUserId={user?.id}
                     onSelectUnit={(unit) => setSelectedUnitId(unit.id)}
+                    onSelectIncident={(incident) => setSelectedIncidentId(incident.id)}
                   />
                 )}
 
@@ -659,6 +908,98 @@ export const Dashboard: React.FC = () => {
             </div>
 
             <div className="flex min-h-0 flex-col gap-4">
+            <div className="rounded-lg border border-cad-line bg-white shadow-control">
+              <div className="border-b border-cad-line p-4">
+                <h2 className="text-lg font-bold">Call Detail</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {selectedIncident ? `${selectedIncident.callNumber} selected` : 'No active call selected'}
+                </p>
+              </div>
+              <div className="p-4">
+                {selectedIncident ? (
+                  <div className="space-y-4">
+                    <dl className="grid gap-3 text-sm">
+                      <Detail label="Type" value={selectedIncident.type} />
+                      <Detail label="Priority" value={selectedIncident.priority} />
+                      <Detail label="Status" value={selectedIncident.status} />
+                      <Detail label="Address" value={selectedIncident.address} />
+                      <Detail label="Caller" value={selectedIncident.callerName || 'Unknown'} />
+                      <Detail label="Phone" value={selectedIncident.callerPhone || 'Unknown'} />
+                      <Detail
+                        label="Location"
+                        value={
+                          selectedIncident.lat !== undefined && selectedIncident.lon !== undefined
+                            ? `${selectedIncident.lat.toFixed(6)}, ${selectedIncident.lon.toFixed(6)}`
+                            : 'Not pinned'
+                        }
+                      />
+                    </dl>
+
+                    {selectedIncident.description && (
+                      <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">{selectedIncident.description}</p>
+                    )}
+
+                    <div>
+                      <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">Assigned Units</h3>
+                      <div className="mt-2 space-y-2">
+                        {selectedIncident.units.length === 0 && (
+                          <p className="text-sm text-slate-600">No units assigned.</p>
+                        )}
+                        {selectedIncident.units.map((assignedUnit) => (
+                          <div
+                            key={assignedUnit.userId}
+                            className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm"
+                          >
+                            <span className="font-semibold">
+                              {assignedUnit.cadUnitNumber || assignedUnit.name}
+                            </span>
+                            <span>{assignedUnit.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <select
+                        value={assignmentUnitId}
+                        onChange={(event) => setAssignmentUnitId(event.target.value)}
+                        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                      >
+                        <option value="">Select unit</option>
+                        {units.map((unit) => (
+                          <option key={unit.id} value={unit.id}>
+                            {displayCadUnitNumber(unit)} · {unit.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={assignIncidentUnit}
+                        className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white"
+                      >
+                        Assign
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['Dispatched', 'En Route', 'On Scene', 'Closed'] as IncidentStatus[]).map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => updateIncidentStatus(status)}
+                          className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-600">Create or select a call to manage assignments.</p>
+                )}
+              </div>
+            </div>
+
             <div className="rounded-lg border border-cad-line bg-white shadow-control">
               <div className="border-b border-cad-line p-4">
                 <h2 className="text-lg font-bold">Unit Detail</h2>
@@ -901,11 +1242,17 @@ const Detail: React.FC<{ label: string; value: string | number }> = ({ label, va
 
 const FallbackMap: React.FC<{
   units: TrackedUnit[];
+  incidents: Incident[];
   selectedUnit: TrackedUnit | null;
   currentLocation: { lat: number; lon: number } | null;
   currentUserId?: string;
   onSelectUnit: (unit: TrackedUnit) => void;
-}> = ({ units, selectedUnit, currentLocation, currentUserId, onSelectUnit }) => {
+  onSelectIncident: (incident: Incident) => void;
+}> = ({ units, incidents, selectedUnit, currentLocation, currentUserId, onSelectUnit, onSelectIncident }) => {
+  const pinnedIncidents = incidents.filter(
+    (incident): incident is Incident & { lat: number; lon: number } =>
+      incident.lat !== undefined && incident.lon !== undefined
+  );
   const destinations = units
     .filter((unit) => unit.destinationLat !== undefined && unit.destinationLon !== undefined)
     .map((unit) => ({
@@ -914,8 +1261,13 @@ const FallbackMap: React.FC<{
       lon: unit.destinationLon as number
     }));
   const points = currentLocation
-    ? [...units, ...destinations, { id: 'current-location', lat: currentLocation.lat, lon: currentLocation.lon }]
-    : [...units, ...destinations];
+    ? [
+        ...units,
+        ...destinations,
+        ...pinnedIncidents,
+        { id: 'current-location', lat: currentLocation.lat, lon: currentLocation.lon }
+      ]
+    : [...units, ...destinations, ...pinnedIncidents];
   const minLat = Math.min(...points.map((point) => point.lat), 39.7);
   const maxLat = Math.max(...points.map((point) => point.lat), 39.85);
   const minLon = Math.min(...points.map((point) => point.lon), -86.25);
@@ -970,6 +1322,30 @@ const FallbackMap: React.FC<{
             {unit.destinationLabel || 'Destination'}
           </div>
         ))}
+
+      {pinnedIncidents.map((incident) => (
+        <button
+          key={incident.id}
+          type="button"
+          onClick={() => onSelectIncident(incident)}
+          className={`absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 text-xs font-bold shadow-lg ring-2 ring-white ${
+            incident.priority === 'Emergency' || incident.priority === 'High'
+              ? 'bg-red-600 text-white'
+              : 'bg-amber-400 text-slate-950'
+          }`}
+          style={position(incident.lat, incident.lon)}
+        >
+          <span
+            className={`pointer-events-none absolute inset-0 -z-10 rounded-full ${
+              incident.priority === 'Emergency' || incident.priority === 'High'
+                ? 'bg-red-500/60'
+                : 'bg-amber-300/65'
+            } location-pulse`}
+          />
+          <ClipboardList size={14} />
+          {incident.callNumber}
+        </button>
+      ))}
 
       {currentLocation && (
         <div
