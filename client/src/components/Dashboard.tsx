@@ -21,8 +21,9 @@ declare global {
     google?: {
       maps: {
         Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
-        Marker: new (options: Record<string, unknown>) => GoogleMarkerInstance;
         InfoWindow: new (options: Record<string, unknown>) => GoogleInfoWindowInstance;
+        LatLng: new (lat: number, lng: number) => GoogleLatLngInstance;
+        OverlayView: new () => GoogleOverlayViewInstance;
       };
     };
   }
@@ -32,12 +33,18 @@ interface GoogleMapInstance {
   setCenter: (location: { lat: number; lng: number }) => void;
 }
 
-interface GoogleMarkerInstance {
-  addListener: (eventName: string, callback: () => void) => void;
+interface GoogleInfoWindowInstance {
+  open: (options: { map: GoogleMapInstance; position: { lat: number; lng: number } }) => void;
 }
 
-interface GoogleInfoWindowInstance {
-  open: (options: { map: GoogleMapInstance; anchor: GoogleMarkerInstance }) => void;
+interface GoogleLatLngInstance {}
+
+interface GoogleOverlayViewInstance {
+  setMap: (map: GoogleMapInstance | null) => void;
+  getPanes: () => { overlayMouseTarget: HTMLElement } | null;
+  getProjection: () => {
+    fromLatLngToDivPixel: (position: GoogleLatLngInstance) => { x: number; y: number } | null;
+  };
 }
 
 type TrackedUnit = User & { lat: number; lon: number };
@@ -68,6 +75,83 @@ const splitName = (name: string): { firstName: string; lastName: string } => {
     firstName: parts[0] || '',
     lastName: parts.slice(1).join(' ') || ''
   };
+};
+
+const addGooglePulseMarker = ({
+  map,
+  lat,
+  lon,
+  label,
+  tone,
+  onClick
+}: {
+  map: GoogleMapInstance;
+  lat: number;
+  lon: number;
+  label: string;
+  tone: 'blue' | 'green';
+  onClick?: () => void;
+}) => {
+  if (!window.google?.maps) {
+    return;
+  }
+
+  const position = new window.google.maps.LatLng(lat, lon);
+
+  class PulseOverlay extends window.google.maps.OverlayView {
+    private container: HTMLElement | null = null;
+
+    onAdd() {
+      const container = document.createElement(onClick ? 'button' : 'div');
+      if (container instanceof HTMLButtonElement) {
+        container.type = 'button';
+      }
+
+      const baseColor =
+        tone === 'green' ? 'bg-emerald-500 text-white ring-white' : 'bg-cad-blue text-white ring-white';
+      const pulseColor = tone === 'green' ? 'bg-emerald-400/60' : 'bg-cad-blue/50';
+
+      container.className = `absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 text-xs font-bold shadow-lg ring-2 ${baseColor}`;
+      container.style.cursor = onClick ? 'pointer' : 'default';
+
+      const pulse = document.createElement('span');
+      pulse.className = `pointer-events-none absolute inset-0 -z-10 rounded-full ${pulseColor} location-pulse`;
+      container.appendChild(pulse);
+
+      const pin = document.createElement('span');
+      pin.textContent = '•';
+      pin.className = 'text-lg leading-none';
+      container.appendChild(pin);
+
+      const text = document.createElement('span');
+      text.textContent = label;
+      container.appendChild(text);
+
+      if (onClick) {
+        container.addEventListener('click', onClick);
+      }
+
+      this.container = container;
+      this.getPanes()?.overlayMouseTarget.appendChild(container);
+    }
+
+    draw() {
+      const point = this.getProjection().fromLatLngToDivPixel(position);
+      if (!point || !this.container) {
+        return;
+      }
+
+      this.container.style.left = `${point.x}px`;
+      this.container.style.top = `${point.y}px`;
+    }
+
+    onRemove() {
+      this.container?.remove();
+      this.container = null;
+    }
+  }
+
+  new PulseOverlay().setMap(map);
 };
 
 export const Dashboard: React.FC = () => {
@@ -161,7 +245,7 @@ export const Dashboard: React.FC = () => {
         setCurrentLocation(nextLocation);
         setLocationError('');
 
-          try {
+        try {
           const updatedUser = await authClient.updateLocation(nextLocation.lat, nextLocation.lon);
           if (isTrackedUnit(updatedUser)) {
             setUnits((currentUnits) => {
@@ -203,16 +287,31 @@ export const Dashboard: React.FC = () => {
       });
 
       units.forEach((unit) => {
-        const marker = new window.google!.maps.Marker({
-          map,
-          position: { lat: unit.lat, lng: unit.lon },
-          title: `${displayCadUnitNumber(unit)} ${displayStatus(unit)}`
-        });
         const infoWindow = new window.google!.maps.InfoWindow({
           content: `<strong>${displayCadUnitNumber(unit)}</strong><br>${unit.name}<br>${displayStatus(unit)}`
         });
-        marker.addListener('click', () => infoWindow.open({ map, anchor: marker }));
+        addGooglePulseMarker({
+          map,
+          lat: unit.lat,
+          lon: unit.lon,
+          label: displayCadUnitNumber(unit),
+          tone: 'blue',
+          onClick: () => {
+            setSelectedUnitId(unit.id);
+            infoWindow.open({ map, position: { lat: unit.lat, lng: unit.lon } });
+          }
+        });
       });
+
+      if (currentLocation) {
+        addGooglePulseMarker({
+          map,
+          lat: currentLocation.lat,
+          lon: currentLocation.lon,
+          label: 'You',
+          tone: 'green'
+        });
+      }
 
       map.setCenter({ lat: center.lat, lng: center.lon });
     };
@@ -229,7 +328,7 @@ export const Dashboard: React.FC = () => {
     script.async = true;
     script.onload = initializeMap;
     document.head.appendChild(script);
-  }, [center.lat, center.lon, units]);
+  }, [center.lat, center.lon, currentLocation, units]);
 
   return (
     <div className="flex h-screen flex-col bg-slate-100 text-cad-ink">
