@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserRole } from 'cad-shared';
+import { UserRole } from '../types/auth';
 import { useAuth } from '../context/AuthContext';
 
 export const LoginPage: React.FC = () => {

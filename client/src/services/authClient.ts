@@ -7,7 +7,7 @@ import {
   ROLE_PERMISSIONS,
   TokenPair,
   User
-} from 'cad-shared';
+} from '../types/auth';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 

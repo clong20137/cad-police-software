@@ -1,5 +1,5 @@
 import React from 'react';
-import { UserRole } from 'cad-shared';
+import { UserRole } from '../types/auth';
 import { useAuth } from '../context/AuthContext';
 import { Protected, RoleBasedRender } from './Protected';
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Permission, UserRole } from 'cad-shared';
+import { Permission, UserRole } from '../types/auth';
 
 interface ProtectedProps {
   children: React.ReactNode;

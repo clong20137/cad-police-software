@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { User, UserRole, Permission, RegisterRequest } from 'cad-shared';
+import { User, UserRole, Permission, RegisterRequest } from '../types/auth';
 import { authClient } from '../services/authClient';
 
 interface AuthContextType {
