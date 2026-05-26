@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   ClipboardList,
   Crosshair,
   GripVertical,
@@ -1174,14 +1176,6 @@ export const Dashboard: React.FC = () => {
     <div className="flex h-screen flex-col bg-slate-100 text-cad-ink">
       <header className="flex min-h-16 items-center justify-between border-b border-slate-800 bg-cad-navy px-4 text-white">
         <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setSidebarOpen((value) => !value)}
-            className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20"
-            aria-label={sidebarOpen ? 'Collapse unit list' : 'Expand unit list'}
-          >
-            {sidebarOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
-          </button>
           <div>
             <h1 className="text-xl font-semibold">CAD Dispatch</h1>
             <p className="text-xs text-slate-300">Live unit location dashboard</p>
@@ -1242,16 +1236,25 @@ export const Dashboard: React.FC = () => {
           />
         </div>
 
-        {sidebarOpen && (
-          <div className="absolute bottom-24 left-4 top-20 z-10 flex w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur">
+        <button
+          type="button"
+          onClick={() => setSidebarOpen((value) => !value)}
+          className="absolute left-0 top-1/2 z-20 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-cad-line bg-white/95 text-cad-blue shadow-xl backdrop-blur transition hover:bg-blue-50"
+          aria-label={sidebarOpen ? 'Collapse units' : 'Open units'}
+        >
+          {sidebarOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+        </button>
+
+        <div
+          className={`absolute bottom-24 left-4 top-20 z-10 flex w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur transition-all duration-300 ease-out ${
+            sidebarOpen ? 'translate-x-0 opacity-100' : '-translate-x-[calc(100%+2rem)] opacity-0'
+          }`}
+        >
             <div className="flex items-center justify-between border-b border-cad-line p-3">
               <div>
                 <h2 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">Units</h2>
                 <p className="text-xs text-slate-600">{units.length} tracked units</p>
               </div>
-              <button type="button" onClick={() => setSidebarOpen(false)} className="rounded-md p-2 hover:bg-slate-100">
-                <ChevronLeft size={16} />
-              </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               {units.length === 0 && (
@@ -1283,8 +1286,7 @@ export const Dashboard: React.FC = () => {
                 </button>
               ))}
             </div>
-          </div>
-        )}
+        </div>
 
         <div className="absolute bottom-24 left-4 z-10 rounded-lg border border-cad-line bg-white/95 p-3 shadow-control backdrop-blur">
           <div className="flex items-center gap-2 text-sm font-semibold">
@@ -1496,8 +1498,8 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {customizingSlot !== null && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4 sm:items-center">
-          <div className="w-full max-w-lg rounded-lg border border-cad-line bg-white shadow-2xl">
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-lg origin-bottom animate-[dockModalIn_220ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-cad-line p-4">
               <h2 className="text-lg font-bold">Customize Slot {customizingSlot + 1}</h2>
               <button type="button" onClick={() => setCustomizingSlot(null)} className="rounded-md p-2 hover:bg-slate-100">
@@ -1530,8 +1532,8 @@ export const Dashboard: React.FC = () => {
       )}
 
       {activeQuickModal && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4 sm:items-center">
-          <div className="w-full max-w-2xl rounded-lg border border-cad-line bg-white shadow-2xl">
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4">
+          <div className="mb-20 w-full max-w-2xl origin-bottom animate-[dockModalIn_240ms_cubic-bezier(0.2,0.8,0.2,1)] rounded-lg border border-cad-line bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-cad-line p-4">
               <h2 className="text-lg font-bold">{quickModalTitle}</h2>
               <button type="button" onClick={() => setActiveQuickModal(null)} className="rounded-md p-2 hover:bg-slate-100">
@@ -1568,7 +1570,7 @@ const OverlayPanel: React.FC<{
   className?: string;
   children: React.ReactNode;
 }> = ({ title, subtitle, open, onToggle, className = '', children }) => (
-  <div className={`overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur ${className}`}>
+  <div className={`overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur transition-all duration-300 ease-out ${className}`}>
     <div className="flex items-center justify-between gap-3 border-b border-cad-line px-3 py-2">
       <div className="min-w-0">
         <h2 className="truncate text-sm font-bold">{title}</h2>
@@ -1580,10 +1582,18 @@ const OverlayPanel: React.FC<{
         className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50"
         aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
       >
-        {open ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
     </div>
-    {open && <div className="p-3">{children}</div>}
+    <div
+      className={`grid transition-all duration-300 ease-out ${
+        open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+      }`}
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div className="p-3">{children}</div>
+      </div>
+    </div>
   </div>
 );
 
