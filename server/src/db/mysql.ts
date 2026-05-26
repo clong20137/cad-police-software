@@ -1,4 +1,7 @@
 import mysql, { Pool, RowDataPacket } from 'mysql2/promise';
+import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
+import { UserRole } from '../types/auth';
 
 const databaseName = process.env.MYSQL_DATABASE || 'cad_police';
 
@@ -10,6 +13,7 @@ const assertSafeDatabaseName = (name: string): string => {
 };
 
 const dbName = assertSafeDatabaseName(databaseName);
+const BCRYPT_ROUNDS = 12;
 
 export const pool: Pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
@@ -69,6 +73,36 @@ export const initializeDatabase = async (): Promise<void> => {
         ON DELETE CASCADE
     )
   `);
+
+  await seedInitialAdmin();
+};
+
+const seedInitialAdmin = async (): Promise<void> => {
+  const [[row]] = await pool.query<RowDataPacket[]>('SELECT COUNT(*) AS count FROM users');
+  const userCount = Number(row?.count || 0);
+
+  if (userCount > 0) {
+    return;
+  }
+
+  const email = (process.env.SEED_ADMIN_EMAIL || 'admin@dispatch.local').trim().toLowerCase();
+  const password = process.env.SEED_ADMIN_PASSWORD || 'ChangeMe123!';
+  const name = (process.env.SEED_ADMIN_NAME || 'System Administrator').trim();
+  const badge = (process.env.SEED_ADMIN_BADGE || 'ADM001').trim();
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
+  await pool.execute(
+    `
+      INSERT INTO users (id, email, name, role, badge, password_hash)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `,
+    [uuidv4(), email, name, UserRole.ADMIN, badge, passwordHash]
+  );
+
+  console.log(`Seeded initial admin user: ${email}`);
+  if (!process.env.SEED_ADMIN_PASSWORD) {
+    console.warn('Using default seed admin password. Set SEED_ADMIN_PASSWORD before production use.');
+  }
 };
 
 export type UserRow = RowDataPacket & {
