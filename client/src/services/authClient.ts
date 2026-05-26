@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import {
+  ChatMessage,
   LoginResponse,
   Permission,
   RegisterRequest,
@@ -80,6 +81,21 @@ class AuthClient {
     return response.data;
   }
 
+  async getDirectory(): Promise<User[]> {
+    const response = await this.api.get<User[]>('/auth/directory');
+    return response.data;
+  }
+
+  async getMessages(userId: string): Promise<ChatMessage[]> {
+    const response = await this.api.get<ChatMessage[]>(`/auth/messages/${userId}`);
+    return response.data;
+  }
+
+  async sendMessage(recipientId: string, body: string): Promise<ChatMessage> {
+    const response = await this.api.post<ChatMessage>('/auth/messages', { recipientId, body });
+    return response.data;
+  }
+
   async updateLocation(lat: number, lon: number, speedMph?: number | null): Promise<User> {
     const response = await this.api.patch<User>('/auth/me/location', { lat, lon, speedMph });
     if (this.auth && response.data.id === this.auth.user.id) {
@@ -152,6 +168,10 @@ class AuthClient {
 
   isAuthenticated(): boolean {
     return !!this.auth && this.auth.expiresAt > Date.now();
+  }
+
+  getAccessToken(): string | null {
+    return this.auth?.tokens.accessToken || null;
   }
 
   private saveToStorage(): void {

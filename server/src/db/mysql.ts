@@ -61,6 +61,7 @@ export const initializeDatabase = async (): Promise<void> => {
       destination_lon DECIMAL(10, 7) NULL,
       destination_label VARCHAR(160) NULL,
       last_location_at DATETIME NULL,
+      last_seen_at DATETIME NULL,
       password_hash VARCHAR(255) NOT NULL,
       active BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -89,6 +90,7 @@ export const initializeDatabase = async (): Promise<void> => {
   `);
 
   await seedInitialAdmin();
+  await initializeMessagingTables();
 };
 
 const seedInitialAdmin = async (): Promise<void> => {
@@ -132,7 +134,8 @@ const ensureUserLocationColumns = async (): Promise<void> => {
     "ADD COLUMN destination_lat DECIMAL(10, 7) NULL",
     "ADD COLUMN destination_lon DECIMAL(10, 7) NULL",
     "ADD COLUMN destination_label VARCHAR(160) NULL",
-    "ADD COLUMN last_location_at DATETIME NULL"
+    "ADD COLUMN last_location_at DATETIME NULL",
+    "ADD COLUMN last_seen_at DATETIME NULL"
   ];
 
   for (const column of columns) {
@@ -149,6 +152,27 @@ const ensureUserLocationColumns = async (): Promise<void> => {
   await pool.query(
     "ALTER TABLE users MODIFY COLUMN status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop') NULL DEFAULT NULL"
   );
+};
+
+export const initializeMessagingTables = async (): Promise<void> => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id VARCHAR(36) PRIMARY KEY,
+      sender_id VARCHAR(36) NOT NULL,
+      recipient_id VARCHAR(36) NOT NULL,
+      body TEXT NOT NULL,
+      read_at DATETIME NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_messages_pair_created (sender_id, recipient_id, created_at),
+      INDEX idx_messages_recipient_created (recipient_id, created_at),
+      CONSTRAINT fk_messages_sender_id
+        FOREIGN KEY (sender_id) REFERENCES users(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_messages_recipient_id
+        FOREIGN KEY (recipient_id) REFERENCES users(id)
+        ON DELETE CASCADE
+    )
+  `);
 };
 
 export type UserRow = RowDataPacket & {
@@ -169,6 +193,7 @@ export type UserRow = RowDataPacket & {
   destination_lon: string | number | null;
   destination_label: string | null;
   last_location_at: Date | null;
+  last_seen_at: Date | null;
   password_hash: string;
   active: number | boolean;
   created_at: Date;

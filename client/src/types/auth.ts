@@ -23,6 +23,7 @@ export interface User {
   destinationLon?: number;
   destinationLabel?: string;
   lastLocationAt?: Date;
+  lastSeenAt?: Date;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -64,6 +65,15 @@ export interface RegisterResponse {
   success: boolean;
   user: User;
   tokens: TokenPair;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  body: string;
+  readAt?: Date;
+  createdAt: Date;
 }
 
 export type Permission =

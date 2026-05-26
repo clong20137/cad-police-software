@@ -1,13 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
+import { MessageService } from '../services/MessageService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
-import { broadcastTrackedUnits } from '../realtime/socket';
+import { broadcastMessage, broadcastPresence, broadcastTrackedUnits } from '../realtime/socket';
 import {
   DestinationUpdateRequest,
   LocationUpdateRequest,
   LoginRequest,
   RefreshTokenRequest,
   RegisterRequest,
+  SendMessageRequest,
   UserRole
 } from '../types/auth';
 
@@ -174,6 +176,48 @@ router.get(
   }
 );
 
+router.get(
+  '/directory',
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const allUsers = await AuthService.getUsers();
+    res.json(allUsers);
+  }
+);
+
+router.get(
+  '/messages/:userId',
+  authMiddleware,
+  async (req: Request<{ userId: string }>, res: Response): Promise<void> => {
+    await MessageService.markRead(req.user?.id || '', req.params.userId);
+    const messages = await MessageService.getConversation(req.user?.id || '', req.params.userId);
+    res.json(messages);
+  }
+);
+
+router.post(
+  '/messages',
+  authMiddleware,
+  async (req: Request<{}, {}, SendMessageRequest>, res: Response): Promise<void> => {
+    const { recipientId, body } = req.body;
+
+    if (!recipientId || !body?.trim()) {
+      res.status(400).json({ error: 'recipientId and body are required' });
+      return;
+    }
+
+    const recipient = await AuthService.getUser(recipientId);
+    if (!recipient) {
+      res.status(404).json({ error: 'Recipient not found' });
+      return;
+    }
+
+    const message = await MessageService.createMessage(req.user?.id || '', recipientId, body);
+    broadcastMessage(message);
+    res.status(201).json(message);
+  }
+);
+
 router.patch(
   '/me/location',
   authMiddleware,
@@ -200,6 +244,8 @@ router.patch(
       return;
     }
 
+    await AuthService.touchLastSeen(req.user?.id || '');
+    await broadcastPresence();
     await broadcastTrackedUnits();
     res.json(user);
   }

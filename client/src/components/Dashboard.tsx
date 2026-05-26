@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Crosshair,
+  MessageCircle,
   Layers,
   LogOut,
   MapPin,
@@ -15,7 +16,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
-import { UnitStatus, User } from '../types/auth';
+import { ChatMessage, UnitStatus, User } from '../types/auth';
 
 declare global {
   interface Window {
@@ -122,6 +123,13 @@ const etaText = (unit: TrackedUnit): string => {
   return `${miles.toFixed(1)} mi, ${minutes} min ETA`;
 };
 
+const formatDateTime = (value?: Date | string): string => {
+  if (!value) return 'unknown';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'unknown';
+  return date.toLocaleString();
+};
+
 const addGooglePulseMarker = ({
   map,
   lat,
@@ -204,6 +212,12 @@ export const Dashboard: React.FC = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationError, setLocationError] = useState<string>('');
   const [unitLoadError, setUnitLoadError] = useState<string>('');
+  const [directory, setDirectory] = useState<User[]>([]);
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
+  const [selectedMessageUserId, setSelectedMessageUserId] = useState<string>('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messageBody, setMessageBody] = useState('');
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [destinationLat, setDestinationLat] = useState('');
   const [destinationLon, setDestinationLon] = useState('');
   const [destinationLabel, setDestinationLabel] = useState('');
@@ -260,6 +274,16 @@ export const Dashboard: React.FC = () => {
     loadUnits();
   }, [loadUnits]);
 
+  const loadDirectory = useCallback(async () => {
+    const users = await authClient.getDirectory();
+    setDirectory(users);
+    setSelectedMessageUserId((current) => current || users.find((item) => item.id !== user?.id)?.id || '');
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadDirectory();
+  }, [loadDirectory]);
+
   useEffect(() => {
     const socket = io(realtimeUrl, {
       transports: ['websocket', 'polling'],
@@ -281,12 +305,47 @@ export const Dashboard: React.FC = () => {
     socket.on('connect_error', () => {
       setUnitLoadError('Live unit stream unavailable. Retrying connection.');
     });
+    socket.on('presence:update', (presence: { onlineUserIds: string[]; users: User[] }) => {
+      setOnlineUserIds(presence.onlineUserIds || []);
+      setDirectory(presence.users || []);
+    });
+    socket.on('message:new', (message: ChatMessage) => {
+      setMessages((current) => {
+        const belongsToSelected =
+          message.senderId === selectedMessageUserId ||
+          message.recipientId === selectedMessageUserId ||
+          message.senderId === user?.id ||
+          message.recipientId === user?.id;
+        if (!belongsToSelected || current.some((item) => item.id === message.id)) {
+          return current;
+        }
+        return [...current, message];
+      });
+    });
 
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, []);
+  }, [selectedMessageUserId, user?.id]);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    const token = authClient.getAccessToken();
+    if (socket && token) {
+      socket.auth = { token };
+      socket.disconnect().connect();
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!selectedMessageUserId) {
+      setMessages([]);
+      return;
+    }
+
+    authClient.getMessages(selectedMessageUserId).then(setMessages).catch(() => setMessages([]));
+  }, [selectedMessageUserId]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -421,6 +480,21 @@ export const Dashboard: React.FC = () => {
     if (isTrackedUnit(updatedUser)) {
       setUnits((currentUnits) => [updatedUser, ...currentUnits.filter((unit) => unit.id !== updatedUser.id)]);
     }
+  };
+
+  const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
+  const visibleMessages = messages.filter(
+    (message) =>
+      (message.senderId === user?.id && message.recipientId === selectedMessageUserId) ||
+      (message.senderId === selectedMessageUserId && message.recipientId === user?.id)
+  );
+
+  const sendChatMessage = async () => {
+    if (!selectedMessageUserId || !messageBody.trim()) return;
+    const sent = await authClient.sendMessage(selectedMessageUserId, messageBody);
+    setMessages((current) => [...current.filter((item) => item.id !== sent.id), sent]);
+    setMessageBody('');
+    setEmojiOpen(false);
   };
 
   return (
@@ -584,7 +658,8 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="min-h-0 rounded-lg border border-cad-line bg-white shadow-control">
+            <div className="flex min-h-0 flex-col gap-4">
+            <div className="rounded-lg border border-cad-line bg-white shadow-control">
               <div className="border-b border-cad-line p-4">
                 <h2 className="text-lg font-bold">Unit Detail</h2>
                 <p className="mt-1 text-sm text-slate-600">
@@ -669,6 +744,132 @@ export const Dashboard: React.FC = () => {
                   </p>
                 )}
               </div>
+            </div>
+
+            <div className="min-h-[420px] rounded-lg border border-cad-line bg-white shadow-control">
+              <div className="flex items-center justify-between border-b border-cad-line p-4">
+                <div>
+                  <h2 className="text-lg font-bold">Messages</h2>
+                  <p className="mt-1 text-sm text-slate-600">Live direct user messaging</p>
+                </div>
+                <MessageCircle className="text-cad-blue" size={22} />
+              </div>
+
+              <div className="grid min-h-[360px] grid-cols-[150px_1fr]">
+                <div className="border-r border-cad-line">
+                  {directory
+                    .filter((item) => item.id !== user?.id)
+                    .map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedMessageUserId(item.id)}
+                        className={`w-full border-b border-slate-100 px-3 py-3 text-left text-sm ${
+                          selectedMessageUserId === item.id ? 'bg-blue-50' : 'bg-white hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 font-semibold">
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${
+                              onlineUserIds.includes(item.id) ? 'bg-emerald-500' : 'bg-slate-300'
+                            }`}
+                          />
+                          <span className="truncate">{item.name}</span>
+                        </span>
+                        <span className="mt-1 block truncate text-xs text-slate-500">
+                          {item.status || 'No status'}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+
+                <div className="flex min-w-0 flex-col">
+                  <div className="border-b border-cad-line px-4 py-3">
+                    {selectedMessageUser ? (
+                      <>
+                        <p className="text-sm font-bold">{selectedMessageUser.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {onlineUserIds.includes(selectedMessageUser.id)
+                            ? 'Online'
+                            : `Last seen ${formatDateTime(selectedMessageUser.lastSeenAt)}`}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {selectedMessageUser.lat !== undefined && selectedMessageUser.lon !== undefined
+                            ? `${selectedMessageUser.lat.toFixed(4)}, ${selectedMessageUser.lon.toFixed(4)}`
+                            : 'No shared location'}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-slate-500">Select a user</p>
+                    )}
+                  </div>
+
+                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
+                    {visibleMessages.map((message) => {
+                      const mine = message.senderId === user?.id;
+                      return (
+                        <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                          <div
+                            className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                              mine ? 'bg-cad-blue text-white' : 'bg-slate-100 text-cad-ink'
+                            }`}
+                          >
+                            <p>{message.body}</p>
+                            <p className={`mt-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
+                              {formatDateTime(message.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="border-t border-cad-line p-3">
+                    {emojiOpen && (
+                      <div className="mb-2 flex flex-wrap gap-1 rounded-md border border-cad-line bg-slate-50 p-2">
+                        {['😀', '👍', '🚓', '🚑', '🚒', '📍', '✅', '⚠️', '❗', '🙏'].map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => setMessageBody((value) => `${value}${emoji}`)}
+                            className="rounded px-2 py-1 text-lg hover:bg-white"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEmojiOpen((value) => !value)}
+                        className="rounded-md border border-cad-line px-3 py-2 text-sm"
+                      >
+                        🙂
+                      </button>
+                      <input
+                        value={messageBody}
+                        onChange={(event) => setMessageBody(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            sendChatMessage();
+                          }
+                        }}
+                        placeholder="Type a message"
+                        className="min-w-0 flex-1 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={sendChatMessage}
+                        className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
             </div>
           </section>
         </main>

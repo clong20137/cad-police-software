@@ -23,6 +23,7 @@ export interface User {
   destinationLon?: number;
   destinationLabel?: string;
   lastLocationAt?: Date;
+  lastSeenAt?: Date;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -76,6 +77,20 @@ export interface DestinationUpdateRequest {
   destinationLat: number | null;
   destinationLon: number | null;
   destinationLabel?: string | null;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  body: string;
+  readAt?: Date;
+  createdAt: Date;
+}
+
+export interface SendMessageRequest {
+  recipientId: string;
+  body: string;
 }
 
 export interface RefreshTokenRequest {

@@ -2,8 +2,12 @@ import { Server as HttpServer } from 'http';
 import { Server } from 'socket.io';
 import { AuthService } from '../services/AuthService';
 import { securityConfig } from '../config/security';
+import { ChatMessage } from '../types/auth';
+import jwt from 'jsonwebtoken';
+import { AuthPayload } from '../types/auth';
 
 let io: Server | null = null;
+const onlineUsers = new Map<string, number>();
 
 export const initializeRealtime = (server: HttpServer): Server => {
   io = new Server(server, {
@@ -13,12 +17,69 @@ export const initializeRealtime = (server: HttpServer): Server => {
     }
   });
 
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token;
+    if (!token || typeof token !== 'string') {
+      next();
+      return;
+    }
+
+    try {
+      const user = jwt.verify(token, securityConfig.jwtSecret) as AuthPayload;
+      socket.data.userId = user.id;
+      next();
+    } catch {
+      next();
+    }
+  });
+
   io.on('connection', async (socket) => {
     socket.join('units');
+    if (socket.data.userId) {
+      socket.join(`user:${socket.data.userId}`);
+      onlineUsers.set(socket.data.userId, (onlineUsers.get(socket.data.userId) || 0) + 1);
+      await AuthService.touchLastSeen(socket.data.userId);
+      await broadcastPresence();
+    }
     socket.emit('units:update', await AuthService.getTrackedUnits());
+
+    socket.on('disconnect', async () => {
+      if (!socket.data.userId) {
+        return;
+      }
+
+      const count = Math.max((onlineUsers.get(socket.data.userId) || 1) - 1, 0);
+      if (count === 0) {
+        onlineUsers.delete(socket.data.userId);
+        await AuthService.touchLastSeen(socket.data.userId);
+      } else {
+        onlineUsers.set(socket.data.userId, count);
+      }
+      await broadcastPresence();
+    });
   });
 
   return io;
+};
+
+export const broadcastMessage = (message: ChatMessage): void => {
+  if (!io) {
+    return;
+  }
+
+  io.to(`user:${message.senderId}`).emit('message:new', message);
+  io.to(`user:${message.recipientId}`).emit('message:new', message);
+};
+
+export const broadcastPresence = async (): Promise<void> => {
+  if (!io) {
+    return;
+  }
+
+  io.emit('presence:update', {
+    onlineUserIds: Array.from(onlineUsers.keys()),
+    users: await AuthService.getUsers()
+  });
 };
 
 export const broadcastTrackedUnits = async (): Promise<void> => {

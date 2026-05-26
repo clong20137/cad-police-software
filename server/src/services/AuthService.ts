@@ -41,6 +41,7 @@ const toUser = (row: UserRow): User => ({
   destinationLon: row.destination_lon === null ? undefined : Number(row.destination_lon),
   destinationLabel: row.destination_label || undefined,
   lastLocationAt: row.last_location_at || undefined,
+  lastSeenAt: row.last_seen_at || undefined,
   active: Boolean(row.active),
   createdAt: row.created_at,
   updatedAt: row.updated_at
@@ -215,6 +216,10 @@ export class AuthService {
       'SELECT * FROM users ORDER BY created_at DESC LIMIT 200'
     );
     return rows.map(toUser);
+  }
+
+  static async touchLastSeen(userId: string): Promise<void> {
+    await pool.execute('UPDATE users SET last_seen_at = UTC_TIMESTAMP() WHERE id = ?', [userId]);
   }
 
   static async getTrackedUnits(): Promise<User[]> {
