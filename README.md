@@ -54,7 +54,7 @@ npm run dev
 
 This runs both frontend and backend concurrently:
 - Frontend: http://localhost:3000
-- Backend: http://localhost:5000
+- Backend: http://localhost:5001
 
 ### Demo Credentials
 
@@ -171,7 +171,7 @@ Set these in production:
 
 ```env
 NODE_ENV=production
-BACKEND_PORT=5000
+BACKEND_PORT=5001
 JWT_SECRET=your-very-secure-random-secret
 REFRESH_TOKEN_SECRET=your-very-secure-random-secret
 FRONTEND_URL=https://yourdomain.com

@@ -11,7 +11,7 @@ npm install
 
 2. Create `.env.local` file (optional):
 ```env
-REACT_APP_API_URL=http://localhost:5000/api
+REACT_APP_API_URL=http://localhost:5001/api
 ```
 
 ## Scripts
@@ -95,10 +95,10 @@ export const MyComponent: React.FC = () => {
 ## Environment Variables
 
 ```env
-REACT_APP_API_URL=http://localhost:5000/api
+REACT_APP_API_URL=http://localhost:5001/api
 ```
 
-Default: `http://localhost:5000/api`
+Default: `http://localhost:5001/api`
 
 ## TypeScript
 

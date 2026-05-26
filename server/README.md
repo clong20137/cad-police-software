@@ -57,7 +57,7 @@ cp .env.example .env
 ## Environment Variables
 
 ```env
-BACKEND_PORT=5000
+BACKEND_PORT=5001
 JWT_SECRET=your-super-secret-jwt-key-change-in-production
 REFRESH_TOKEN_SECRET=your-super-secret-refresh-token-key-change-in-production
 NODE_ENV=development
@@ -79,7 +79,7 @@ For development, these users are pre-created:
 ### Login
 
 ```bash
-curl -X POST http://localhost:5000/api/auth/login \
+curl -X POST http://localhost:5001/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@dispatch.local","password":"admin123"}'
 ```
@@ -87,7 +87,7 @@ curl -X POST http://localhost:5000/api/auth/login \
 ### Refresh Token
 
 ```bash
-curl -X POST http://localhost:5000/api/auth/refresh \
+curl -X POST http://localhost:5001/api/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{"refreshToken":"<token>"}'
 ```
@@ -95,6 +95,6 @@ curl -X POST http://localhost:5000/api/auth/refresh \
 ### Get Current User
 
 ```bash
-curl -X GET http://localhost:5000/api/auth/me \
+curl -X GET http://localhost:5001/api/auth/me \
   -H "Authorization: Bearer <access_token>"
 ```

@@ -15,7 +15,7 @@ Your full-stack CAD (Computer-Aided Dispatch) system is ready to use!
   - Strict CSP headers
   - Express middleware for auth and error handling
   - In-memory user storage with demo users
-- **Port**: 5000
+- **Port**: 5001
 - **Status**: Built and ready
 
 ### ✅ Frontend (React + TypeScript)
@@ -53,7 +53,7 @@ npm run dev
 
 Both will start automatically:
 - Frontend: http://localhost:3000
-- Backend: http://localhost:5000
+- Backend: http://localhost:5001
 
 ### 3. Login with Demo Credentials
 
@@ -175,7 +175,7 @@ Open Command Palette (Ctrl+Shift+P) and search for "Run Task":
 
 ### Backend (.env)
 ```env
-BACKEND_PORT=5000
+BACKEND_PORT=5001
 JWT_SECRET=development-secret-key-change-in-production
 REFRESH_TOKEN_SECRET=development-refresh-secret-key-change-in-production
 NODE_ENV=development
@@ -184,7 +184,7 @@ FRONTEND_URL=http://localhost:3000
 
 ### Frontend (.env.local)
 ```env
-REACT_APP_API_URL=http://localhost:5000/api
+REACT_APP_API_URL=http://localhost:5001/api
 ```
 
 ## API Endpoints

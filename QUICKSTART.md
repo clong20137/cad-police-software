@@ -41,7 +41,7 @@ npm run dev
 ### Start Only Backend
 ```powershell
 npm run server
-# Runs on http://localhost:5000
+# Runs on http://localhost:5001
 ```
 
 ### Start Only Frontend
@@ -135,7 +135,7 @@ Creates optimized builds in:
 
 | Problem | Solution |
 |---------|----------|
-| Port 3000/5000 in use | Change in `.env` files |
+| Port 3000/5001 in use | Change in `.env` files |
 | "Module not found" | Run `npm install` again |
 | Token errors | Verify `JWT_SECRET` in `.env` |
 | Build fails | Delete `node_modules/`, reinstall |
@@ -166,7 +166,7 @@ User Browser
      ↓ (https)
 React App (3000)
      ↓ (jwt token)
-Express Server (5000)
+Express Server (5001)
      ↓ (validates jwt + permissions)
 API Response
 ```
