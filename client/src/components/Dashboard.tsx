@@ -13,6 +13,7 @@ import {
   Users
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
 import { UnitStatus, User } from '../types/auth';
 
@@ -82,10 +83,8 @@ const markerPulseClass = {
   red: 'bg-red-500/60'
 };
 
-const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
-const realtimeUrl = process.env.REACT_APP_SOCKET_URL || apiUrl.replace(/\/api\/?$/, '');
-const googleMapsApiKey =
-  process.env.REACT_APP_GOOGLE_MAPS_API_KEY || process.env.REACT_APP_GOOGLE_API_KEY;
+const realtimeUrl = runtimeConfig.socketUrl;
+const googleMapsApiKey = runtimeConfig.googleMapsApiKey;
 
 const isTrackedUnit = (user: User): user is TrackedUnit =>
   typeof user.lat === 'number' && typeof user.lon === 'number';

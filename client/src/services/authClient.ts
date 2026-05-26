@@ -8,8 +8,9 @@ import {
   TokenPair,
   User
 } from '../types/auth';
+import { runtimeConfig } from '../config/runtimeConfig';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+const API_URL = runtimeConfig.apiUrl;
 
 interface StoredAuth {
   user: User;

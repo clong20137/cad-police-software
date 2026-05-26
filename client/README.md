@@ -105,6 +105,18 @@ Default: `http://localhost:5001/api`
 
 `REACT_APP_GOOGLE_API_KEY` or `REACT_APP_GOOGLE_MAPS_API_KEY` enables the dashboard Google Map. Without it, the dashboard shows a local coordinate map fallback. `REACT_APP_SOCKET_URL` controls the live unit WebSocket endpoint.
 
+## Runtime IIS Config
+
+After building and deploying to IIS, edit `config.js` in the deployed `cad` folder to change backend endpoints without rebuilding:
+
+```js
+window.CAD_CONFIG = {
+  API_URL: 'http://localhost:5001/api',
+  SOCKET_URL: 'http://localhost:5001',
+  GOOGLE_API_KEY: ''
+};
+```
+
 ## TypeScript
 
 - Strict mode enabled
