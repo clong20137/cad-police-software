@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Bell,
   ClipboardList,
   GripVertical,
   MessageCircle,
@@ -88,6 +89,7 @@ interface GoogleAutocompleteService {
 type TrackedUnit = User & { lat: number; lon: number };
 type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'map' | 'settings';
 type QuickLaunchSlot = QuickLaunchId | null;
+type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
 
 const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.ReactNode }> = [
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
@@ -271,7 +273,9 @@ const addGooglePulseMarker = ({
         container.type = 'button';
       }
 
-      container.className = `absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 text-xs font-bold shadow-lg ring-2 ${markerToneClass[tone]}`;
+      container.className = label
+        ? `absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 text-xs font-bold shadow-lg ring-2 ${markerToneClass[tone]}`
+        : `absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full p-0 shadow-lg ring-2 ${markerToneClass[tone]}`;
       container.style.cursor = onClick ? 'pointer' : 'default';
 
       const pulse = document.createElement('span');
@@ -279,7 +283,7 @@ const addGooglePulseMarker = ({
       container.appendChild(pulse);
 
       const pin = document.createElement('span');
-      pin.className = 'h-3 w-3 rounded-full bg-current ring-2 ring-white/70';
+      pin.className = label ? 'h-3 w-3 shrink-0 rounded-full bg-current ring-2 ring-white/70' : 'h-3 w-3 rounded-full bg-current';
       container.appendChild(pin);
 
       const text = document.createElement('span');
@@ -337,6 +341,10 @@ export const Dashboard: React.FC = () => {
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [selectedMessageUserId, setSelectedMessageUserId] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messageSearch, setMessageSearch] = useState('');
+  const [messageBadgeCount, setMessageBadgeCount] = useState(0);
+  const [callBadgeCount, setCallBadgeCount] = useState(0);
+  const [toasts, setToasts] = useState<ToastNotice[]>([]);
   const [messageBody, setMessageBody] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [emojiButton, setEmojiButton] = useState(() => emojiCatalog[Math.floor(Math.random() * emojiCatalog.length)] || '😀');
@@ -377,6 +385,8 @@ export const Dashboard: React.FC = () => {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const knownIncidentIdsRef = useRef<Set<string>>(new Set());
+  const initialIncidentsLoadedRef = useRef(false);
 
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
   const selectedIsCurrentUser = selectedUnit?.id === user?.id;
@@ -432,6 +442,8 @@ export const Dashboard: React.FC = () => {
   const loadIncidents = useCallback(async () => {
     try {
       const response = await authClient.getIncidents();
+      knownIncidentIdsRef.current = new Set(response.map((incident) => incident.id));
+      initialIncidentsLoadedRef.current = true;
       setIncidents(response);
       setIncidentError('');
       setSelectedIncidentId((current) => {
@@ -466,6 +478,35 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('cad_theme', theme);
   }, [theme]);
+
+  const playAlert = useCallback((kind: 'message' | 'call') => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const context = new AudioContextClass();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = kind === 'message' ? 'sine' : 'triangle';
+      oscillator.frequency.value = kind === 'message' ? 740 : 520;
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.22);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.24);
+    } catch {
+      // Browsers may block audio before user interaction.
+    }
+  }, []);
+
+  const pushToast = useCallback((notice: Omit<ToastNotice, 'id'>) => {
+    const id = `${Date.now()}-${Math.random()}`;
+    setToasts((current) => [{ ...notice, id }, ...current].slice(0, 5));
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((item) => item.id !== id));
+    }, 5200);
+  }, []);
 
   useEffect(() => {
     const query = incidentForm.address.trim();
@@ -521,16 +562,42 @@ export const Dashboard: React.FC = () => {
       setDirectory(presence.users || []);
     });
     socket.on('incidents:update', (nextIncidents: Incident[]) => {
-      setIncidents(nextIncidents || []);
+      const incoming = nextIncidents || [];
+      if (initialIncidentsLoadedRef.current) {
+        const newIncidents = incoming.filter((incident) => !knownIncidentIdsRef.current.has(incident.id));
+        if (newIncidents.length > 0) {
+          setCallBadgeCount((count) => count + newIncidents.length);
+          playAlert('call');
+          pushToast({
+            title: 'New call',
+            message: `${newIncidents[0].callNumber} ${newIncidents[0].type}`,
+            tone: newIncidents[0].priority === 'Emergency' || newIncidents[0].priority === 'High' ? 'warning' : 'info'
+          });
+        }
+      }
+      knownIncidentIdsRef.current = new Set(incoming.map((incident) => incident.id));
+      initialIncidentsLoadedRef.current = true;
+      setIncidents(incoming);
       setIncidentError('');
       setSelectedIncidentId((current) => {
-        if (current && nextIncidents.some((incident) => incident.id === current)) {
+        if (current && incoming.some((incident) => incident.id === current)) {
           return current;
         }
-        return nextIncidents[0]?.id || '';
+        return incoming[0]?.id || '';
       });
     });
     socket.on('message:new', (message: ChatMessage) => {
+      const incomingForMe = message.recipientId === user?.id && message.senderId !== user?.id;
+      if (incomingForMe) {
+        setMessageBadgeCount((count) => count + 1);
+        playAlert('message');
+        const sender = directory.find((item) => item.id === message.senderId);
+        pushToast({
+          title: 'New message',
+          message: `${sender?.name || 'Unit'}: ${message.body || `${message.attachments.length} attachment(s)`}`,
+          tone: 'info'
+        });
+      }
       setMessages((current) => {
         const belongsToSelected =
           message.senderId === selectedMessageUserId ||
@@ -555,7 +622,7 @@ export const Dashboard: React.FC = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [selectedMessageUserId, user?.id]);
+  }, [directory, playAlert, pushToast, selectedMessageUserId, user?.id]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -720,6 +787,14 @@ export const Dashboard: React.FC = () => {
       (message.senderId === user?.id && message.recipientId === selectedMessageUserId) ||
       (message.senderId === selectedMessageUserId && message.recipientId === user?.id)
   );
+  const searchedMessages = visibleMessages.filter((message) => {
+    const query = messageSearch.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      message.body.toLowerCase().includes(query) ||
+      message.attachments.some((attachment) => attachment.fileName.toLowerCase().includes(query))
+    );
+  });
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
 
   const sendChatMessage = async () => {
@@ -855,6 +930,12 @@ export const Dashboard: React.FC = () => {
   };
 
   const openQuickLaunch = (item: QuickLaunchId) => {
+    if (item === 'messages') {
+      setMessageBadgeCount(0);
+    }
+    if (item === 'calls' || item === 'new-call' || item === 'call-detail') {
+      setCallBadgeCount(0);
+    }
     if (item === 'settings') {
       setSettingsOpen(false);
     }
@@ -970,7 +1051,19 @@ export const Dashboard: React.FC = () => {
     if (activeQuickModal === 'messages') {
       return (
         <div className="grid min-h-[520px] overflow-hidden rounded-md border border-cad-line sm:grid-cols-[220px_1fr]">
-          <div className="max-h-[70vh] overflow-y-auto border-r border-cad-line bg-slate-50">
+          <div className="relative max-h-[70vh] overflow-y-auto border-r border-cad-line bg-slate-50 pb-20 dark:border-slate-700 dark:bg-slate-950">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedMessageUserId('');
+                setMessageBody('');
+                setMessageSearch('');
+              }}
+              className="sticky top-3 z-10 mx-3 mb-3 flex w-[calc(100%-1.5rem)] items-center justify-center gap-2 rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white shadow-lg"
+            >
+              <Send size={15} />
+              New Message
+            </button>
             {directory
               .filter((item) => item.id !== user?.id)
               .map((item) => (
@@ -978,8 +1071,8 @@ export const Dashboard: React.FC = () => {
                   key={item.id}
                   type="button"
                   onClick={() => setSelectedMessageUserId(item.id)}
-                  className={`w-full border-b border-slate-200 px-3 py-3 text-left text-sm ${
-                    selectedMessageUserId === item.id ? 'bg-blue-50' : 'hover:bg-white'
+                  className={`w-full border-b border-slate-200 px-3 py-3 text-left text-sm dark:border-slate-800 ${
+                    selectedMessageUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : 'hover:bg-white dark:hover:bg-slate-900'
                   }`}
                 >
                   <span className="flex items-center gap-2 font-semibold">
@@ -1015,6 +1108,12 @@ export const Dashboard: React.FC = () => {
                     </option>
                   ))}
               </select>
+              <input
+                value={messageSearch}
+                onChange={(event) => setMessageSearch(event.target.value)}
+                placeholder="Search messages or attachments"
+                className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
             </div>
             {selectedMessageUser ? (
               <>
@@ -1029,7 +1128,7 @@ export const Dashboard: React.FC = () => {
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-white p-4">
-                  {visibleMessages.map((message) => {
+                  {searchedMessages.map((message) => {
                     const mine = message.senderId === user?.id;
                     return (
                       <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
@@ -1067,14 +1166,14 @@ export const Dashboard: React.FC = () => {
                     );
                   })}
                 </div>
-                <div className="border-t border-cad-line p-3">
+                <div className="relative border-t border-cad-line p-3 dark:border-slate-700">
                   {emojiOpen && (
-                    <div className="mb-2 rounded-md border border-cad-line bg-slate-50 p-2">
+                    <div className="absolute bottom-16 left-3 z-30 w-80 rounded-lg border border-cad-line bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
                       <input
                         value={emojiSearch}
                         onChange={(event) => setEmojiSearch(event.target.value)}
                         placeholder="Search or paste any emoji"
-                        className="mb-2 w-full rounded-md border border-cad-line px-2 py-1 text-sm outline-none focus:border-cad-blue"
+                        className="mb-2 w-full rounded-md border border-cad-line px-2 py-1 text-sm outline-none focus:border-cad-blue dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                       />
                       <div className="grid max-h-36 grid-cols-8 gap-1 overflow-y-auto">
                         {filteredEmojis.map((emoji) => (
@@ -1548,6 +1647,7 @@ export const Dashboard: React.FC = () => {
         <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-xl border border-white/30 bg-cad-navy/95 p-2 shadow-2xl backdrop-blur md:grid-cols-8">
           {quickLaunchSlots.map((slot, index) => {
             const item = quickLaunchOptions.find((option) => option.id === slot);
+            const badgeCount = slot === 'messages' ? messageBadgeCount : slot === 'calls' || slot === 'call-detail' ? callBadgeCount : 0;
             return (
               <div
                 key={`quick-slot-${index}`}
@@ -1567,6 +1667,11 @@ export const Dashboard: React.FC = () => {
                   {item?.icon || <Settings size={18} />}
                   <span className="max-w-full truncate px-1">{item?.label || 'Empty'}</span>
                 </button>
+                {badgeCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-cad-navy">
+                    {badgeCount > 9 ? '9+' : badgeCount}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => setCustomizingSlot(index)}
@@ -1579,6 +1684,36 @@ export const Dashboard: React.FC = () => {
             );
           })}
         </div>
+      </div>
+
+      <div className="pointer-events-none fixed right-4 top-20 z-50 grid w-[min(24rem,calc(100vw-2rem))] gap-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto rounded-lg border p-3 shadow-2xl backdrop-blur animate-[dockModalIn_120ms_ease-out] ${
+              toast.tone === 'warning'
+                ? 'border-red-200 bg-red-50/95 text-red-950 dark:border-red-800 dark:bg-red-950/95 dark:text-white'
+                : toast.tone === 'success'
+                  ? 'border-emerald-200 bg-emerald-50/95 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/95 dark:text-white'
+                  : 'border-cad-line bg-white/95 text-cad-ink dark:border-slate-700 dark:bg-slate-900/95 dark:text-white'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <Bell size={18} className="mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-bold">{toast.title}</p>
+                <p className="mt-1 truncate text-sm">{toast.message}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))}
+                className="ml-auto rounded p-1 hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       {customizingSlot !== null && (
@@ -1777,7 +1912,9 @@ const FallbackMap: React.FC<{
           key={unit.id}
           type="button"
           onClick={() => onSelectUnit(unit)}
-          className={`absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 text-xs font-bold shadow-lg ring-2 ${
+          className={`absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-bold shadow-lg ring-2 ${
+            unit.id === currentUserId ? 'h-5 w-5 p-0' : 'gap-1 px-2 py-1'
+          } ${
             selectedUnit?.id === unit.id
               ? 'bg-cad-blue text-white ring-white'
               : 'bg-white text-cad-ink ring-slate-300'
