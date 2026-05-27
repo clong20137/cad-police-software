@@ -92,6 +92,11 @@ export interface SendMessageAttachment {
   dataUrl: string;
 }
 
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export type IncidentPriority = 'Low' | 'Normal' | 'High' | 'Emergency';
 export type IncidentStatus = 'Pending' | 'Dispatched' | 'En Route' | 'On Scene' | 'Closed' | 'Canceled';
 export type IncidentUnitStatus = 'Assigned' | 'En Route' | 'On Scene' | 'Cleared';

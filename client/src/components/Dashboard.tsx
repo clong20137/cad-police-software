@@ -6,7 +6,6 @@ import {
   ChevronRight,
   ChevronUp,
   ClipboardList,
-  Crosshair,
   GripVertical,
   MessageCircle,
   Layers,
@@ -19,6 +18,8 @@ import {
   Settings,
   Shield,
   CheckCheck,
+  Moon,
+  Sun,
   X,
   Users
 } from 'lucide-react';
@@ -301,13 +302,19 @@ export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    localStorage.getItem('cad_theme') === 'dark' ? 'dark' : 'light'
+  );
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [passwordMessage, setPasswordMessage] = useState('');
   const [callsOverlayOpen, setCallsOverlayOpen] = useState(true);
   const [callDetailOpen, setCallDetailOpen] = useState(true);
   const [unitDetailOpen, setUnitDetailOpen] = useState(true);
   const [units, setUnits] = useState<TrackedUnit[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<string>('');
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
-  const [locationError, setLocationError] = useState<string>('');
+  const [, setLocationError] = useState<string>('');
   const [unitLoadError, setUnitLoadError] = useState<string>('');
   const [directory, setDirectory] = useState<User[]>([]);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
@@ -315,6 +322,7 @@ export const Dashboard: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageBody, setMessageBody] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [emojiButton, setEmojiButton] = useState(() => emojiCatalog[Math.floor(Math.random() * emojiCatalog.length)] || '😀');
   const [emojiSearch, setEmojiSearch] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<SendMessageAttachment[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -437,6 +445,10 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('cad_quick_launch_slots', JSON.stringify(quickLaunchSlots));
   }, [quickLaunchSlots]);
+
+  useEffect(() => {
+    localStorage.setItem('cad_theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const query = incidentForm.address.trim();
@@ -699,6 +711,33 @@ export const Dashboard: React.FC = () => {
     setMessageBody('');
     setPendingAttachments([]);
     setEmojiOpen(false);
+  };
+
+  const openEmojiPicker = () => {
+    setEmojiButton(emojiCatalog[Math.floor(Math.random() * emojiCatalog.length)] || '😀');
+    setEmojiOpen((value) => !value);
+  };
+
+  const changePassword = async () => {
+    if (passwordForm.newPassword.length < 8) {
+      setPasswordMessage('New password must be at least 8 characters.');
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordMessage('New passwords do not match.');
+      return;
+    }
+
+    try {
+      await authClient.changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword
+      });
+      setPasswordMessage('Password changed. Sign in again on other devices.');
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch {
+      setPasswordMessage('Unable to change password. Check your current password.');
+    }
   };
 
   const attachFiles = async (files: FileList | null) => {
@@ -1040,10 +1079,10 @@ export const Dashboard: React.FC = () => {
                     />
                     <button
                       type="button"
-                      onClick={() => setEmojiOpen((value) => !value)}
+                      onClick={openEmojiPicker}
                       className="rounded-md border border-cad-line px-3 py-2 text-sm"
                     >
-                      Emoji
+                      {emojiButton}
                     </button>
                     <button
                       type="button"
@@ -1173,7 +1212,7 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-slate-100 text-cad-ink">
+    <div className={`flex h-screen flex-col ${theme === 'dark' ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-100 text-cad-ink'}`}>
       <header className="flex min-h-16 items-center justify-between border-b border-slate-800 bg-cad-navy px-4 text-white">
         <div className="flex min-w-0 items-center gap-3">
           <div>
@@ -1185,6 +1224,14 @@ export const Dashboard: React.FC = () => {
         <div className="relative">
           <button
             type="button"
+            onClick={() => setTheme((value) => (value === 'dark' ? 'light' : 'dark'))}
+            className="mr-2 rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20"
+            aria-label="Toggle light dark mode"
+          >
+            {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
+          </button>
+          <button
+            type="button"
             onClick={() => setSettingsOpen((value) => !value)}
             className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20"
             aria-label="Settings"
@@ -1192,15 +1239,27 @@ export const Dashboard: React.FC = () => {
             <Settings size={19} />
           </button>
           {settingsOpen && (
-            <div className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-cad-line bg-white py-2 text-cad-ink shadow-xl">
+            <div className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-cad-line bg-white py-2 text-cad-ink shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
               <div className="border-b border-slate-100 px-3 py-2">
                 <p className="truncate text-sm font-semibold">{user?.name}</p>
                 <p className="truncate text-xs text-slate-500">{user?.email}</p>
               </div>
               <button
                 type="button"
+                onClick={() => {
+                  setChangePasswordOpen(true);
+                  setSettingsOpen(false);
+                  setPasswordMessage('');
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <Lock size={16} />
+                Change password
+              </button>
+              <button
+                type="button"
                 onClick={logout}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <LogOut size={16} />
                 Sign out
@@ -1246,7 +1305,7 @@ export const Dashboard: React.FC = () => {
         </button>
 
         <div
-          className={`absolute bottom-24 left-4 top-20 z-10 flex w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur transition-all duration-300 ease-out ${
+          className={`absolute bottom-24 left-4 top-20 z-10 flex w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
             sidebarOpen ? 'translate-x-0 opacity-100' : '-translate-x-[calc(100%+2rem)] opacity-0'
           }`}
         >
@@ -1270,8 +1329,8 @@ export const Dashboard: React.FC = () => {
                     setSelectedUnitId(unit.id);
                     setUnitDetailOpen(true);
                   }}
-                  className={`w-full border-b border-slate-100 p-3 text-left transition hover:bg-slate-50 ${
-                    selectedUnit?.id === unit.id ? 'bg-blue-50' : 'bg-white/70'
+                  className={`w-full border-b border-slate-100 p-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800 ${
+                    selectedUnit?.id === unit.id ? 'bg-blue-50 dark:bg-blue-950/50' : 'bg-white/70 dark:bg-slate-900/70'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -1286,18 +1345,6 @@ export const Dashboard: React.FC = () => {
                 </button>
               ))}
             </div>
-        </div>
-
-        <div className="absolute bottom-24 left-4 z-10 rounded-lg border border-cad-line bg-white/95 p-3 shadow-control backdrop-blur">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Crosshair size={16} className="text-cad-blue" />
-            Location Tracking
-          </div>
-          <p className="mt-1 text-xs text-slate-600">
-            {currentLocation
-              ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}`
-              : locationError || 'Waiting for browser location'}
-          </p>
         </div>
 
         <div className="absolute right-4 top-20 z-10 flex flex-col items-end gap-3">
@@ -1499,7 +1546,7 @@ export const Dashboard: React.FC = () => {
 
       {customizingSlot !== null && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-lg origin-bottom animate-[dockModalIn_220ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl">
+          <div className="w-full max-w-lg origin-bottom animate-[dockModalIn_220ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-cad-line p-4">
               <h2 className="text-lg font-bold">Customize Slot {customizingSlot + 1}</h2>
               <button type="button" onClick={() => setCustomizingSlot(null)} className="rounded-md p-2 hover:bg-slate-100">
@@ -1531,9 +1578,49 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
+      {changePasswordOpen && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4">
+          <div className="mb-20 w-full max-w-md origin-bottom animate-[dockModalIn_220ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-cad-line p-4 dark:border-slate-700">
+              <h2 className="text-lg font-bold">Change Password</h2>
+              <button type="button" onClick={() => setChangePasswordOpen(false)} className="rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid gap-3 p-4">
+              <input
+                type="password"
+                value={passwordForm.currentPassword}
+                onChange={(event) => setPasswordForm((value) => ({ ...value, currentPassword: event.target.value }))}
+                placeholder="Current password"
+                className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950"
+              />
+              <input
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={(event) => setPasswordForm((value) => ({ ...value, newPassword: event.target.value }))}
+                placeholder="New password"
+                className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950"
+              />
+              <input
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={(event) => setPasswordForm((value) => ({ ...value, confirmPassword: event.target.value }))}
+                placeholder="Confirm new password"
+                className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950"
+              />
+              {passwordMessage && <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{passwordMessage}</p>}
+              <button type="button" onClick={changePassword} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
+                Update Password
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeQuickModal && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4">
-          <div className="mb-20 w-full max-w-2xl origin-bottom animate-[dockModalIn_240ms_cubic-bezier(0.2,0.8,0.2,1)] rounded-lg border border-cad-line bg-white shadow-2xl">
+          <div className="mb-20 w-full max-w-2xl origin-bottom animate-[dockModalIn_240ms_cubic-bezier(0.2,0.8,0.2,1)] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-cad-line p-4">
               <h2 className="text-lg font-bold">{quickModalTitle}</h2>
               <button type="button" onClick={() => setActiveQuickModal(null)} className="rounded-md p-2 hover:bg-slate-100">
@@ -1553,7 +1640,7 @@ const MetricCard: React.FC<{ icon: React.ReactNode; label: string; value: number
   label,
   value
 }) => (
-  <div className="flex min-h-12 min-w-36 items-center justify-between rounded-md border border-cad-line bg-white/95 px-3 py-2 shadow-control backdrop-blur">
+  <div className="flex min-h-12 min-w-36 items-center justify-between rounded-md border border-cad-line bg-white/95 px-3 py-2 shadow-control backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
     <div className="flex min-w-0 items-center gap-2">
       <span className="text-cad-blue">{icon}</span>
       <p className="truncate text-xs font-semibold text-slate-600">{label}</p>
@@ -1570,8 +1657,8 @@ const OverlayPanel: React.FC<{
   className?: string;
   children: React.ReactNode;
 }> = ({ title, subtitle, open, onToggle, className = '', children }) => (
-  <div className={`overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur transition-all duration-300 ease-out ${className}`}>
-    <div className="flex items-center justify-between gap-3 border-b border-cad-line px-3 py-2">
+  <div className={`overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${className}`}>
+    <div className="flex items-center justify-between gap-3 border-b border-cad-line px-3 py-2 dark:border-slate-700">
       <div className="min-w-0">
         <h2 className="truncate text-sm font-bold">{title}</h2>
         {subtitle && <p className="truncate text-xs text-slate-600">{subtitle}</p>}
@@ -1579,7 +1666,7 @@ const OverlayPanel: React.FC<{
       <button
         type="button"
         onClick={onToggle}
-        className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50"
+        className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
         aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
       >
         {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -1598,7 +1685,7 @@ const OverlayPanel: React.FC<{
 );
 
 const Detail: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
-  <div className="grid grid-cols-[140px_1fr] gap-3 border-b border-slate-100 pb-3">
+  <div className="grid grid-cols-[140px_1fr] gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
     <dt className="font-semibold text-slate-500">{label}</dt>
     <dd className="font-medium text-cad-ink">{value}</dd>
   </div>

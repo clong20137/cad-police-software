@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import {
   ChatMessage,
+  ChangePasswordRequest,
   CreateIncidentRequest,
   Incident,
   IncidentStatus,
@@ -103,6 +104,10 @@ class AuthClient {
   ): Promise<ChatMessage> {
     const response = await this.api.post<ChatMessage>('/auth/messages', { recipientId, body, attachments });
     return response.data;
+  }
+
+  async changePassword(input: ChangePasswordRequest): Promise<void> {
+    await this.api.post('/auth/change-password', input);
   }
 
   async getIncidents(): Promise<Incident[]> {

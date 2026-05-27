@@ -6,6 +6,7 @@ import authRoutes from './routes/auth';
 import incidentRoutes from './routes/incidents';
 import { cspMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
+import { requestLogger } from './middleware/requestLogger';
 import { securityConfig } from './config/security';
 import { initializeDatabase } from './db/mysql';
 import { initializeRealtime } from './realtime/socket';
@@ -19,6 +20,7 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '12mb' }));
 app.use(cors({ origin: securityConfig.frontendUrl, credentials: true }));
 app.use(cspMiddleware);
+app.use(requestLogger);
 
 // Routes
 app.use('/api/auth', authRoutes);

@@ -124,3 +124,22 @@ CREATE TABLE IF NOT EXISTS incident_units (
     FOREIGN KEY (assigned_by) REFERENCES users(id)
     ON DELETE RESTRICT
 );
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NULL,
+  action VARCHAR(120) NOT NULL,
+  resource VARCHAR(120) NULL,
+  resource_id VARCHAR(120) NULL,
+  severity ENUM('info', 'warning', 'error', 'critical') NOT NULL DEFAULT 'info',
+  ip_address VARCHAR(64) NULL,
+  user_agent VARCHAR(255) NULL,
+  metadata JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_audit_logs_created_at (created_at),
+  INDEX idx_audit_logs_user_created (user_id, created_at),
+  INDEX idx_audit_logs_action_created (action, created_at),
+  CONSTRAINT fk_audit_logs_user_id
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE SET NULL
+);

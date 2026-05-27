@@ -108,6 +108,26 @@ export interface SendMessageRequest {
   }>;
 }
 
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export type AuditSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+export interface AuditLogEntry {
+  id: string;
+  userId?: string;
+  action: string;
+  resource?: string;
+  resourceId?: string;
+  severity: AuditSeverity;
+  ipAddress?: string;
+  userAgent?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+}
+
 export type IncidentPriority = 'Low' | 'Normal' | 'High' | 'Emergency';
 export type IncidentStatus = 'Pending' | 'Dispatched' | 'En Route' | 'On Scene' | 'Closed' | 'Canceled';
 export type IncidentUnitStatus = 'Assigned' | 'En Route' | 'On Scene' | 'Cleared';

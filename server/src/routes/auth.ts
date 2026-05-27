@@ -1,10 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
+import { AuditLogService } from '../services/AuditLogService';
 import { MessageService } from '../services/MessageService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
 import { broadcastMessage, broadcastMessageRead, broadcastPresence, broadcastTrackedUnits } from '../realtime/socket';
 import {
   DestinationUpdateRequest,
+  ChangePasswordRequest,
   LocationUpdateRequest,
   LoginRequest,
   RefreshTokenRequest,
@@ -75,6 +77,12 @@ router.post('/register', async (req: Request<{}, {}, RegisterRequest>, res: Resp
       group,
       district
     );
+    await AuditLogService.fromRequest(req, {
+      action: 'user_registered',
+      resource: 'user',
+      resourceId: user.id,
+      metadata: { email: user.email, role: user.role }
+    });
     const tokens = await AuthService.generateTokens(user);
     res.status(201).json({ success: true, user, tokens });
   } catch (error) {
@@ -99,11 +107,23 @@ router.post('/login', async (req: Request<{}, {}, LoginRequest>, res: Response):
 
     const user = await AuthService.authenticateUser(email, password);
     if (!user) {
+      await AuditLogService.fromRequest(req, {
+        action: 'login_failed',
+        resource: 'auth',
+        severity: 'warning',
+        metadata: { email }
+      });
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
 
     const tokens = await AuthService.generateTokens(user);
+    await AuditLogService.fromRequest(req, {
+      action: 'login_success',
+      resource: 'auth',
+      resourceId: user.id,
+      metadata: { email: user.email, role: user.role }
+    });
     res.json({ success: true, user, tokens });
   } catch (error) {
     res.status(500).json({ error: 'Login failed' });
@@ -148,9 +168,44 @@ router.post('/logout', authMiddleware, async (req: Request, res: Response): Prom
     if (typeof refreshToken === 'string') {
       await AuthService.revokeRefreshToken(req.user.id, refreshToken);
     }
+    await AuditLogService.fromRequest(req, {
+      action: 'logout',
+      resource: 'auth',
+      resourceId: req.user.id
+    });
     res.json({ success: true, message: 'Logged out' });
   }
 });
+
+router.post(
+  '/change-password',
+  authMiddleware,
+  async (req: Request<{}, {}, ChangePasswordRequest>, res: Response): Promise<void> => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword || newPassword.length < 8) {
+      res.status(400).json({ error: 'Current password and a new password of at least 8 characters are required' });
+      return;
+    }
+
+    const changed = await AuthService.changePassword(req.user?.id || '', currentPassword, newPassword);
+    if (!changed) {
+      await AuditLogService.fromRequest(req, {
+        action: 'password_change_failed',
+        resource: 'auth',
+        severity: 'warning'
+      });
+      res.status(400).json({ error: 'Current password is incorrect' });
+      return;
+    }
+
+    await AuditLogService.fromRequest(req, {
+      action: 'password_changed',
+      resource: 'auth',
+      severity: 'warning'
+    });
+    res.json({ success: true });
+  }
+);
 
 router.get(
   '/me',
@@ -173,6 +228,17 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const allUsers = await AuthService.getUsers();
     res.json(allUsers);
+  }
+);
+
+router.get(
+  '/audit-logs',
+  authMiddleware,
+  requirePermission('manage_system'),
+  async (req: Request, res: Response): Promise<void> => {
+    const limit = Number(req.query.limit || 200);
+    const logs = await AuditLogService.recent(limit);
+    res.json(logs);
   }
 );
 

@@ -137,6 +137,26 @@ export class AuthService {
     return passwordMatches ? toUser(user) : null;
   }
 
+  static async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean> {
+    const [rows] = await pool.execute<UserRow[]>('SELECT * FROM users WHERE id = ? LIMIT 1', [userId]);
+    const user = rows[0];
+    if (!user || !user.active) {
+      return false;
+    }
+
+    const passwordMatches = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!passwordMatches) {
+      return false;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await pool.execute('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
+    await pool.execute('UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL', [
+      userId
+    ]);
+    return true;
+  }
+
   static async createUser(
     email: string,
     name: string,
