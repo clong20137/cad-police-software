@@ -7,7 +7,6 @@ import {
   ChevronRight,
   ChevronUp,
   ClipboardList,
-  GripVertical,
   Lock,
   LogOut,
   MapPin,
@@ -27,9 +26,12 @@ import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
 import { ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, SendMessageAttachment, User } from '../types/auth';
+import { ChangePasswordModal } from './common/ChangePasswordModal';
+import { ModalShell } from './common/ModalShell';
+import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'location' | 'settings' | 'navigation' | 'status';
-type DockSlot = DockItem | null;
+type DockSlot = QuickLaunchSlot<DockItem>;
 
 interface OfficerGoogleMaps {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
@@ -937,29 +939,28 @@ export const OfficerDashboard: React.FC = () => {
         </div>
       </aside>
 
-      <QuickDock
+      <QuickLaunchDock
         slots={dockSlots}
+        options={dockItems}
         activeItem={activeDockItem}
-        messageBadgeCount={messageBadgeCount}
+        customizingSlot={customizingSlot}
+        badges={{ messages: messageBadgeCount }}
         onOpen={openDockItem}
         onCustomize={setCustomizingSlot}
+        onAssignSlot={assignDockSlot}
         onDragStart={setDraggedSlotIndex}
         onDrop={swapDockSlots}
       />
 
-      {activeDockItem && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/25 p-4 backdrop-blur-sm sm:items-center" onMouseDown={() => setActiveDockItem(null)}>
-          <div
-            className="w-full max-w-3xl origin-bottom animate-[dockModalIn_160ms_ease-out] rounded-lg border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{dockItems.find((item) => item.id === activeDockItem)?.label}</h2>
-              <button type="button" onClick={() => setActiveDockItem(null)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="max-h-[70vh] overflow-auto p-4">
+      <ModalShell
+        title={activeDockItem ? dockItems.find((item) => item.id === activeDockItem)?.label || 'Quick Launch' : ''}
+        open={Boolean(activeDockItem)}
+        onClose={() => setActiveDockItem(null)}
+        maxWidthClass="max-w-3xl"
+        placement="center"
+        contentClassName="max-h-[70vh] overflow-auto p-4"
+      >
+        {activeDockItem ? (
               <DockContent
                 activeItem={activeDockItem}
                 incidents={assignedIncidents}
@@ -1006,100 +1007,17 @@ export const OfficerDashboard: React.FC = () => {
                 onSendMessage={sendMessage}
                 onAttachment={handleAttachment}
               />
-            </div>
-          </div>
-        </div>
-      )}
+        ) : null}
+      </ModalShell>
 
-      {customizingSlot !== null && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setCustomizingSlot(null);
-          }}
-        >
-          <div
-            className="w-full max-w-lg origin-bottom animate-[dockModalIn_220ms_ease-out] rounded-lg border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-800">
-              <h2 className="text-lg font-bold">Customize Slot {customizingSlot + 1}</h2>
-              <button type="button" onClick={() => setCustomizingSlot(null)} className="rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="grid gap-2 p-4 sm:grid-cols-2">
-              {dockItems.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => assignDockSlot(customizingSlot, option.id)}
-                  className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left text-sm font-semibold hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                >
-                  <span className="text-cad-blue">{option.icon}</span>
-                  {option.label}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => assignDockSlot(customizingSlot, null)}
-                className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              >
-                <X size={18} className="text-slate-500" />
-                Empty
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {changePasswordOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setChangePasswordOpen(false);
-          }}
-        >
-          <div
-            className="w-full max-w-md origin-center animate-[dockModalIn_120ms_ease-out] rounded-lg border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-800">
-              <h2 className="text-lg font-bold">Change Password</h2>
-              <button type="button" onClick={() => setChangePasswordOpen(false)} className="rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="grid gap-3 p-4">
-              <input
-                type="password"
-                value={passwordForm.currentPassword}
-                onChange={(event) => setPasswordForm((value) => ({ ...value, currentPassword: event.target.value }))}
-                placeholder="Current password"
-                className="rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-              />
-              <input
-                type="password"
-                value={passwordForm.newPassword}
-                onChange={(event) => setPasswordForm((value) => ({ ...value, newPassword: event.target.value }))}
-                placeholder="New password"
-                className="rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-              />
-              <input
-                type="password"
-                value={passwordForm.confirmPassword}
-                onChange={(event) => setPasswordForm((value) => ({ ...value, confirmPassword: event.target.value }))}
-                placeholder="Confirm new password"
-                className="rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-              />
-              {passwordMessage && <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{passwordMessage}</p>}
-              <button type="button" onClick={changePassword} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
-                Update Password
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ChangePasswordModal
+        open={changePasswordOpen}
+        form={passwordForm}
+        message={passwordMessage}
+        onClose={() => setChangePasswordOpen(false)}
+        onChange={setPasswordForm}
+        onSubmit={changePassword}
+      />
     </main>
   );
 };
@@ -1129,61 +1047,6 @@ const IncidentButton: React.FC<{
     <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{incident.address}</p>
     {status && <span className={`mt-3 inline-flex rounded-full px-2 py-1 text-xs font-bold ring-1 ${statusClasses[status]}`}>{status}</span>}
   </button>
-);
-
-const QuickDock: React.FC<{
-  slots: DockSlot[];
-  activeItem: DockItem | null;
-  messageBadgeCount: number;
-  onOpen: (item: DockItem) => void;
-  onCustomize: (index: number) => void;
-  onDragStart: (index: number) => void;
-  onDrop: (index: number) => void;
-}> = ({ slots, activeItem, messageBadgeCount, onOpen, onCustomize, onDragStart, onDrop }) => (
-  <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-3">
-    <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 text-slate-950 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 dark:text-white md:grid-cols-8">
-      {slots.map((slot, index) => {
-        const item = dockItems.find((option) => option.id === slot);
-        const badgeCount = slot === 'messages' ? messageBadgeCount : 0;
-        return (
-          <div
-            key={`officer-quick-slot-${index}`}
-            draggable
-            onDragStart={() => onDragStart(index)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() => onDrop(index)}
-            className="relative flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-950 transition hover:border-blue-200 hover:bg-blue-50 dark:border-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
-          >
-            <GripVertical className="absolute left-1 top-1 text-slate-400 dark:text-white/45" size={12} />
-            <button
-              type="button"
-              onClick={() => (item ? onOpen(item.id) : onCustomize(index))}
-              className={`flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-semibold ${
-                activeItem === item?.id ? 'text-cad-blue dark:text-blue-200' : ''
-              }`}
-              aria-label={item ? `Open ${item.label}` : `Customize slot ${index + 1}`}
-            >
-              {item?.icon || <Settings size={18} />}
-              <span className="max-w-full truncate px-1">{item?.label || 'Empty'}</span>
-            </button>
-            {badgeCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-white dark:ring-slate-950">
-                {badgeCount > 9 ? '9+' : badgeCount}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => onCustomize(index)}
-              className="absolute right-1 top-1 rounded bg-black/5 p-1 text-slate-500 hover:text-slate-950 dark:bg-white/10 dark:text-white/70 dark:hover:text-white"
-              aria-label={`Customize slot ${index + 1}`}
-            >
-              <Settings size={11} />
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  </div>
 );
 
 const DockContent: React.FC<{

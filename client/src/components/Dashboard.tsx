@@ -8,7 +8,6 @@ import {
   ChevronUp,
   Bell,
   ClipboardList,
-  GripVertical,
   MessageCircle,
   Layers,
   LogOut,
@@ -37,6 +36,9 @@ import {
   UnitStatus,
   User
 } from '../types/auth';
+import { ChangePasswordModal } from './common/ChangePasswordModal';
+import { ModalShell } from './common/ModalShell';
+import { QuickLaunchDock } from './common/QuickLaunchDock';
 
 declare global {
   interface Window {
@@ -2111,48 +2113,22 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-3">
-        <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-xl border border-cad-line bg-white/95 p-2 text-cad-ink shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 dark:text-white md:grid-cols-8">
-          {quickLaunchSlots.map((slot, index) => {
-            const item = quickLaunchOptions.find((option) => option.id === slot);
-            const badgeCount = slot === 'messages' ? messageBadgeCount : slot === 'calls' || slot === 'call-detail' ? callBadgeCount : 0;
-            return (
-              <div
-                key={`quick-slot-${index}`}
-                draggable
-                onDragStart={() => setDraggedSlotIndex(index)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => swapQuickLaunchSlots(index)}
-                className="relative flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-cad-ink transition hover:border-blue-200 hover:bg-blue-50 dark:border-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
-              >
-                <GripVertical className="absolute left-1 top-1 text-slate-400 dark:text-white/45" size={12} />
-                <button
-                  type="button"
-                  onClick={() => (item ? openQuickLaunch(item.id) : setCustomizingSlot(index))}
-                  className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-semibold"
-                  aria-label={item ? `Open ${item.label}` : `Customize slot ${index + 1}`}
-                >
-                  {item?.icon || <Settings size={18} />}
-                  <span className="max-w-full truncate px-1">{item?.label || 'Empty'}</span>
-                </button>
-                {badgeCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-white dark:ring-slate-950">
-                    {badgeCount > 9 ? '9+' : badgeCount}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setCustomizingSlot(index)}
-                  className="absolute right-1 top-1 rounded bg-black/5 p-1 text-slate-500 hover:text-cad-ink dark:bg-white/10 dark:text-white/70 dark:hover:text-white"
-                  aria-label={`Customize slot ${index + 1}`}
-                >
-                  <Settings size={11} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <QuickLaunchDock
+        slots={quickLaunchSlots}
+        options={quickLaunchOptions}
+        activeItem={activeQuickModal}
+        customizingSlot={customizingSlot}
+        badges={{
+          messages: messageBadgeCount,
+          calls: callBadgeCount,
+          'call-detail': callBadgeCount
+        }}
+        onOpen={openQuickLaunch}
+        onCustomize={setCustomizingSlot}
+        onAssignSlot={assignQuickLaunchSlot}
+        onDragStart={setDraggedSlotIndex}
+        onDrop={swapQuickLaunchSlots}
+      />
 
       <div className="pointer-events-none fixed right-4 top-20 z-50 grid w-[min(24rem,calc(100vw-2rem))] gap-2">
         {toasts.map((toast) => (
@@ -2184,121 +2160,25 @@ export const Dashboard: React.FC = () => {
         ))}
       </div>
 
-      {customizingSlot !== null && (
-        <div
-          className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setCustomizingSlot(null);
-          }}
-        >
-          <div
-            className="w-full max-w-lg origin-bottom animate-[dockModalIn_220ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-cad-line p-4">
-              <h2 className="text-lg font-bold">Customize Slot {customizingSlot + 1}</h2>
-              <button type="button" onClick={() => setCustomizingSlot(null)} className="rounded-md p-2 hover:bg-slate-100">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="grid gap-2 p-4 sm:grid-cols-2">
-              {quickLaunchOptions.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => assignQuickLaunchSlot(customizingSlot, option.id)}
-                  className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left text-sm font-semibold hover:bg-blue-50"
-                >
-                  <span className="text-cad-blue">{option.icon}</span>
-                  {option.label}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => assignQuickLaunchSlot(customizingSlot, null)}
-                className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left text-sm font-semibold hover:bg-slate-50"
-              >
-                <X size={18} className="text-slate-500" />
-                Empty
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ChangePasswordModal
+        open={changePasswordOpen}
+        form={passwordForm}
+        message={passwordMessage}
+        onClose={() => setChangePasswordOpen(false)}
+        onChange={setPasswordForm}
+        onSubmit={changePassword}
+      />
 
-      {changePasswordOpen && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 p-4"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setChangePasswordOpen(false);
-          }}
-        >
-          <div
-            className="w-full max-w-md origin-center animate-[dockModalIn_120ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-cad-line p-4 dark:border-slate-700">
-              <h2 className="text-lg font-bold">Change Password</h2>
-              <button type="button" onClick={() => setChangePasswordOpen(false)} className="rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="grid gap-3 p-4">
-              <input
-                type="password"
-                value={passwordForm.currentPassword}
-                onChange={(event) => setPasswordForm((value) => ({ ...value, currentPassword: event.target.value }))}
-                placeholder="Current password"
-                className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950"
-              />
-              <input
-                type="password"
-                value={passwordForm.newPassword}
-                onChange={(event) => setPasswordForm((value) => ({ ...value, newPassword: event.target.value }))}
-                placeholder="New password"
-                className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950"
-              />
-              <input
-                type="password"
-                value={passwordForm.confirmPassword}
-                onChange={(event) => setPasswordForm((value) => ({ ...value, confirmPassword: event.target.value }))}
-                placeholder="Confirm new password"
-                className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950"
-              />
-              {passwordMessage && <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{passwordMessage}</p>}
-              <button type="button" onClick={changePassword} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
-                Update Password
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeQuickModal && (
-        <div
-          className={`fixed inset-0 z-40 flex justify-center bg-slate-950/45 p-4 ${
-            activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'items-center' : 'items-end'
-          }`}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setActiveQuickModal(null);
-          }}
-        >
-          <div
-            className={`flex max-h-[calc(100vh-7rem)] w-full origin-bottom animate-[dockModalIn_120ms_cubic-bezier(0.2,0.8,0.2,1)] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${
-              activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'max-w-5xl' : 'mb-20 max-w-2xl'
-            }`}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="flex shrink-0 items-center justify-between border-b border-cad-line p-4">
-              <h2 className="text-lg font-bold">{quickModalTitle}</h2>
-              <button type="button" onClick={() => setActiveQuickModal(null)} className="rounded-md p-2 hover:bg-slate-100">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="min-h-0 overflow-hidden p-4">{renderQuickModalContent()}</div>
-          </div>
-        </div>
-      )}
+      <ModalShell
+        title={quickModalTitle}
+        open={Boolean(activeQuickModal)}
+        onClose={() => setActiveQuickModal(null)}
+        placement={activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'center' : 'bottom'}
+        maxWidthClass={activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'max-w-5xl' : 'mb-20 max-w-2xl'}
+        contentClassName="p-4 overflow-hidden"
+      >
+        {activeQuickModal ? renderQuickModalContent() : null}
+      </ModalShell>
     </div>
   );
 };
