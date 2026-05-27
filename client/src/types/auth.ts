@@ -110,6 +110,16 @@ export interface IncidentUnit {
   clearedAt?: Date;
 }
 
+export interface IncidentNote {
+  id: string;
+  incidentId: string;
+  userId?: string;
+  userName?: string;
+  noteType: 'note' | 'status' | 'assignment' | 'disposition';
+  body: string;
+  createdAt: Date;
+}
+
 export interface Incident {
   id: string;
   callNumber: string;
@@ -126,7 +136,9 @@ export interface Incident {
   createdAt: Date;
   updatedAt: Date;
   closedAt?: Date;
+  disposition?: string;
   units: IncidentUnit[];
+  notes: IncidentNote[];
 }
 
 export interface CreateIncidentRequest {
@@ -138,6 +150,16 @@ export interface CreateIncidentRequest {
   callerPhone?: string;
   lat?: number | null;
   lon?: number | null;
+}
+
+export interface AddIncidentNoteRequest {
+  body: string;
+  noteType?: IncidentNote['noteType'];
+}
+
+export interface UpdateIncidentStatusRequest {
+  status: IncidentStatus;
+  disposition?: string;
 }
 
 export interface UpdateUserRequest {

@@ -1,9 +1,11 @@
 import { ResultSetHeader } from 'mysql2';
 import { v4 as uuidv4 } from 'uuid';
-import { pool, IncidentRow, IncidentUnitRow } from '../db/mysql';
+import { pool, IncidentNoteRow, IncidentRow, IncidentUnitRow } from '../db/mysql';
 import {
+  AddIncidentNoteRequest,
   CreateIncidentRequest,
   Incident,
+  IncidentNote,
   IncidentPriority,
   IncidentStatus,
   IncidentUnit,
@@ -30,7 +32,17 @@ const toIncidentUnit = (row: IncidentUnitRow): IncidentUnit => ({
   clearedAt: row.cleared_at || undefined
 });
 
-const toIncident = (row: IncidentRow, units: IncidentUnit[] = []): Incident => ({
+const toIncidentNote = (row: IncidentNoteRow): IncidentNote => ({
+  id: row.id,
+  incidentId: row.incident_id,
+  userId: row.user_id || undefined,
+  userName: row.user_name || undefined,
+  noteType: row.note_type as IncidentNote['noteType'],
+  body: row.body,
+  createdAt: row.created_at
+});
+
+const toIncident = (row: IncidentRow, units: IncidentUnit[] = [], notes: IncidentNote[] = []): Incident => ({
   id: row.id,
   callNumber: row.call_number,
   type: row.type,
@@ -46,7 +58,9 @@ const toIncident = (row: IncidentRow, units: IncidentUnit[] = []): Incident => (
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   closedAt: row.closed_at || undefined,
-  units
+  disposition: row.disposition || undefined,
+  units,
+  notes
 });
 
 const isValidCoordinatePair = (lat?: number | null, lon?: number | null): boolean => {
@@ -142,7 +156,7 @@ export class IncidentService {
     return incident;
   }
 
-  static async updateStatus(id: string, status: IncidentStatus): Promise<Incident | null> {
+  static async updateStatus(id: string, status: IncidentStatus, disposition?: string, updatedBy?: string): Promise<Incident | null> {
     if (!statusValues.has(status)) {
       throw new Error('Invalid incident status');
     }
@@ -155,11 +169,21 @@ export class IncidentService {
     await pool.execute<ResultSetHeader>(
       `
         UPDATE incidents
-        SET status = ?, closed_at = CASE WHEN ? IN ('Closed', 'Canceled') THEN UTC_TIMESTAMP() ELSE NULL END
+        SET status = ?,
+            disposition = CASE WHEN ? IN ('Closed', 'Canceled') THEN ? ELSE disposition END,
+            closed_at = CASE WHEN ? IN ('Closed', 'Canceled') THEN UTC_TIMESTAMP() ELSE NULL END
         WHERE id = ?
       `,
-      [status, status, id]
+      [status, status, disposition?.trim() || null, status, id]
     );
+
+    await this.addNote(id, updatedBy || null, {
+      noteType: status === 'Closed' || status === 'Canceled' ? 'disposition' : 'status',
+      body:
+        status === 'Closed' || status === 'Canceled'
+          ? `${status}${disposition?.trim() ? `: ${disposition.trim()}` : ''}`
+          : `Status changed to ${status}`
+    });
 
     if (status === 'Closed' || status === 'Canceled') {
       await pool.execute(
@@ -245,6 +269,11 @@ export class IncidentService {
       [incidentId, userId, assignedBy, status]
     );
 
+    await this.addNote(incidentId, assignedBy, {
+      noteType: 'assignment',
+      body: `Unit ${userId} set to ${status}`
+    });
+
     const nextIncidentStatus = status === 'En Route' ? 'En Route' : status === 'On Scene' ? 'On Scene' : 'Dispatched';
     await pool.execute('UPDATE incidents SET status = ? WHERE id = ? AND status = ?', [
       nextIncidentStatus,
@@ -272,6 +301,48 @@ export class IncidentService {
     );
 
     return this.getIncident(incidentId);
+  }
+
+  static async addNote(
+    incidentId: string,
+    userId: string | null,
+    input: AddIncidentNoteRequest
+  ): Promise<IncidentNote | null> {
+    if (!input.body?.trim()) {
+      throw new Error('Note body is required');
+    }
+
+    const incident = await this.getIncident(incidentId);
+    if (!incident) {
+      return null;
+    }
+
+    const noteType = input.noteType || 'note';
+    const id = uuidv4();
+    await pool.execute(
+      `
+        INSERT INTO incident_notes (id, incident_id, user_id, note_type, body)
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      [id, incidentId, userId, noteType, input.body.trim()]
+    );
+
+    const notes = await this.getNotes(incidentId);
+    return notes.find((note) => note.id === id) || null;
+  }
+
+  static async getNotes(incidentId: string): Promise<IncidentNote[]> {
+    const [rows] = await pool.execute<IncidentNoteRow[]>(
+      `
+        SELECT incident_notes.*, users.name AS user_name
+        FROM incident_notes
+        LEFT JOIN users ON users.id = incident_notes.user_id
+        WHERE incident_notes.incident_id = ?
+        ORDER BY incident_notes.created_at ASC
+      `,
+      [incidentId]
+    );
+    return rows.map(toIncidentNote);
   }
 
   private static async nextCallNumber(): Promise<string> {
@@ -314,6 +385,22 @@ export class IncidentService {
       return groups;
     }, {});
 
-    return rows.map((row) => toIncident(row, unitsByIncident[row.id] || []));
+    const [noteRows] = await pool.execute<IncidentNoteRow[]>(
+      `
+        SELECT incident_notes.*, users.name AS user_name
+        FROM incident_notes
+        LEFT JOIN users ON users.id = incident_notes.user_id
+        WHERE incident_notes.incident_id IN (${placeholders})
+        ORDER BY incident_notes.created_at ASC
+      `,
+      incidentIds
+    );
+    const notesByIncident = noteRows.reduce<Record<string, IncidentNote[]>>((groups, noteRow) => {
+      groups[noteRow.incident_id] = groups[noteRow.incident_id] || [];
+      groups[noteRow.incident_id].push(toIncidentNote(noteRow));
+      return groups;
+    }, {});
+
+    return rows.map((row) => toIncident(row, unitsByIncident[row.id] || [], notesByIncident[row.id] || []));
   }
 }

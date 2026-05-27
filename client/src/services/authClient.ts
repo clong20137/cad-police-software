@@ -4,6 +4,7 @@ import {
   ChangePasswordRequest,
   CreateIncidentRequest,
   Incident,
+  IncidentNote,
   IncidentStatus,
   IncidentUnitStatus,
   LoginResponse,
@@ -14,6 +15,7 @@ import {
   ResetUserPasswordRequest,
   SendMessageAttachment,
   TokenPair,
+  UpdateIncidentStatusRequest,
   UpdateUserRequest,
   User
 } from '../types/auth';
@@ -141,8 +143,14 @@ class AuthClient {
     return response.data;
   }
 
-  async updateIncidentStatus(incidentId: string, status: IncidentStatus): Promise<Incident> {
-    const response = await this.api.patch<Incident>(`/incidents/${incidentId}/status`, { status });
+  async updateIncidentStatus(incidentId: string, status: IncidentStatus, disposition?: string): Promise<Incident> {
+    const input: UpdateIncidentStatusRequest = { status, disposition };
+    const response = await this.api.patch<Incident>(`/incidents/${incidentId}/status`, input);
+    return response.data;
+  }
+
+  async addIncidentNote(incidentId: string, body: string): Promise<IncidentNote> {
+    const response = await this.api.post<IncidentNote>(`/incidents/${incidentId}/notes`, { body, noteType: 'note' });
     return response.data;
   }
 

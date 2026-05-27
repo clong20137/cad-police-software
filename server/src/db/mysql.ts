@@ -230,6 +230,7 @@ export const initializeIncidentTables = async (): Promise<void> => {
       caller_phone VARCHAR(40) NULL,
       lat DECIMAL(10, 7) NULL,
       lon DECIMAL(10, 7) NULL,
+      disposition VARCHAR(255) NULL,
       created_by VARCHAR(36) NOT NULL,
       closed_at DATETIME NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -241,6 +242,14 @@ export const initializeIncidentTables = async (): Promise<void> => {
         ON DELETE RESTRICT
     )
   `);
+
+  try {
+    await pool.query('ALTER TABLE incidents ADD COLUMN disposition VARCHAR(255) NULL');
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'ER_DUP_FIELDNAME') {
+      throw error;
+    }
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS incident_units (
@@ -261,6 +270,24 @@ export const initializeIncidentTables = async (): Promise<void> => {
       CONSTRAINT fk_incident_units_assigned_by
         FOREIGN KEY (assigned_by) REFERENCES users(id)
         ON DELETE RESTRICT
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS incident_notes (
+      id VARCHAR(36) PRIMARY KEY,
+      incident_id VARCHAR(36) NOT NULL,
+      user_id VARCHAR(36) NULL,
+      note_type ENUM('note', 'status', 'assignment', 'disposition') NOT NULL DEFAULT 'note',
+      body TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_incident_notes_incident_created (incident_id, created_at),
+      CONSTRAINT fk_incident_notes_incident_id
+        FOREIGN KEY (incident_id) REFERENCES incidents(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_incident_notes_user_id
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE SET NULL
     )
   `);
 };
@@ -325,10 +352,21 @@ export type IncidentRow = RowDataPacket & {
   caller_phone: string | null;
   lat: string | number | null;
   lon: string | number | null;
+  disposition: string | null;
   created_by: string;
   closed_at: Date | null;
   created_at: Date;
   updated_at: Date;
+};
+
+export type IncidentNoteRow = RowDataPacket & {
+  id: string;
+  incident_id: string;
+  user_id: string | null;
+  user_name: string | null;
+  note_type: string;
+  body: string;
+  created_at: Date;
 };
 
 export type IncidentUnitRow = RowDataPacket & {

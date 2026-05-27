@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import {
   ChevronDown,
@@ -34,8 +35,7 @@ import {
   IncidentStatus,
   SendMessageAttachment,
   UnitStatus,
-  User,
-  UserRole
+  User
 } from '../types/auth';
 
 declare global {
@@ -106,7 +106,7 @@ interface GoogleAutocompleteService {
 }
 
 type TrackedUnit = User & { lat: number; lon: number };
-type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'map' | 'admin' | 'settings';
+type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'map' | 'settings';
 type QuickLaunchSlot = QuickLaunchId | null;
 type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
@@ -119,7 +119,6 @@ const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.
   { id: 'unit-detail', label: 'Unit', icon: <Radio size={18} /> },
   { id: 'call-detail', label: 'Call', icon: <Shield size={18} /> },
   { id: 'map', label: 'Map', icon: <MapPin size={18} /> },
-  { id: 'admin', label: 'Admin', icon: <Users size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
 ];
 
@@ -131,7 +130,7 @@ const defaultQuickLaunchSlots: QuickLaunchSlot[] = [
   'unit-detail',
   'call-detail',
   'map',
-  'admin'
+  'settings'
 ];
 
 const liveLocationHeartbeatMs = 5000;
@@ -403,22 +402,6 @@ export const Dashboard: React.FC = () => {
   const [, setLocationError] = useState<string>('');
   const [unitLoadError, setUnitLoadError] = useState<string>('');
   const [directory, setDirectory] = useState<User[]>([]);
-  const [adminUsers, setAdminUsers] = useState<User[]>([]);
-  const [selectedAdminUserId, setSelectedAdminUserId] = useState('');
-  const [adminUserForm, setAdminUserForm] = useState({
-    name: '',
-    role: UserRole.VIEWER,
-    badge: '',
-    unitNumber: '',
-    cadUnitNumber: '',
-    status: 'Available' as UnitStatus,
-    group: '',
-    district: '',
-    active: true
-  });
-  const [adminUserSearch, setAdminUserSearch] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [adminMessage, setAdminMessage] = useState('');
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [selectedMessageUserId, setSelectedMessageUserId] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -447,6 +430,8 @@ export const Dashboard: React.FC = () => {
   });
   const [incidentError, setIncidentError] = useState('');
   const [assignmentUnitId, setAssignmentUnitId] = useState('');
+  const [incidentNoteBody, setIncidentNoteBody] = useState('');
+  const [incidentDisposition, setIncidentDisposition] = useState('');
   const [quickLaunchSlots, setQuickLaunchSlots] = useState<QuickLaunchSlot[]>(() => {
     const stored = localStorage.getItem('cad_quick_launch_slots');
     if (!stored) return defaultQuickLaunchSlots;
@@ -569,23 +554,6 @@ export const Dashboard: React.FC = () => {
     loadDirectory();
   }, [loadDirectory]);
 
-  const loadAdminUsers = useCallback(async () => {
-    if (!hasPermission('manage_users')) return;
-    try {
-      const users = await authClient.getUsers();
-      setAdminUsers(users);
-      setSelectedAdminUserId((current) => current || users[0]?.id || '');
-      setAdminMessage('');
-    } catch {
-      setAdminMessage('Unable to load users.');
-    }
-  }, [hasPermission]);
-
-  useEffect(() => {
-    if (activeQuickModal === 'admin') {
-      loadAdminUsers();
-    }
-  }, [activeQuickModal, loadAdminUsers]);
 
   useEffect(() => {
     localStorage.setItem('cad_quick_launch_slots', JSON.stringify(quickLaunchSlots));
@@ -982,14 +950,6 @@ export const Dashboard: React.FC = () => {
   };
 
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
-  const selectedAdminUser = adminUsers.find((item) => item.id === selectedAdminUserId) || null;
-  const filteredAdminUsers = adminUsers.filter((item) => {
-    const query = adminUserSearch.trim().toLowerCase();
-    if (!query) return true;
-    return [item.name, item.email, item.role, item.badge, item.unitNumber, item.cadUnitNumber, item.group, item.district]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query));
-  });
   const messageThreads = directory.filter((item) => {
     if (item.id === user?.id) return false;
     const query = messageSearch.trim().toLowerCase();
@@ -1005,22 +965,6 @@ export const Dashboard: React.FC = () => {
   );
   const searchedMessages = visibleMessages;
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
-
-  useEffect(() => {
-    if (!selectedAdminUser) return;
-    setAdminUserForm({
-      name: selectedAdminUser.name,
-      role: selectedAdminUser.role,
-      badge: selectedAdminUser.badge || '',
-      unitNumber: selectedAdminUser.unitNumber || '',
-      cadUnitNumber: selectedAdminUser.cadUnitNumber || '',
-      status: selectedAdminUser.status || 'Available',
-      group: selectedAdminUser.group || '',
-      district: selectedAdminUser.district || '',
-      active: selectedAdminUser.active
-    });
-    setAdminPassword('');
-  }, [selectedAdminUser]);
 
   const sendChatMessage = async () => {
     if (!selectedMessageUserId || (!messageBody.trim() && pendingAttachments.length === 0)) return;
@@ -1055,49 +999,6 @@ export const Dashboard: React.FC = () => {
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch {
       setPasswordMessage('Unable to change password. Check your current password.');
-    }
-  };
-
-  const saveAdminUser = async () => {
-    if (!selectedAdminUser) return;
-    try {
-      const updatedUser = await authClient.updateUser(selectedAdminUser.id, {
-        name: adminUserForm.name,
-        role: adminUserForm.role,
-        badge: adminUserForm.badge || null,
-        unitNumber: adminUserForm.unitNumber || null,
-        cadUnitNumber: adminUserForm.cadUnitNumber || null,
-        status: adminUserForm.status || null,
-        group: adminUserForm.group || null,
-        district: adminUserForm.district || null,
-        active: adminUserForm.active
-      });
-      setAdminUsers((current) => current.map((item) => (item.id === updatedUser.id ? updatedUser : item)));
-      setDirectory((current) => current.map((item) => (item.id === updatedUser.id ? updatedUser : item)));
-      setUnits((current) =>
-        isTrackedUnit(updatedUser)
-          ? [updatedUser, ...current.filter((item) => item.id !== updatedUser.id)]
-          : current.filter((item) => item.id !== updatedUser.id)
-      );
-      setAdminMessage('User updated.');
-    } catch {
-      setAdminMessage('Unable to update user.');
-    }
-  };
-
-  const resetAdminPassword = async () => {
-    if (!selectedAdminUser) return;
-    if (adminPassword.length < 8) {
-      setAdminMessage('Password must be at least 8 characters.');
-      return;
-    }
-
-    try {
-      await authClient.resetUserPassword(selectedAdminUser.id, { newPassword: adminPassword });
-      setAdminPassword('');
-      setAdminMessage('Password reset. Existing sessions were revoked.');
-    } catch {
-      setAdminMessage('Unable to reset password.');
     }
   };
 
@@ -1218,14 +1119,24 @@ export const Dashboard: React.FC = () => {
 
   const updateIncidentStatus = async (status: IncidentStatus) => {
     if (!selectedIncident) return;
-    const incident = await authClient.updateIncidentStatus(selectedIncident.id, status);
+    const disposition = status === 'Closed' || status === 'Canceled' ? incidentDisposition : undefined;
+    const incident = await authClient.updateIncidentStatus(selectedIncident.id, status, disposition);
     setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+    setIncidentDisposition('');
   };
 
   const assignIncidentUnit = async () => {
     if (!selectedIncident || !assignmentUnitId) return;
     const incident = await authClient.assignIncidentUnit(selectedIncident.id, assignmentUnitId, 'Assigned');
     setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+  };
+
+  const addIncidentNote = async () => {
+    if (!selectedIncident || !incidentNoteBody.trim()) return;
+    await authClient.addIncidentNote(selectedIncident.id, incidentNoteBody);
+    const response = await authClient.getIncidents();
+    setIncidents(response);
+    setIncidentNoteBody('');
   };
 
   const assignQuickLaunchSlot = (index: number, value: QuickLaunchSlot) => {
@@ -1634,107 +1545,6 @@ export const Dashboard: React.FC = () => {
       return <p className="text-sm text-slate-600">The live map is centered on the dashboard.</p>;
     }
 
-    if (activeQuickModal === 'admin') {
-      if (!hasPermission('manage_users')) {
-        return <p className="text-sm font-medium text-red-600">You do not have permission to manage users.</p>;
-      }
-
-      return (
-        <div className="grid h-[min(72vh,720px)] min-h-[540px] overflow-hidden rounded-md border border-cad-line dark:border-slate-700 md:grid-cols-[260px_1fr]">
-          <div className="flex min-h-0 flex-col border-r border-cad-line bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
-            <div className="shrink-0 border-b border-cad-line p-3 dark:border-slate-700">
-              <input
-                value={adminUserSearch}
-                onChange={(event) => setAdminUserSearch(event.target.value)}
-                placeholder="Search users"
-                className="w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-              />
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {filteredAdminUsers.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setSelectedAdminUserId(item.id)}
-                  className={`w-full border-b border-slate-200 px-3 py-3 text-left text-sm dark:border-slate-800 ${
-                    selectedAdminUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : 'hover:bg-white dark:hover:bg-slate-900'
-                  }`}
-                >
-                  <span className="block truncate font-bold">{item.name}</span>
-                  <span className="mt-1 block truncate text-xs text-slate-500">{item.email}</span>
-                  <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    {item.role}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {selectedAdminUser ? (
-            <div className="min-h-0 overflow-y-auto bg-white p-4 dark:bg-slate-900">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-bold">{selectedAdminUser.name}</h3>
-                  <p className="text-sm text-slate-500">{selectedAdminUser.email}</p>
-                </div>
-                <label className="inline-flex items-center gap-2 rounded-full border border-cad-line px-3 py-1.5 text-sm font-semibold dark:border-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={adminUserForm.active}
-                    onChange={(event) => setAdminUserForm((value) => ({ ...value, active: event.target.checked }))}
-                  />
-                  Active
-                </label>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <input value={adminUserForm.name} onChange={(event) => setAdminUserForm((value) => ({ ...value, name: event.target.value }))} placeholder="Name" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-                <select value={adminUserForm.role} onChange={(event) => setAdminUserForm((value) => ({ ...value, role: event.target.value as UserRole }))} className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-                  {Object.values(UserRole).map((role) => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
-                </select>
-                <input value={adminUserForm.badge} onChange={(event) => setAdminUserForm((value) => ({ ...value, badge: event.target.value }))} placeholder="Badge" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-                <input value={adminUserForm.unitNumber} onChange={(event) => setAdminUserForm((value) => ({ ...value, unitNumber: event.target.value }))} placeholder="Unit number" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-                <input value={adminUserForm.cadUnitNumber} onChange={(event) => setAdminUserForm((value) => ({ ...value, cadUnitNumber: event.target.value }))} placeholder="CAD unit number" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-                <select value={adminUserForm.status} onChange={(event) => setAdminUserForm((value) => ({ ...value, status: event.target.value as UnitStatus }))} className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-                  {(['Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop'] as UnitStatus[]).map((status) => (
-                    <option key={status} value={status}>{status}</option>
-                  ))}
-                </select>
-                <input value={adminUserForm.group} onChange={(event) => setAdminUserForm((value) => ({ ...value, group: event.target.value }))} placeholder="Group" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-                <input value={adminUserForm.district} onChange={(event) => setAdminUserForm((value) => ({ ...value, district: event.target.value }))} placeholder="District" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-              </div>
-
-              <div className="mt-4 rounded-md border border-cad-line p-3 dark:border-slate-700">
-                <h4 className="text-sm font-bold">Reset Password</h4>
-                <div className="mt-3 flex gap-2">
-                  <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} placeholder="New password" className="min-w-0 flex-1 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-                  <button type="button" onClick={resetAdminPassword} className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold dark:border-slate-700">
-                    Reset
-                  </button>
-                </div>
-              </div>
-
-              {adminMessage && <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">{adminMessage}</p>}
-              <div className="mt-4 flex justify-end gap-2">
-                <button type="button" onClick={loadAdminUsers} className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold dark:border-slate-700">
-                  Refresh
-                </button>
-                <button type="button" onClick={saveAdminUser} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
-                  Save User
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center p-4 text-sm text-slate-600 dark:text-slate-300">
-              Select a user to manage.
-            </div>
-          )}
-        </div>
-      );
-    }
-
     return (
       <div className="space-y-3 text-sm text-slate-700">
         <p>{user?.name}</p>
@@ -1791,6 +1601,16 @@ export const Dashboard: React.FC = () => {
                 <Lock size={16} />
                 Change password
               </button>
+              {hasPermission('manage_users') && (
+                <Link
+                  to="/admin/users"
+                  onClick={() => setSettingsOpen(false)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <Users size={16} />
+                  User management
+                </Link>
+              )}
               <button
                 type="button"
                 onClick={logout}
@@ -1970,6 +1790,9 @@ export const Dashboard: React.FC = () => {
                 {selectedIncident.description && (
                   <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">{selectedIncident.description}</p>
                 )}
+                {selectedIncident.disposition && (
+                  <Detail label="Disposition" value={selectedIncident.disposition} />
+                )}
                 <div>
                   <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">Assigned Units</h3>
                   <div className="mt-2 space-y-2">
@@ -2000,7 +1823,7 @@ export const Dashboard: React.FC = () => {
                   </button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  {(['Dispatched', 'En Route', 'On Scene', 'Closed'] as IncidentStatus[]).map((status) => (
+                  {(['Dispatched', 'En Route', 'On Scene', 'Closed', 'Canceled'] as IncidentStatus[]).map((status) => (
                     <button
                       key={status}
                       type="button"
@@ -2010,6 +1833,38 @@ export const Dashboard: React.FC = () => {
                       {status}
                     </button>
                   ))}
+                </div>
+                <input
+                  value={incidentDisposition}
+                  onChange={(event) => setIncidentDisposition(event.target.value)}
+                  placeholder="Close/cancel disposition"
+                  className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                />
+                <div className="rounded-md border border-cad-line p-3">
+                  <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">Call Timeline</h3>
+                  <div className="mt-3 max-h-40 space-y-2 overflow-y-auto">
+                    {(selectedIncident.notes || []).length === 0 && <p className="text-sm text-slate-600">No notes yet.</p>}
+                    {(selectedIncident.notes || []).map((note) => (
+                      <div key={note.id} className="rounded-md bg-slate-50 p-2 text-sm">
+                        <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-500">
+                          <span>{note.noteType} {note.userName ? `by ${note.userName}` : ''}</span>
+                          <span>{formatDateTime(note.createdAt)}</span>
+                        </div>
+                        <p className="mt-1 text-slate-700">{note.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                    <input
+                      value={incidentNoteBody}
+                      onChange={(event) => setIncidentNoteBody(event.target.value)}
+                      placeholder="Add call note"
+                      className="min-w-0 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                    />
+                    <button type="button" onClick={addIncidentNote} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
+                      Add
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -2235,9 +2090,7 @@ export const Dashboard: React.FC = () => {
           }}
         >
           <div
-            className={`mb-20 flex max-h-[calc(100vh-7rem)] w-full origin-bottom animate-[dockModalIn_120ms_cubic-bezier(0.2,0.8,0.2,1)] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${
-              activeQuickModal === 'admin' ? 'max-w-5xl' : 'max-w-2xl'
-            }`}
+            className="mb-20 flex max-h-[calc(100vh-7rem)] w-full max-w-2xl origin-bottom animate-[dockModalIn_120ms_cubic-bezier(0.2,0.8,0.2,1)] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between border-b border-cad-line p-4">

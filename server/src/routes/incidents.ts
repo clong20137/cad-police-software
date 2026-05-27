@@ -4,6 +4,7 @@ import { broadcastIncidents, broadcastTrackedUnits } from '../realtime/socket';
 import { IncidentService } from '../services/IncidentService';
 import {
   AssignIncidentUnitRequest,
+  AddIncidentNoteRequest,
   CreateIncidentRequest,
   UpdateIncidentStatusRequest
 } from '../types/auth';
@@ -43,7 +44,7 @@ router.patch(
     res: Response
   ): Promise<void> => {
     try {
-      const incident = await IncidentService.updateStatus(req.params.id, req.body.status);
+      const incident = await IncidentService.updateStatus(req.params.id, req.body.status, req.body.disposition, req.user?.id);
       if (!incident) {
         res.status(404).json({ error: 'Incident not found' });
         return;
@@ -54,6 +55,26 @@ router.patch(
       res.json(incident);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message || 'Unable to update incident' });
+    }
+  }
+);
+
+router.post(
+  '/:id/notes',
+  authMiddleware,
+  requirePermission('update_dispatch'),
+  async (req: Request<{ id: string }, {}, AddIncidentNoteRequest>, res: Response): Promise<void> => {
+    try {
+      const note = await IncidentService.addNote(req.params.id, req.user?.id || null, req.body);
+      if (!note) {
+        res.status(404).json({ error: 'Incident not found' });
+        return;
+      }
+
+      await broadcastIncidents();
+      res.status(201).json(note);
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message || 'Unable to add note' });
     }
   }
 );
