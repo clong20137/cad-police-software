@@ -7,6 +7,8 @@ import {
   ChevronRight,
   ChevronUp,
   ClipboardList,
+  GripVertical,
+  Lock,
   LogOut,
   MapPin,
   MessageCircle,
@@ -26,6 +28,7 @@ import { authClient } from '../services/authClient';
 import { Incident, IncidentUnitStatus, User } from '../types/auth';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'location' | 'settings' | 'navigation' | 'status';
+type DockSlot = DockItem | null;
 
 interface OfficerGoogleMaps {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
@@ -35,6 +38,7 @@ interface OfficerGoogleMaps {
 
 interface GoogleMapInstance {
   setCenter: (location: { lat: number; lng: number }) => void;
+  setZoom: (zoom: number) => void;
   fitBounds: (bounds: GoogleLatLngBoundsInstance) => void;
 }
 
@@ -48,6 +52,7 @@ interface GoogleMarkerOptions {
 
 interface GoogleMarkerInstance {
   setMap: (map: GoogleMapInstance | null) => void;
+  setPosition: (position: { lat: number; lng: number }) => void;
 }
 
 interface GoogleLatLngBoundsInstance {
@@ -71,6 +76,7 @@ const dockItems: Array<{ id: DockItem; label: string; icon: React.ReactNode }> =
   { id: 'status', label: 'Status', icon: <Radio size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
 ];
+const defaultDockSlots: DockSlot[] = ['calls', 'call-detail', 'notes', 'messages', 'location', 'navigation', 'status', 'settings'];
 
 const priorityClasses: Record<Incident['priority'], string> = {
   Low: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
@@ -108,13 +114,30 @@ export const OfficerDashboard: React.FC = () => {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [activeDockItem, setActiveDockItem] = useState<DockItem | null>(null);
+  const [dockSlots, setDockSlots] = useState<DockSlot[]>(() => {
+    const stored = localStorage.getItem('cad_officer_quick_slots');
+    if (!stored) return defaultDockSlots;
+    try {
+      const parsed = JSON.parse(stored) as DockSlot[];
+      return parsed.length === 8 ? parsed : defaultDockSlots;
+    } catch {
+      return defaultDockSlots;
+    }
+  });
+  const [customizingSlot, setCustomizingSlot] = useState<number | null>(null);
+  const [draggedSlotIndex, setDraggedSlotIndex] = useState<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [passwordMessage, setPasswordMessage] = useState('');
   const [noteBody, setNoteBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null } | null>(null);
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
-  const mapMarkersRef = useRef<GoogleMarkerInstance[]>([]);
+  const selfMarkerRef = useRef<GoogleMarkerInstance | null>(null);
+  const callMarkersRef = useRef<Record<string, GoogleMarkerInstance>>({});
   const socketRef = useRef<Socket | null>(null);
 
   const assignedIncidents = useMemo(
@@ -134,8 +157,17 @@ export const OfficerDashboard: React.FC = () => {
   }, [loadIncidents]);
 
   useEffect(() => {
+    localStorage.setItem('cad_officer_quick_slots', JSON.stringify(dockSlots));
+  }, [dockSlots]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setActiveDockItem(null);
+      if (event.key === 'Escape') {
+        setActiveDockItem(null);
+        setCustomizingSlot(null);
+        setChangePasswordOpen(false);
+        setSettingsOpen(false);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -246,17 +278,15 @@ export const OfficerDashboard: React.FC = () => {
     const googleMaps = window.google?.maps as unknown as OfficerGoogleMaps | undefined;
     if (!map || !googleMaps) return;
 
-    mapMarkersRef.current.forEach((marker) => marker.setMap(null));
-    mapMarkersRef.current = [];
     const bounds = new googleMaps.LatLngBounds();
-    let hasBounds = false;
+    let hasCallBounds = false;
 
     if (currentLocation) {
       const location = { lat: currentLocation.lat, lng: currentLocation.lon };
-      bounds.extend(location);
-      hasBounds = true;
-      mapMarkersRef.current.push(
-        new googleMaps.Marker({
+      if (selfMarkerRef.current) {
+        selfMarkerRef.current.setPosition(location);
+      } else {
+        selfMarkerRef.current = new googleMaps.Marker({
           position: location,
           map,
           title: 'My location',
@@ -268,31 +298,93 @@ export const OfficerDashboard: React.FC = () => {
             strokeColor: '#ffffff',
             strokeWeight: 3
           }
-        })
-      );
+        });
+      }
     }
+
+    const activeCallIds = new Set(assignedIncidents.map((incident) => incident.id));
+    Object.entries(callMarkersRef.current).forEach(([incidentId, marker]) => {
+      if (!activeCallIds.has(incidentId)) {
+        marker.setMap(null);
+        delete callMarkersRef.current[incidentId];
+      }
+    });
 
     assignedIncidents.forEach((incident) => {
       if (incident.lat === undefined || incident.lon === undefined) return;
       const location = { lat: incident.lat, lng: incident.lon };
       bounds.extend(location);
-      hasBounds = true;
-      mapMarkersRef.current.push(
-        new googleMaps.Marker({
+      hasCallBounds = true;
+      if (callMarkersRef.current[incident.id]) {
+        callMarkersRef.current[incident.id].setPosition(location);
+        return;
+      }
+      callMarkersRef.current[incident.id] = new googleMaps.Marker({
           position: location,
           map,
           title: `${incident.callNumber} ${incident.type}`,
           label: incident.priority === 'Emergency' ? '!' : incident.callNumber.slice(-2)
-        })
-      );
+        });
     });
 
-    if (hasBounds) map.fitBounds(bounds);
+    if (hasCallBounds) {
+      if (currentLocation) bounds.extend({ lat: currentLocation.lat, lng: currentLocation.lon });
+      map.fitBounds(bounds);
+    } else if (currentLocation) {
+      map.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon });
+      map.setZoom(15);
+    }
   }, [assignedIncidents, currentLocation]);
 
   const recenterMap = () => {
     if (!currentLocation) return;
     mapInstanceRef.current?.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon });
+    mapInstanceRef.current?.setZoom(15);
+  };
+
+  const assignDockSlot = (index: number, value: DockSlot) => {
+    setDockSlots((current) => current.map((slot, slotIndex) => (slotIndex === index ? value : slot)));
+    setCustomizingSlot(null);
+  };
+
+  const swapDockSlots = (targetIndex: number) => {
+    if (draggedSlotIndex === null || draggedSlotIndex === targetIndex) return;
+    setDockSlots((current) => {
+      const next = [...current];
+      const source = next[draggedSlotIndex];
+      next[draggedSlotIndex] = next[targetIndex];
+      next[targetIndex] = source;
+      return next;
+    });
+    setDraggedSlotIndex(null);
+  };
+
+  const openDockItem = (item: DockItem) => {
+    if (item === 'settings') {
+      setSettingsOpen(false);
+    }
+    setActiveDockItem(item);
+  };
+
+  const changePassword = async () => {
+    if (passwordForm.newPassword.length < 12) {
+      setPasswordMessage('New password must be at least 12 characters.');
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordMessage('New passwords do not match.');
+      return;
+    }
+    try {
+      await authClient.changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword
+      });
+      setPasswordMessage('Password updated.');
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch {
+      setPasswordMessage('Unable to change password. Check your current password.');
+    }
   };
 
   const updateStatus = async (status: IncidentUnitStatus) => {
@@ -339,25 +431,55 @@ export const OfficerDashboard: React.FC = () => {
         )}
       </div>
 
-      <header className="pointer-events-none absolute left-4 right-4 top-4 z-20 flex items-center justify-between">
-        <div className="pointer-events-auto rounded-lg border border-slate-200 bg-white/95 px-4 py-3 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Officer CAD</p>
-          <h1 className="text-lg font-black">{user?.cadUnitNumber || user?.unitNumber || user?.badge || user?.name}</h1>
+      <header className="absolute left-0 right-0 top-0 z-30 flex min-h-16 items-center justify-between border-b border-slate-800 bg-cad-navy px-4 text-white shadow-xl">
+        <div>
+          <h1 className="text-xl font-semibold">Officer CAD</h1>
+          <p className="text-xs text-slate-300">{user?.cadUnitNumber || user?.unitNumber || user?.badge || user?.name}</p>
         </div>
-        <button
-          type="button"
-          onClick={logout}
-          className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-xl backdrop-blur hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200 dark:hover:bg-slate-800"
-          title="Sign out"
-        >
-          <LogOut size={18} />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen((value) => !value)}
+            className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20"
+            aria-label="Settings"
+          >
+            <Settings size={19} />
+          </button>
+          {settingsOpen && (
+            <div className="absolute right-0 z-40 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-2 text-slate-950 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+              <div className="border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+                <p className="truncate text-sm font-semibold">{user?.name}</p>
+                <p className="truncate text-xs text-slate-500 dark:text-slate-400">{user?.email}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setChangePasswordOpen(true);
+                  setSettingsOpen(false);
+                  setPasswordMessage('');
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <Lock size={16} />
+                Change password
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <LogOut size={16} />
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       <button
         type="button"
         onClick={recenterMap}
-        className="absolute bottom-24 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-cad-blue shadow-xl backdrop-blur hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200"
+        className="absolute bottom-4 left-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-cad-blue shadow-xl backdrop-blur hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200"
         title="My location"
       >
         <MapPin size={19} />
@@ -462,7 +584,14 @@ export const OfficerDashboard: React.FC = () => {
         </div>
       </aside>
 
-      <QuickDock activeItem={activeDockItem} onOpen={setActiveDockItem} />
+      <QuickDock
+        slots={dockSlots}
+        activeItem={activeDockItem}
+        onOpen={openDockItem}
+        onCustomize={setCustomizingSlot}
+        onDragStart={setDraggedSlotIndex}
+        onDrop={swapDockSlots}
+      />
 
       {activeDockItem && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/25 p-4 backdrop-blur-sm sm:items-center" onMouseDown={() => setActiveDockItem(null)}>
@@ -499,6 +628,96 @@ export const OfficerDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {customizingSlot !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setCustomizingSlot(null);
+          }}
+        >
+          <div
+            className="w-full max-w-lg origin-bottom animate-[dockModalIn_220ms_ease-out] rounded-lg border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-800">
+              <h2 className="text-lg font-bold">Customize Slot {customizingSlot + 1}</h2>
+              <button type="button" onClick={() => setCustomizingSlot(null)} className="rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid gap-2 p-4 sm:grid-cols-2">
+              {dockItems.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => assignDockSlot(customizingSlot, option.id)}
+                  className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left text-sm font-semibold hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                >
+                  <span className="text-cad-blue">{option.icon}</span>
+                  {option.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => assignDockSlot(customizingSlot, null)}
+                className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left text-sm font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              >
+                <X size={18} className="text-slate-500" />
+                Empty
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {changePasswordOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setChangePasswordOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md origin-center animate-[dockModalIn_120ms_ease-out] rounded-lg border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-800">
+              <h2 className="text-lg font-bold">Change Password</h2>
+              <button type="button" onClick={() => setChangePasswordOpen(false)} className="rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid gap-3 p-4">
+              <input
+                type="password"
+                value={passwordForm.currentPassword}
+                onChange={(event) => setPasswordForm((value) => ({ ...value, currentPassword: event.target.value }))}
+                placeholder="Current password"
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+              <input
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={(event) => setPasswordForm((value) => ({ ...value, newPassword: event.target.value }))}
+                placeholder="New password"
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+              <input
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={(event) => setPasswordForm((value) => ({ ...value, confirmPassword: event.target.value }))}
+                placeholder="Confirm new password"
+                className="rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+              {passwordMessage && <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{passwordMessage}</p>}
+              <button type="button" onClick={changePassword} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
+                Update Password
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
@@ -530,24 +749,52 @@ const IncidentButton: React.FC<{
   </button>
 );
 
-const QuickDock: React.FC<{ activeItem: DockItem | null; onOpen: (item: DockItem) => void }> = ({ activeItem, onOpen }) => (
-  <nav className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-    {dockItems.map((item) => (
-      <button
-        key={item.id}
-        type="button"
-        onClick={() => onOpen(item.id)}
-        className={`relative inline-flex h-12 w-12 items-center justify-center rounded-full transition ${
-          activeItem === item.id
-            ? 'bg-cad-blue text-white'
-            : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
-        }`}
-        title={item.label}
-      >
-        {item.icon}
-      </button>
-    ))}
-  </nav>
+const QuickDock: React.FC<{
+  slots: DockSlot[];
+  activeItem: DockItem | null;
+  onOpen: (item: DockItem) => void;
+  onCustomize: (index: number) => void;
+  onDragStart: (index: number) => void;
+  onDrop: (index: number) => void;
+}> = ({ slots, activeItem, onOpen, onCustomize, onDragStart, onDrop }) => (
+  <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-3">
+    <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 text-slate-950 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 dark:text-white md:grid-cols-8">
+      {slots.map((slot, index) => {
+        const item = dockItems.find((option) => option.id === slot);
+        return (
+          <div
+            key={`officer-quick-slot-${index}`}
+            draggable
+            onDragStart={() => onDragStart(index)}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => onDrop(index)}
+            className="relative flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-950 transition hover:border-blue-200 hover:bg-blue-50 dark:border-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
+          >
+            <GripVertical className="absolute left-1 top-1 text-slate-400 dark:text-white/45" size={12} />
+            <button
+              type="button"
+              onClick={() => (item ? onOpen(item.id) : onCustomize(index))}
+              className={`flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-semibold ${
+                activeItem === item?.id ? 'text-cad-blue dark:text-blue-200' : ''
+              }`}
+              aria-label={item ? `Open ${item.label}` : `Customize slot ${index + 1}`}
+            >
+              {item?.icon || <Settings size={18} />}
+              <span className="max-w-full truncate px-1">{item?.label || 'Empty'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onCustomize(index)}
+              className="absolute right-1 top-1 rounded bg-black/5 p-1 text-slate-500 hover:text-slate-950 dark:bg-white/10 dark:text-white/70 dark:hover:text-white"
+              aria-label={`Customize slot ${index + 1}`}
+            >
+              <Settings size={11} />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  </div>
 );
 
 const DockContent: React.FC<{
