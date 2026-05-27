@@ -90,9 +90,27 @@ export const initializeDatabase = async (): Promise<void> => {
   `);
 
   await seedInitialAdmin();
+  await initializeLocationHistoryTables();
   await initializeMessagingTables();
   await initializeIncidentTables();
   await initializeAuditLogTables();
+};
+
+export const initializeLocationHistoryTables = async (): Promise<void> => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_location_history (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      lat DECIMAL(10, 7) NOT NULL,
+      lon DECIMAL(10, 7) NOT NULL,
+      speed_mph DECIMAL(7, 2) NULL,
+      recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_location_history_user_recorded (user_id, recorded_at),
+      CONSTRAINT fk_location_history_user_id
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
+    )
+  `);
 };
 
 const seedInitialAdmin = async (): Promise<void> => {
@@ -338,6 +356,14 @@ export type UserRow = RowDataPacket & {
   active: number | boolean;
   created_at: Date;
   updated_at: Date;
+};
+
+export type LocationHistoryRow = RowDataPacket & {
+  user_id: string;
+  lat: string | number;
+  lon: string | number;
+  speed_mph: string | number | null;
+  recorded_at: Date;
 };
 
 export type IncidentRow = RowDataPacket & {

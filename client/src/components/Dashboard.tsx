@@ -44,6 +44,7 @@ declare global {
       maps: {
         Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
         InfoWindow: new (options: Record<string, unknown>) => GoogleInfoWindowInstance;
+        Polyline: new (options: GooglePolylineOptions) => GooglePolylineInstance;
         LatLng: new (lat: number, lng: number) => GoogleLatLngInstance;
         OverlayView: new () => GoogleOverlayViewInstance;
         Geocoder: new () => GoogleGeocoder;
@@ -66,6 +67,19 @@ interface GoogleMapInstance {
 interface GoogleInfoWindowInstance {
   open: (options: { map: GoogleMapInstance; position: { lat: number; lng: number } }) => void;
   addListener: (eventName: string, handler: () => void) => void;
+}
+
+interface GooglePolylineOptions {
+  path: Array<{ lat: number; lng: number }>;
+  geodesic?: boolean;
+  strokeColor?: string;
+  strokeOpacity?: number;
+  strokeWeight?: number;
+  map?: GoogleMapInstance;
+}
+
+interface GooglePolylineInstance {
+  setMap: (map: GoogleMapInstance | null) => void;
 }
 
 interface GoogleLatLngInstance {}
@@ -464,6 +478,7 @@ export const Dashboard: React.FC = () => {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
   const mapOverlaysRef = useRef<GoogleOverlayViewInstance[]>([]);
+  const mapPolylinesRef = useRef<GooglePolylineInstance[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
@@ -880,8 +895,23 @@ export const Dashboard: React.FC = () => {
       map.setOptions({ styles: theme === 'dark' ? darkMapStyles : [] });
       mapOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
       mapOverlaysRef.current = [];
+      mapPolylinesRef.current.forEach((polyline) => polyline.setMap(null));
+      mapPolylinesRef.current = [];
 
       units.forEach((unit) => {
+        const shouldShowTrail = displayStatus(unit) === 'En Route' && (unit.locationTrail?.length || 0) > 1;
+        if (shouldShowTrail && window.google?.maps.Polyline) {
+          const trail = unit.locationTrail || [];
+          const polyline = new window.google.maps.Polyline({
+            path: trail.map((point) => ({ lat: point.lat, lng: point.lon })),
+            geodesic: true,
+            strokeColor: unit.id === user?.id ? '#10b981' : '#2563eb',
+            strokeOpacity: 0.9,
+            strokeWeight: 4,
+            map
+          });
+          mapPolylinesRef.current.push(polyline);
+        }
         const messageButtonId = `message-unit-${unit.id}`;
         const infoWindow = new window.google!.maps.InfoWindow({
           content: `
@@ -912,7 +942,10 @@ export const Dashboard: React.FC = () => {
           map,
           lat: unit.lat,
           lon: unit.lon,
-          label: unit.id === user?.id ? '' : displayCadUnitNumber(unit),
+          label:
+            displayStatus(unit) === 'En Route'
+              ? `${unit.id === user?.id ? '' : `${displayCadUnitNumber(unit)} `}${(unit.speedMph || 0).toFixed(0)} mph`.trim()
+              : unit.id === user?.id ? '' : displayCadUnitNumber(unit),
           tone: markerTone(unit, user?.id, locationClock),
           onClick: () => {
             setSelectedUnitId(unit.id);
@@ -2258,6 +2291,32 @@ const FallbackMap: React.FC<{
       <div className="absolute inset-x-8 top-1/2 h-1 -translate-y-1/2 bg-slate-500/50" />
       <div className="absolute left-1/2 top-8 h-[calc(100%-4rem)] w-1 -translate-x-1/2 bg-slate-500/50" />
 
+      <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        {units
+          .filter((unit) => displayStatus(unit) === 'En Route' && (unit.locationTrail?.length || 0) > 1)
+          .map((unit) => {
+            const trail = unit.locationTrail || [];
+            const pointsValue = trail
+              .map((point) => {
+                const pos = position(point.lat, point.lon);
+                return `${parseFloat(pos.left)},${parseFloat(pos.top)}`;
+              })
+              .join(' ');
+            return (
+              <polyline
+                key={`${unit.id}-trail`}
+                points={pointsValue}
+                fill="none"
+                stroke={unit.id === currentUserId ? '#10b981' : '#60a5fa'}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.9"
+              />
+            );
+          })}
+      </svg>
+
       {units.map((unit) => (
         <button
           key={unit.id}
@@ -2282,6 +2341,11 @@ const FallbackMap: React.FC<{
             aria-hidden="true"
           />
           {unit.id === currentUserId ? '' : displayCadUnitNumber(unit)}
+          {displayStatus(unit) === 'En Route' && (
+            <span className="ml-1 rounded bg-slate-950/80 px-1 py-0.5 text-[10px] text-white">
+              {(unit.speedMph || 0).toFixed(0)} mph
+            </span>
+          )}
         </button>
       ))}
 

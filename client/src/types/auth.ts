@@ -19,6 +19,7 @@ export interface User {
   lat?: number;
   lon?: number;
   speedMph?: number;
+  locationTrail?: LocationTrailPoint[];
   destinationLat?: number;
   destinationLon?: number;
   destinationLabel?: string;
@@ -27,6 +28,13 @@ export interface User {
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface LocationTrailPoint {
+  lat: number;
+  lon: number;
+  speedMph?: number;
+  recordedAt: Date;
 }
 
 export type UnitStatus =

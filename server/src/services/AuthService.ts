@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { ResultSetHeader } from 'mysql2';
 import { securityConfig } from '../config/security';
-import { pool, UserRow } from '../db/mysql';
+import { pool, LocationHistoryRow, UserRow } from '../db/mysql';
 import {
   AuthPayload,
   Permission,
@@ -14,7 +14,8 @@ import {
   UnitStatus,
   UpdateUserRequest,
   User,
-  UserRole
+  UserRole,
+  LocationTrailPoint
 } from '../types/auth';
 
 const ACCESS_TOKEN_EXPIRY = '15m';
@@ -22,6 +23,8 @@ const REFRESH_TOKEN_EXPIRY = '7d';
 const REFRESH_TOKEN_DAYS = 7;
 const BCRYPT_ROUNDS = 12;
 const TRACKED_UNIT_RETENTION_MINUTES = 30;
+const LOCATION_TRAIL_MINUTES = 60;
+const LOCATION_TRAIL_LIMIT = 80;
 
 const tokenHash = (token: string): string =>
   crypto.createHash('sha256').update(token).digest('hex');
@@ -48,6 +51,13 @@ const toUser = (row: UserRow): User => ({
   active: Boolean(row.active),
   createdAt: row.created_at,
   updatedAt: row.updated_at
+});
+
+const toTrailPoint = (row: LocationHistoryRow): LocationTrailPoint => ({
+  lat: Number(row.lat),
+  lon: Number(row.lon),
+  speedMph: row.speed_mph === null ? undefined : Number(row.speed_mph),
+  recordedAt: row.recorded_at
 });
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
@@ -238,7 +248,8 @@ export class AuthService {
     const [rows] = await pool.execute<UserRow[]>(
       'SELECT * FROM users ORDER BY created_at DESC LIMIT 200'
     );
-    return rows.map(toUser);
+    const users = rows.map(toUser);
+    return this.withLocationTrails(users);
   }
 
   static async updateUser(userId: string, input: UpdateUserRequest): Promise<User | null> {
@@ -360,7 +371,52 @@ export class AuthService {
       `,
       [lat, lon, speedMph ?? null, userId]
     );
+    await pool.execute(
+      `
+        INSERT INTO user_location_history (user_id, lat, lon, speed_mph)
+        VALUES (?, ?, ?, ?)
+      `,
+      [userId, lat, lon, speedMph ?? null]
+    );
+    await pool.execute(
+      `
+        DELETE FROM user_location_history
+        WHERE recorded_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? MINUTE)
+      `,
+      [LOCATION_TRAIL_MINUTES]
+    );
     return this.getUser(userId);
+  }
+
+  private static async withLocationTrails(users: User[]): Promise<User[]> {
+    if (users.length === 0) return users;
+
+    const userIds = users.map((user) => user.id);
+    const placeholders = userIds.map(() => '?').join(',');
+    const [rows] = await pool.execute<LocationHistoryRow[]>(
+      `
+        SELECT *
+        FROM (
+          SELECT
+            user_location_history.*,
+            ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY recorded_at DESC) AS row_num
+          FROM user_location_history
+          WHERE user_id IN (${placeholders})
+            AND recorded_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? MINUTE)
+        ) recent_locations
+        WHERE row_num <= ?
+        ORDER BY user_id ASC, recorded_at ASC
+      `,
+      [...userIds, LOCATION_TRAIL_MINUTES, LOCATION_TRAIL_LIMIT]
+    );
+
+    const trailsByUser = rows.reduce<Record<string, LocationTrailPoint[]>>((groups, row) => {
+      groups[row.user_id] = groups[row.user_id] || [];
+      groups[row.user_id].push(toTrailPoint(row));
+      return groups;
+    }, {});
+
+    return users.map((user) => ({ ...user, locationTrail: trailsByUser[user.id] || [] }));
   }
 
   static async updateDestination(
