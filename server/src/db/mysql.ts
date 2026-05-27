@@ -323,8 +323,9 @@ export const initializeIncidentTables = async (): Promise<void> => {
       incident_id VARCHAR(36) NOT NULL,
       user_id VARCHAR(36) NOT NULL,
       assigned_by VARCHAR(36) NOT NULL,
-      status ENUM('Assigned', 'En Route', 'On Scene', 'Cleared') NOT NULL DEFAULT 'Assigned',
+      status ENUM('Assigned', 'Acknowledged', 'En Route', 'On Scene', 'Transporting', 'At Hospital', 'Staged', 'Loaded', 'Delivered', 'Cleared') NOT NULL DEFAULT 'Assigned',
       assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      status_updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       cleared_at DATETIME NULL,
       PRIMARY KEY (incident_id, user_id),
       INDEX idx_incident_units_user_id (user_id),
@@ -339,6 +340,8 @@ export const initializeIncidentTables = async (): Promise<void> => {
         ON DELETE RESTRICT
     )
   `);
+
+  await ensureIncidentUnitWorkflowColumns();
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS incident_notes (
@@ -357,6 +360,21 @@ export const initializeIncidentTables = async (): Promise<void> => {
         ON DELETE SET NULL
     )
   `);
+};
+
+const ensureIncidentUnitWorkflowColumns = async (): Promise<void> => {
+  try {
+    await pool.query('ALTER TABLE incident_units ADD COLUMN status_updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'ER_DUP_FIELDNAME') {
+      throw error;
+    }
+  }
+
+  await pool.query(
+    "ALTER TABLE incident_units MODIFY COLUMN status ENUM('Assigned', 'Acknowledged', 'En Route', 'On Scene', 'Transporting', 'At Hospital', 'Staged', 'Loaded', 'Delivered', 'Cleared') NOT NULL DEFAULT 'Assigned'"
+  );
+  await pool.query('UPDATE incident_units SET status_updated_at = assigned_at WHERE status_updated_at IS NULL');
 };
 
 export const initializeAuditLogTables = async (): Promise<void> => {
@@ -457,6 +475,7 @@ export type IncidentUnitRow = RowDataPacket & {
   cad_unit_number: string | null;
   status: string;
   assigned_at: Date;
+  status_updated_at: Date;
   cleared_at: Date | null;
 };
 

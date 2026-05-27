@@ -21,7 +21,18 @@ const statusValues = new Set<IncidentStatus>([
   'Closed',
   'Canceled'
 ]);
-const unitStatusValues = new Set<IncidentUnitStatus>(['Assigned', 'En Route', 'On Scene', 'Cleared']);
+const unitStatusValues = new Set<IncidentUnitStatus>([
+  'Assigned',
+  'Acknowledged',
+  'En Route',
+  'On Scene',
+  'Transporting',
+  'At Hospital',
+  'Staged',
+  'Loaded',
+  'Delivered',
+  'Cleared'
+]);
 
 const toIncidentUnit = (row: IncidentUnitRow): IncidentUnit => ({
   userId: row.user_id,
@@ -29,8 +40,23 @@ const toIncidentUnit = (row: IncidentUnitRow): IncidentUnit => ({
   cadUnitNumber: row.cad_unit_number || undefined,
   status: row.status as IncidentUnitStatus,
   assignedAt: row.assigned_at,
+  statusUpdatedAt: row.status_updated_at || row.assigned_at,
   clearedAt: row.cleared_at || undefined
 });
+
+const unitStatusToUserStatus = (status: IncidentUnitStatus) => {
+  if (status === 'Cleared' || status === 'Delivered') return 'Available';
+  if (status === 'On Scene' || status === 'Staged') return 'On Scene';
+  if (status === 'En Route') return 'En Route';
+  if (status === 'Transporting' || status === 'At Hospital' || status === 'Loaded') return 'Transporting';
+  return 'Dispatched';
+};
+
+const unitStatusToIncidentStatus = (status: IncidentUnitStatus): IncidentStatus => {
+  if (status === 'En Route' || status === 'Transporting' || status === 'Loaded') return 'En Route';
+  if (status === 'On Scene' || status === 'Staged' || status === 'At Hospital' || status === 'Delivered') return 'On Scene';
+  return 'Dispatched';
+};
 
 const toIncidentNote = (row: IncidentNoteRow): IncidentNote => ({
   id: row.id,
@@ -213,7 +239,7 @@ export class IncidentService {
       await pool.execute(
         `
           UPDATE incident_units
-          SET status = ?, cleared_at = NULL
+          SET status = ?, status_updated_at = UTC_TIMESTAMP(), cleared_at = NULL
           WHERE incident_id = ? AND status <> 'Cleared'
         `,
         [unitStatus, id]
@@ -231,7 +257,7 @@ export class IncidentService {
             AND incident_units.status <> 'Cleared'
         `,
         [
-          status === 'On Scene' ? 'On Scene' : status === 'En Route' ? 'En Route' : 'Dispatched',
+          unitStatusToUserStatus(unitStatus),
           incident.lat ?? null,
           incident.lon ?? null,
           incident.callNumber,
@@ -264,6 +290,7 @@ export class IncidentService {
         VALUES (?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           status = VALUES(status),
+          status_updated_at = UTC_TIMESTAMP(),
           cleared_at = CASE WHEN VALUES(status) = 'Cleared' THEN UTC_TIMESTAMP() ELSE NULL END
       `,
       [incidentId, userId, assignedBy, status]
@@ -274,7 +301,7 @@ export class IncidentService {
       body: `Unit ${userId} set to ${status}`
     });
 
-    const nextIncidentStatus = status === 'En Route' ? 'En Route' : status === 'On Scene' ? 'On Scene' : 'Dispatched';
+    const nextIncidentStatus = unitStatusToIncidentStatus(status);
     await pool.execute('UPDATE incidents SET status = ? WHERE id = ? AND status = ?', [
       nextIncidentStatus,
       incidentId,
@@ -292,7 +319,7 @@ export class IncidentService {
         WHERE id = ? AND active = TRUE
       `,
       [
-        status === 'Cleared' ? 'Available' : status === 'On Scene' ? 'On Scene' : status === 'En Route' ? 'En Route' : 'Dispatched',
+        unitStatusToUserStatus(status),
         status === 'Cleared' ? null : incident.lat ?? null,
         status === 'Cleared' ? null : incident.lon ?? null,
         status === 'Cleared' ? null : incident.callNumber,
@@ -321,6 +348,7 @@ export class IncidentService {
       `
         UPDATE incident_units
         SET status = ?,
+            status_updated_at = UTC_TIMESTAMP(),
             cleared_at = CASE WHEN ? = 'Cleared' THEN UTC_TIMESTAMP() ELSE NULL END
         WHERE incident_id = ? AND user_id = ?
       `,
@@ -338,7 +366,7 @@ export class IncidentService {
         WHERE id = ? AND active = TRUE
       `,
       [
-        status === 'Cleared' ? 'Available' : status === 'On Scene' ? 'On Scene' : status === 'En Route' ? 'En Route' : 'Dispatched',
+        unitStatusToUserStatus(status),
         status === 'Cleared' ? null : incident.lat ?? null,
         status === 'Cleared' ? null : incident.lon ?? null,
         status === 'Cleared' ? null : incident.callNumber,
@@ -351,7 +379,7 @@ export class IncidentService {
       body: `Unit status changed to ${status}`
     });
 
-    const nextIncidentStatus = status === 'On Scene' ? 'On Scene' : status === 'En Route' ? 'En Route' : 'Dispatched';
+    const nextIncidentStatus = unitStatusToIncidentStatus(status);
     if (status !== 'Cleared') {
       await pool.execute('UPDATE incidents SET status = ? WHERE id = ? AND status IN (?, ?)', [
         nextIncidentStatus,
@@ -444,6 +472,7 @@ export class IncidentService {
           users.cad_unit_number,
           incident_units.status,
           incident_units.assigned_at,
+          incident_units.status_updated_at,
           incident_units.cleared_at
         FROM incident_units
         INNER JOIN users ON users.id = incident_units.user_id

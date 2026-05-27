@@ -107,7 +107,17 @@ export interface ChangePasswordRequest {
 
 export type IncidentPriority = 'Low' | 'Normal' | 'High' | 'Emergency';
 export type IncidentStatus = 'Pending' | 'Dispatched' | 'En Route' | 'On Scene' | 'Closed' | 'Canceled';
-export type IncidentUnitStatus = 'Assigned' | 'En Route' | 'On Scene' | 'Cleared';
+export type IncidentUnitStatus =
+  | 'Assigned'
+  | 'Acknowledged'
+  | 'En Route'
+  | 'On Scene'
+  | 'Transporting'
+  | 'At Hospital'
+  | 'Staged'
+  | 'Loaded'
+  | 'Delivered'
+  | 'Cleared';
 
 export interface IncidentUnit {
   userId: string;
@@ -115,6 +125,7 @@ export interface IncidentUnit {
   cadUnitNumber?: string;
   status: IncidentUnitStatus;
   assignedAt: Date;
+  statusUpdatedAt?: Date;
   clearedAt?: Date;
 }
 
@@ -156,6 +167,15 @@ export interface CreateIncidentRequest {
   description?: string;
   callerName?: string;
   callerPhone?: string;
+  lat?: number | null;
+  lon?: number | null;
+}
+
+export interface OfficerEventRequest {
+  type: string;
+  priority?: IncidentPriority;
+  address?: string;
+  description?: string;
   lat?: number | null;
   lon?: number | null;
 }

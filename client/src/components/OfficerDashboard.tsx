@@ -26,7 +26,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
-import { ChatMessage, Incident, IncidentUnitStatus, SendMessageAttachment, User } from '../types/auth';
+import { ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, SendMessageAttachment, User } from '../types/auth';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'location' | 'settings' | 'navigation' | 'status';
 type DockSlot = DockItem | null;
@@ -119,6 +119,12 @@ const statusClasses: Record<IncidentUnitStatus, string> = {
   Assigned: 'bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800',
   'En Route': 'bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:ring-blue-800',
   'On Scene': 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-800',
+  Transporting: 'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950 dark:text-violet-200 dark:ring-violet-800',
+  'At Hospital': 'bg-cyan-50 text-cyan-700 ring-cyan-200 dark:bg-cyan-950 dark:text-cyan-200 dark:ring-cyan-800',
+  Staged: 'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-950 dark:text-orange-200 dark:ring-orange-800',
+  Loaded: 'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950 dark:text-violet-200 dark:ring-violet-800',
+  Delivered: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800',
+  Acknowledged: 'bg-slate-50 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700',
   Cleared: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800'
 };
 
@@ -170,6 +176,38 @@ const etaText = (
   const miles = distanceMiles(currentLocation.lat, currentLocation.lon, incident.lat, incident.lon);
   if (!speedMph || speedMph <= 1) return `${miles.toFixed(1)} mi, ETA pending speed`;
   return `${miles.toFixed(1)} mi, ${Math.max(1, Math.round((miles / speedMph) * 60))} min ETA`;
+};
+
+const assignmentAgeMinutes = (incident: Incident, userId?: string): number => {
+  const assignment = incident.units.find((unit) => unit.userId === userId);
+  const timestamp = assignment?.statusUpdatedAt || assignment?.assignedAt;
+  if (!timestamp) return 0;
+  const ageMs = Date.now() - new Date(timestamp).getTime();
+  return Number.isFinite(ageMs) ? Math.max(0, Math.floor(ageMs / 60000)) : 0;
+};
+
+const assignmentWarning = (incident: Incident | null, userId?: string): string => {
+  if (!incident) return '';
+  const status = getMyUnitStatus(incident, userId);
+  const age = assignmentAgeMinutes(incident, userId);
+  if (status === 'Assigned' && age >= 5) return `Assignment waiting acknowledgement for ${age} min`;
+  if (status === 'Acknowledged' && age >= 10) return `Acknowledged ${age} min ago, not en route`;
+  if (status === 'En Route' && age >= 20) return `En route for ${age} min`;
+  return '';
+};
+
+const workflowStatuses = (incident: Incident | null): IncidentUnitStatus[] => {
+  const type = `${incident?.type || ''}`.toLowerCase();
+  if (type.includes('ems') || type.includes('medical') || type.includes('ambulance')) {
+    return ['Acknowledged', 'En Route', 'On Scene', 'Transporting', 'At Hospital', 'Cleared'];
+  }
+  if (type.includes('fire') || type.includes('alarm') || type.includes('rescue')) {
+    return ['Acknowledged', 'En Route', 'Staged', 'On Scene', 'Cleared'];
+  }
+  if (type.includes('tow') || type.includes('impound') || type.includes('vehicle')) {
+    return ['Acknowledged', 'En Route', 'On Scene', 'Loaded', 'Delivered', 'Cleared'];
+  }
+  return ['Acknowledged', 'En Route', 'On Scene', 'Cleared'];
 };
 
 const navigationUrl = (incident: Incident): string => {
@@ -286,6 +324,11 @@ export const OfficerDashboard: React.FC = () => {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordMessage, setPasswordMessage] = useState('');
   const [noteBody, setNoteBody] = useState('');
+  const [officerEvent, setOfficerEvent] = useState<{ type: string; priority: IncidentPriority; description: string }>({
+    type: 'Traffic Stop',
+    priority: 'Normal',
+    description: ''
+  });
   const [directory, setDirectory] = useState<User[]>([]);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [selectedMessageUserId, setSelectedMessageUserId] = useState('');
@@ -316,6 +359,7 @@ export const OfficerDashboard: React.FC = () => {
   const assignmentMapKey = assignedIncidents.map((incident) => incident.id).join(',');
   const selectedIncident = assignedIncidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || null;
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
+  const selectedAssignmentWarning = assignmentWarning(selectedIncident, user?.id);
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
   const messageThreads = directory.filter((item) => {
     if (item.id === user?.id) return false;
@@ -668,6 +712,31 @@ export const OfficerDashboard: React.FC = () => {
     }
   };
 
+  const createOfficerEvent = async () => {
+    if (!officerEvent.type.trim()) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const incident = await authClient.createOfficerEvent({
+        type: officerEvent.type,
+        priority: officerEvent.priority,
+        description: officerEvent.description,
+        lat: currentLocation?.lat ?? null,
+        lon: currentLocation?.lon ?? null,
+        address: currentLocation ? `Officer location ${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : undefined
+      });
+      setIncidents((current) => (current.some((item) => item.id === incident.id) ? current : [incident, ...current]));
+      setSelectedIncidentId(incident.id);
+      setOfficerEvent((value) => ({ ...value, description: '' }));
+      setMessage(`${incident.type} started.`);
+      setActiveDockItem('call-detail');
+    } catch {
+      setMessage('Unable to start officer event.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const sendMessage = async () => {
     if (!selectedMessageUserId || (!messageBody.trim() && pendingAttachments.length === 0)) return;
     const sent = await authClient.sendMessage(selectedMessageUserId, messageBody, pendingAttachments);
@@ -841,6 +910,11 @@ export const OfficerDashboard: React.FC = () => {
           <h2 className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Active Assignments</h2>
           <span className="rounded-full bg-cad-blue px-2 py-1 text-xs font-bold text-white">{assignedIncidents.length}</span>
         </div>
+        {selectedAssignmentWarning && (
+          <p className="mt-3 rounded-md bg-amber-50 p-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800">
+            {selectedAssignmentWarning}
+          </p>
+        )}
         <div className="mt-3 grid gap-2">
           {assignedIncidents.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No active assignments.</p>}
           {assignedIncidents.map((incident) => (
@@ -891,6 +965,8 @@ export const OfficerDashboard: React.FC = () => {
                 incidents={assignedIncidents}
                 selectedIncident={selectedIncident}
                 selectedStatus={selectedStatus}
+                workflowStatuses={workflowStatuses(selectedIncident)}
+                assignmentWarning={selectedAssignmentWarning}
                 currentLocation={currentLocation}
                 currentSpeed={currentSpeed}
                 locationState={locationState}
@@ -899,10 +975,13 @@ export const OfficerDashboard: React.FC = () => {
                 setNoteBody={setNoteBody}
                 busy={busy}
                 message={message}
+                officerEvent={officerEvent}
                 onSelectIncident={setSelectedIncidentId}
                 onUpdateStatus={updateStatus}
                 onAddNote={addNote}
                 onLogout={logout}
+                setOfficerEvent={setOfficerEvent}
+                onCreateOfficerEvent={createOfficerEvent}
                 directory={messageThreads}
                 onlineUserIds={onlineUserIds}
                 selectedMessageUser={selectedMessageUser}
@@ -1112,6 +1191,8 @@ const DockContent: React.FC<{
   incidents: Incident[];
   selectedIncident: Incident | null;
   selectedStatus: IncidentUnitStatus | null;
+  workflowStatuses: IncidentUnitStatus[];
+  assignmentWarning: string;
   currentLocation: { lat: number; lon: number } | null;
   currentSpeed: number | null;
   locationState: string;
@@ -1120,10 +1201,13 @@ const DockContent: React.FC<{
   setNoteBody: (value: string) => void;
   busy: boolean;
   message: string;
+  officerEvent: { type: string; priority: IncidentPriority; description: string };
   onSelectIncident: (id: string) => void;
   onUpdateStatus: (status: IncidentUnitStatus) => void;
   onAddNote: () => void;
   onLogout: () => void;
+  setOfficerEvent: React.Dispatch<React.SetStateAction<{ type: string; priority: IncidentPriority; description: string }>>;
+  onCreateOfficerEvent: () => void;
   directory: User[];
   onlineUserIds: string[];
   selectedMessageUser: User | null;
@@ -1152,6 +1236,8 @@ const DockContent: React.FC<{
   incidents,
   selectedIncident,
   selectedStatus,
+  workflowStatuses,
+  assignmentWarning,
   currentLocation,
   currentSpeed,
   locationState,
@@ -1160,10 +1246,13 @@ const DockContent: React.FC<{
   setNoteBody,
   busy,
   message,
+  officerEvent,
   onSelectIncident,
   onUpdateStatus,
   onAddNote,
   onLogout,
+  setOfficerEvent,
+  onCreateOfficerEvent,
   directory,
   onlineUserIds,
   selectedMessageUser,
@@ -1236,10 +1325,30 @@ const DockContent: React.FC<{
     return (
       <div className="space-y-3">
         <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Current status: {selectedStatus || 'No call selected'}</p>
+        {assignmentWarning && (
+          <p className="rounded-md bg-amber-50 p-3 text-sm font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800">
+            {assignmentWarning}
+          </p>
+        )}
         <div className="grid gap-2 sm:grid-cols-3">
-          <StatusButton disabled={busy || !selectedIncident} onClick={() => onUpdateStatus('En Route')} icon={<Siren size={18} />} label="En Route" className="bg-blue-600 hover:bg-blue-700" />
-          <StatusButton disabled={busy || !selectedIncident} onClick={() => onUpdateStatus('On Scene')} icon={<AlertTriangle size={18} />} label="On Scene" className="bg-red-600 hover:bg-red-700" />
-          <StatusButton disabled={busy || !selectedIncident} onClick={() => onUpdateStatus('Cleared')} icon={<CheckCircle2 size={18} />} label="Clear" className="bg-emerald-600 hover:bg-emerald-700" />
+          {workflowStatuses.map((status) => (
+            <StatusButton
+              key={status}
+              disabled={busy || !selectedIncident}
+              onClick={() => onUpdateStatus(status)}
+              icon={status === 'Acknowledged' ? <CheckCircle2 size={18} /> : status === 'On Scene' ? <AlertTriangle size={18} /> : status === 'Cleared' ? <CheckCircle2 size={18} /> : <Siren size={18} />}
+              label={status}
+              className={
+                status === 'Cleared' || status === 'Delivered'
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : status === 'On Scene' || status === 'Staged'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : status === 'Acknowledged'
+                      ? 'bg-slate-700 hover:bg-slate-800'
+                      : 'bg-blue-600 hover:bg-blue-700'
+              }
+            />
+          ))}
         </div>
         {message && <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{message}</p>}
       </div>
@@ -1279,6 +1388,45 @@ const DockContent: React.FC<{
         <Metric label="Tracking" value={locationState === 'live' ? 'Active' : locationState} />
         <Metric label="Speed" value={currentSpeed === null ? '--' : `${Math.round(currentSpeed)} mph`} />
         <Metric label="Position" value={currentLocation ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'Waiting'} />
+      </div>
+    );
+  }
+
+  if (activeItem === 'settings') {
+    return (
+      <div className="grid gap-3">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Officer-Initiated Event</h3>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <select
+            value={officerEvent.type}
+            onChange={(event) => setOfficerEvent((value) => ({ ...value, type: event.target.value }))}
+            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+          >
+            {['Traffic Stop', 'Assist Agency', 'Patrol Check', 'Tow Request', 'Officer Detail'].map((eventType) => (
+              <option key={eventType} value={eventType}>{eventType}</option>
+            ))}
+          </select>
+          <select
+            value={officerEvent.priority}
+            onChange={(event) => setOfficerEvent((value) => ({ ...value, priority: event.target.value as IncidentPriority }))}
+            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+          >
+            {(['Low', 'Normal', 'High', 'Emergency'] as IncidentPriority[]).map((priority) => (
+              <option key={priority} value={priority}>{priority}</option>
+            ))}
+          </select>
+        </div>
+        <textarea
+          value={officerEvent.description}
+          onChange={(event) => setOfficerEvent((value) => ({ ...value, description: event.target.value }))}
+          rows={3}
+          placeholder="Event details"
+          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+        />
+        <button type="button" disabled={busy} onClick={onCreateOfficerEvent} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white disabled:opacity-60">
+          Start Event
+        </button>
+        {message && <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{message}</p>}
       </div>
     );
   }

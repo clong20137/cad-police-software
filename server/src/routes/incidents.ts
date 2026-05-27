@@ -6,6 +6,7 @@ import {
   AssignIncidentUnitRequest,
   AddIncidentNoteRequest,
   CreateIncidentRequest,
+  OfficerEventRequest,
   UpdateIncidentStatusRequest,
   UserRole
 } from '../types/auth';
@@ -32,6 +33,49 @@ router.post(
       res.status(201).json(incident);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message || 'Unable to create incident' });
+    }
+  }
+);
+
+router.post(
+  '/officer-events',
+  authMiddleware,
+  requirePermission('view_dispatch'),
+  async (req: Request<{}, {}, OfficerEventRequest>, res: Response): Promise<void> => {
+    try {
+      if (req.user?.role !== UserRole.OFFICER) {
+        res.status(403).json({ error: 'Officer access required' });
+        return;
+      }
+
+      const eventType = req.body.type?.trim();
+      if (!eventType) {
+        res.status(400).json({ error: 'Event type is required' });
+        return;
+      }
+
+      const incident = await IncidentService.createIncident(
+        {
+          type: eventType,
+          priority: req.body.priority || 'Normal',
+          address:
+            req.body.address?.trim() ||
+            (Number.isFinite(req.body.lat) && Number.isFinite(req.body.lon)
+              ? `Officer location ${Number(req.body.lat).toFixed(5)}, ${Number(req.body.lon).toFixed(5)}`
+              : 'Officer initiated event'),
+          description: req.body.description || `${eventType} initiated by officer`,
+          lat: req.body.lat ?? null,
+          lon: req.body.lon ?? null
+        },
+        req.user.id
+      );
+      const assigned = await IncidentService.assignUnit(incident.id, req.user.id, req.user.id, 'Acknowledged');
+
+      await broadcastIncidents();
+      await broadcastTrackedUnits();
+      res.status(201).json(assigned || incident);
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message || 'Unable to create officer event' });
     }
   }
 );

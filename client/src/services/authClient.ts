@@ -14,6 +14,7 @@ import {
   ROLE_PERMISSIONS,
   ResetUserPasswordRequest,
   SendMessageAttachment,
+  OfficerEventRequest,
   TokenPair,
   UpdateIncidentStatusRequest,
   UpdateUserRequest,
@@ -178,6 +179,11 @@ class AuthClient {
 
   async updateMyIncidentStatus(incidentId: string, status: IncidentUnitStatus): Promise<Incident> {
     const response = await this.api.patch<Incident>(`/incidents/${incidentId}/my-status`, { status });
+    return response.data;
+  }
+
+  async createOfficerEvent(input: OfficerEventRequest): Promise<Incident> {
+    const response = await this.api.post<Incident>('/incidents/officer-events', input);
     return response.data;
   }
 
