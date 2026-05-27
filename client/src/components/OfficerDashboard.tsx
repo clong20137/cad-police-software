@@ -13,6 +13,7 @@ import {
   MapPin,
   MessageCircle,
   Navigation,
+  Paperclip,
   Radio,
   Send,
   Settings,
@@ -25,7 +26,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
-import { Incident, IncidentUnitStatus, User } from '../types/auth';
+import { ChatMessage, Incident, IncidentUnitStatus, SendMessageAttachment, User } from '../types/auth';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'location' | 'settings' | 'navigation' | 'status';
 type DockSlot = DockItem | null;
@@ -77,6 +78,22 @@ const dockItems: Array<{ id: DockItem; label: string; icon: React.ReactNode }> =
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
 ];
 const defaultDockSlots: DockSlot[] = ['calls', 'call-detail', 'notes', 'messages', 'location', 'navigation', 'status', 'settings'];
+const emojiCatalog = (() => {
+  const priorityEmoji = ['😀', '😂', '👍', '🙏', '🚓', '🚑', '🚒', '📍', '✅', '⚠', '❗'];
+  const ranges = [
+    [0x1f300, 0x1f5ff],
+    [0x1f600, 0x1f64f],
+    [0x1f680, 0x1f6ff],
+    [0x1f900, 0x1f9ff],
+    [0x2600, 0x27bf]
+  ];
+  const generated = ranges.flatMap(([start, end]) =>
+    Array.from({ length: end - start + 1 }, (_, index) => String.fromCodePoint(start + index)).filter((emoji) =>
+      /\p{Emoji}/u.test(emoji)
+    )
+  );
+  return Array.from(new Set([...priorityEmoji, ...generated]));
+})();
 
 const priorityClasses: Record<Incident['priority'], string> = {
   Low: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
@@ -131,6 +148,18 @@ export const OfficerDashboard: React.FC = () => {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordMessage, setPasswordMessage] = useState('');
   const [noteBody, setNoteBody] = useState('');
+  const [directory, setDirectory] = useState<User[]>([]);
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
+  const [selectedMessageUserId, setSelectedMessageUserId] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messageBody, setMessageBody] = useState('');
+  const [messageSearch, setMessageSearch] = useState('');
+  const [messageTextSearch, setMessageTextSearch] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<SendMessageAttachment[]>([]);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [emojiSearch, setEmojiSearch] = useState('');
+  const [emojiButton, setEmojiButton] = useState(() => emojiCatalog[Math.floor(Math.random() * emojiCatalog.length)] || '😀');
+  const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null } | null>(null);
@@ -139,6 +168,7 @@ export const OfficerDashboard: React.FC = () => {
   const selfMarkerRef = useRef<GoogleMarkerInstance | null>(null);
   const callMarkersRef = useRef<Record<string, GoogleMarkerInstance>>({});
   const socketRef = useRef<Socket | null>(null);
+  const selectedMessageUserIdRef = useRef('');
 
   const assignedIncidents = useMemo(
     () => incidents.filter((incident) => incident.units.some((unit) => unit.userId === user?.id && unit.status !== 'Cleared')),
@@ -146,6 +176,15 @@ export const OfficerDashboard: React.FC = () => {
   );
   const selectedIncident = assignedIncidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || null;
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
+  const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
+  const messageThreads = directory.filter((item) => {
+    if (item.id === user?.id) return false;
+    return !messageSearch.trim() || `${item.name} ${item.email} ${item.cadUnitNumber || ''}`.toLowerCase().includes(messageSearch.toLowerCase());
+  });
+  const searchedMessages = messages.filter(
+    (message) => !messageTextSearch.trim() || message.body.toLowerCase().includes(messageTextSearch.toLowerCase())
+  );
+  const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
 
   const loadIncidents = useCallback(async () => {
     const activeIncidents = await authClient.getIncidents();
@@ -155,6 +194,22 @@ export const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     loadIncidents();
   }, [loadIncidents]);
+
+  useEffect(() => {
+    authClient.getDirectory().then(setDirectory).catch(() => setDirectory([]));
+  }, []);
+
+  useEffect(() => {
+    selectedMessageUserIdRef.current = selectedMessageUserId;
+  }, [selectedMessageUserId]);
+
+  useEffect(() => {
+    if (!selectedMessageUserId) {
+      setMessages([]);
+      return;
+    }
+    authClient.getMessages(selectedMessageUserId).then(setMessages).catch(() => setMessages([]));
+  }, [selectedMessageUserId]);
 
   useEffect(() => {
     localStorage.setItem('cad_officer_quick_slots', JSON.stringify(dockSlots));
@@ -183,11 +238,34 @@ export const OfficerDashboard: React.FC = () => {
     });
     socketRef.current = socket;
     socket.on('incidents:update', (nextIncidents: Incident[]) => setIncidents(nextIncidents));
+    socket.on('presence:update', (presence: { onlineUserIds: string[]; users: User[] }) => {
+      setOnlineUserIds(presence.onlineUserIds || []);
+      setDirectory(presence.users || []);
+    });
     socket.on('units:update', (units: User[]) => {
       const me = units.find((unit) => unit.id === user?.id);
       if (me?.speedMph !== undefined) {
         setCurrentSpeed(Number(me.speedMph));
       }
+    });
+    socket.on('message:new', (message: ChatMessage) => {
+      const belongsToMe = message.senderId === user?.id || message.recipientId === user?.id;
+      if (!belongsToMe) return;
+
+      const otherUserId = message.senderId === user?.id ? message.recipientId : message.senderId;
+      if (otherUserId === selectedMessageUserIdRef.current) {
+        setMessages((current) => (current.some((item) => item.id === message.id) ? current : [...current, message]));
+      } else if (message.recipientId === user?.id) {
+        setMessageBadgeCount((count) => count + 1);
+      }
+    });
+    socket.on('message:read', (receipt: { readerId: string; senderId: string; messageIds: string[] }) => {
+      if (receipt.senderId !== user?.id) return;
+      setMessages((current) =>
+        current.map((message) =>
+          receipt.messageIds.includes(message.id) ? { ...message, readAt: message.readAt || new Date() } : message
+        )
+      );
     });
 
     return () => {
@@ -363,6 +441,9 @@ export const OfficerDashboard: React.FC = () => {
     if (item === 'settings') {
       setSettingsOpen(false);
     }
+    if (item === 'messages') {
+      setMessageBadgeCount(0);
+    }
     setActiveDockItem(item);
   };
 
@@ -415,6 +496,33 @@ export const OfficerDashboard: React.FC = () => {
     } finally {
       setBusy(false);
     }
+  };
+
+  const sendMessage = async () => {
+    if (!selectedMessageUserId || (!messageBody.trim() && pendingAttachments.length === 0)) return;
+    const sent = await authClient.sendMessage(selectedMessageUserId, messageBody, pendingAttachments);
+    setMessages((current) => (current.some((message) => message.id === sent.id) ? current : [...current, sent]));
+    setMessageBody('');
+    setPendingAttachments([]);
+    setEmojiOpen(false);
+    setEmojiButton(emojiCatalog[Math.floor(Math.random() * emojiCatalog.length)] || '😀');
+  };
+
+  const handleAttachment = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return;
+      const dataUrl = reader.result;
+      setPendingAttachments((current) => [
+        ...current,
+        {
+          fileName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          dataUrl
+        }
+      ]);
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -587,6 +695,7 @@ export const OfficerDashboard: React.FC = () => {
       <QuickDock
         slots={dockSlots}
         activeItem={activeDockItem}
+        messageBadgeCount={messageBadgeCount}
         onOpen={openDockItem}
         onCustomize={setCustomizingSlot}
         onDragStart={setDraggedSlotIndex}
@@ -623,6 +732,29 @@ export const OfficerDashboard: React.FC = () => {
                 onUpdateStatus={updateStatus}
                 onAddNote={addNote}
                 onLogout={logout}
+                directory={messageThreads}
+                onlineUserIds={onlineUserIds}
+                selectedMessageUser={selectedMessageUser}
+                selectedMessageUserId={selectedMessageUserId}
+                messages={searchedMessages}
+                messageBody={messageBody}
+                messageSearch={messageSearch}
+                messageTextSearch={messageTextSearch}
+                pendingAttachments={pendingAttachments}
+                emojiOpen={emojiOpen}
+                emojiSearch={emojiSearch}
+                emojiButton={emojiButton}
+                filteredEmojis={filteredEmojis}
+                currentUserIdForMessages={user?.id || ''}
+                setSelectedMessageUserId={setSelectedMessageUserId}
+                setMessageBody={setMessageBody}
+                setMessageSearch={setMessageSearch}
+                setMessageTextSearch={setMessageTextSearch}
+                setPendingAttachments={setPendingAttachments}
+                setEmojiOpen={setEmojiOpen}
+                setEmojiSearch={setEmojiSearch}
+                onSendMessage={sendMessage}
+                onAttachment={handleAttachment}
               />
             </div>
           </div>
@@ -752,15 +884,17 @@ const IncidentButton: React.FC<{
 const QuickDock: React.FC<{
   slots: DockSlot[];
   activeItem: DockItem | null;
+  messageBadgeCount: number;
   onOpen: (item: DockItem) => void;
   onCustomize: (index: number) => void;
   onDragStart: (index: number) => void;
   onDrop: (index: number) => void;
-}> = ({ slots, activeItem, onOpen, onCustomize, onDragStart, onDrop }) => (
+}> = ({ slots, activeItem, messageBadgeCount, onOpen, onCustomize, onDragStart, onDrop }) => (
   <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-3">
     <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 text-slate-950 shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 dark:text-white md:grid-cols-8">
       {slots.map((slot, index) => {
         const item = dockItems.find((option) => option.id === slot);
+        const badgeCount = slot === 'messages' ? messageBadgeCount : 0;
         return (
           <div
             key={`officer-quick-slot-${index}`}
@@ -782,6 +916,11 @@ const QuickDock: React.FC<{
               {item?.icon || <Settings size={18} />}
               <span className="max-w-full truncate px-1">{item?.label || 'Empty'}</span>
             </button>
+            {badgeCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-white dark:ring-slate-950">
+                {badgeCount > 9 ? '9+' : badgeCount}
+              </span>
+            )}
             <button
               type="button"
               onClick={() => onCustomize(index)}
@@ -814,6 +953,29 @@ const DockContent: React.FC<{
   onUpdateStatus: (status: IncidentUnitStatus) => void;
   onAddNote: () => void;
   onLogout: () => void;
+  directory: User[];
+  onlineUserIds: string[];
+  selectedMessageUser: User | null;
+  selectedMessageUserId: string;
+  messages: ChatMessage[];
+  messageBody: string;
+  messageSearch: string;
+  messageTextSearch: string;
+  pendingAttachments: SendMessageAttachment[];
+  emojiOpen: boolean;
+  emojiSearch: string;
+  emojiButton: string;
+  filteredEmojis: string[];
+  currentUserIdForMessages: string;
+  setSelectedMessageUserId: (id: string) => void;
+  setMessageBody: (value: string) => void;
+  setMessageSearch: (value: string) => void;
+  setMessageTextSearch: (value: string) => void;
+  setPendingAttachments: React.Dispatch<React.SetStateAction<SendMessageAttachment[]>>;
+  setEmojiOpen: (value: boolean) => void;
+  setEmojiSearch: (value: string) => void;
+  onSendMessage: () => void;
+  onAttachment: (file: File) => void;
 }> = ({
   activeItem,
   incidents,
@@ -830,7 +992,30 @@ const DockContent: React.FC<{
   onSelectIncident,
   onUpdateStatus,
   onAddNote,
-  onLogout
+  onLogout,
+  directory,
+  onlineUserIds,
+  selectedMessageUser,
+  selectedMessageUserId,
+  messages,
+  messageBody,
+  messageSearch,
+  messageTextSearch,
+  pendingAttachments,
+  emojiOpen,
+  emojiSearch,
+  emojiButton,
+  filteredEmojis,
+  currentUserIdForMessages,
+  setSelectedMessageUserId,
+  setMessageBody,
+  setMessageSearch,
+  setMessageTextSearch,
+  setPendingAttachments,
+  setEmojiOpen,
+  setEmojiSearch,
+  onSendMessage,
+  onAttachment
 }) => {
   if (activeItem === 'calls') {
     return (
@@ -924,7 +1109,33 @@ const DockContent: React.FC<{
   }
 
   if (activeItem === 'messages') {
-    return <p className="text-sm text-slate-600 dark:text-slate-300">Messages stay live through the CAD message system. Officer message compose can be wired into this dock next.</p>;
+    return (
+      <OfficerMessages
+        directory={directory}
+        onlineUserIds={onlineUserIds}
+        selectedMessageUser={selectedMessageUser}
+        selectedMessageUserId={selectedMessageUserId}
+        messages={messages}
+        messageBody={messageBody}
+        messageSearch={messageSearch}
+        messageTextSearch={messageTextSearch}
+        pendingAttachments={pendingAttachments}
+        emojiOpen={emojiOpen}
+        emojiSearch={emojiSearch}
+        emojiButton={emojiButton}
+        filteredEmojis={filteredEmojis}
+        currentUserId={currentUserIdForMessages}
+        setSelectedMessageUserId={setSelectedMessageUserId}
+        setMessageBody={setMessageBody}
+        setMessageSearch={setMessageSearch}
+        setMessageTextSearch={setMessageTextSearch}
+        setPendingAttachments={setPendingAttachments}
+        setEmojiOpen={setEmojiOpen}
+        setEmojiSearch={setEmojiSearch}
+        onSendMessage={onSendMessage}
+        onAttachment={onAttachment}
+      />
+    );
   }
 
   return (
@@ -946,6 +1157,221 @@ const StatusButton: React.FC<{
     {icon}
     {label}
   </button>
+);
+
+const OfficerMessages: React.FC<{
+  directory: User[];
+  onlineUserIds: string[];
+  selectedMessageUser: User | null;
+  selectedMessageUserId: string;
+  messages: ChatMessage[];
+  messageBody: string;
+  messageSearch: string;
+  messageTextSearch: string;
+  pendingAttachments: SendMessageAttachment[];
+  emojiOpen: boolean;
+  emojiSearch: string;
+  emojiButton: string;
+  filteredEmojis: string[];
+  currentUserId: string;
+  setSelectedMessageUserId: (id: string) => void;
+  setMessageBody: (value: string) => void;
+  setMessageSearch: (value: string) => void;
+  setMessageTextSearch: (value: string) => void;
+  setPendingAttachments: React.Dispatch<React.SetStateAction<SendMessageAttachment[]>>;
+  setEmojiOpen: (value: boolean) => void;
+  setEmojiSearch: (value: string) => void;
+  onSendMessage: () => void;
+  onAttachment: (file: File) => void;
+}> = ({
+  directory,
+  onlineUserIds,
+  selectedMessageUser,
+  selectedMessageUserId,
+  messages,
+  messageBody,
+  messageSearch,
+  messageTextSearch,
+  pendingAttachments,
+  emojiOpen,
+  emojiSearch,
+  emojiButton,
+  filteredEmojis,
+  currentUserId,
+  setSelectedMessageUserId,
+  setMessageBody,
+  setMessageSearch,
+  setMessageTextSearch,
+  setPendingAttachments,
+  setEmojiOpen,
+  setEmojiSearch,
+  onSendMessage,
+  onAttachment
+}) => (
+  <div className="grid h-[min(70vh,680px)] min-h-[520px] overflow-hidden rounded-md border border-slate-200 dark:border-slate-700 sm:grid-cols-[240px_1fr]">
+    <div className="relative flex min-h-0 flex-col border-r border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
+      <div className="shrink-0 border-b border-slate-200 p-3 dark:border-slate-700">
+        <input
+          value={messageSearch}
+          onChange={(event) => setMessageSearch(event.target.value)}
+          placeholder="Search threads"
+          className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto pb-14">
+        {directory.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setSelectedMessageUserId(item.id)}
+            className={`w-full border-b border-slate-200 px-3 py-3 text-left text-sm dark:border-slate-800 ${
+              selectedMessageUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : 'hover:bg-white dark:hover:bg-slate-900'
+            }`}
+          >
+            <span className="flex items-center gap-2 font-semibold">
+              <span className={`h-2.5 w-2.5 rounded-full ${onlineUserIds.includes(item.id) ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+              <span className="truncate">{item.name}</span>
+            </span>
+            <span className="mt-1 block truncate text-xs text-slate-500">
+              {item.cadUnitNumber || item.badge || item.email}
+            </span>
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => setSelectedMessageUserId('')}
+        className="absolute bottom-3 left-1/2 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full bg-cad-blue text-white shadow-lg transition hover:bg-blue-700"
+        aria-label="New message"
+        title="New message"
+      >
+        <Send size={18} />
+      </button>
+    </div>
+    <div className="flex min-h-0 min-w-0 flex-col">
+      <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+        {selectedMessageUser ? (
+          <>
+            <p className="text-sm font-bold">{selectedMessageUser.name}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span>{onlineUserIds.includes(selectedMessageUser.id) ? 'Active now' : 'Offline'}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">
+                <Lock size={12} />
+                Encrypted
+              </span>
+            </div>
+          </>
+        ) : (
+          <select
+            value={selectedMessageUserId}
+            onChange={(event) => setSelectedMessageUserId(event.target.value)}
+            className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+          >
+            <option value="">Compose to...</option>
+            {directory.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </select>
+        )}
+        <input
+          value={messageTextSearch}
+          onChange={(event) => setMessageTextSearch(event.target.value)}
+          placeholder="Search messages"
+          className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+        />
+      </div>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-white p-4 dark:bg-slate-950">
+        {selectedMessageUserId && messages.length === 0 && <p className="text-sm text-slate-500">No messages yet.</p>}
+        {!selectedMessageUserId && <p className="text-sm text-slate-500">Select a thread or compose a new message.</p>}
+        {messages.map((message) => {
+          const mine = message.senderId === currentUserId;
+          return (
+            <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${mine ? 'bg-cad-blue text-white' : 'bg-slate-100 text-slate-950 dark:bg-slate-800 dark:text-white'}`}>
+                {message.body && <p>{message.body}</p>}
+                {message.attachments?.map((attachment) => (
+                  <a
+                    key={attachment.id}
+                    href={attachment.dataUrl}
+                    download={attachment.fileName}
+                    className={`mt-2 flex items-center gap-2 rounded-md px-2 py-1 text-xs font-semibold ${mine ? 'bg-white/15 text-white' : 'bg-white text-cad-blue'}`}
+                  >
+                    <Paperclip size={13} />
+                    <span className="truncate">{attachment.fileName}</span>
+                  </a>
+                ))}
+                <p className={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
+                  <Lock size={10} />
+                  {mine && message.readAt ? 'Read' : 'Encrypted'}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="shrink-0 border-t border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+        {pendingAttachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {pendingAttachments.map((attachment, index) => (
+              <span key={`${attachment.fileName}-${index}`} className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-cad-blue">
+                <Paperclip size={13} />
+                {attachment.fileName}
+                <button type="button" onClick={() => setPendingAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="relative grid grid-cols-[auto_auto_1fr_auto] gap-2">
+          <button type="button" onClick={() => setEmojiOpen(!emojiOpen)} className="rounded-md border border-slate-200 px-3 py-2 text-lg dark:border-slate-700">
+            {emojiButton}
+          </button>
+          <label className="flex cursor-pointer items-center justify-center rounded-md border border-slate-200 px-3 py-2 text-slate-600 dark:border-slate-700 dark:text-slate-200">
+            <Paperclip size={18} />
+            <input
+              type="file"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onAttachment(file);
+                event.currentTarget.value = '';
+              }}
+            />
+          </label>
+          <input
+            value={messageBody}
+            onChange={(event) => setMessageBody(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) onSendMessage();
+            }}
+            placeholder="Type a message"
+            className="min-w-0 rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+          />
+          <button type="button" onClick={onSendMessage} disabled={!selectedMessageUserId || (!messageBody.trim() && pendingAttachments.length === 0)} className="rounded-md bg-cad-blue px-3 py-2 text-white disabled:opacity-50">
+            <Send size={18} />
+          </button>
+          {emojiOpen && (
+            <div className="absolute bottom-12 left-0 z-20 w-80 rounded-lg border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+              <input
+                value={emojiSearch}
+                onChange={(event) => setEmojiSearch(event.target.value)}
+                placeholder="Search emoji"
+                className="mb-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+              <div className="grid max-h-48 grid-cols-8 gap-1 overflow-y-auto text-xl">
+                {filteredEmojis.slice(0, 240).map((emoji, index) => (
+                  <button key={`${emoji}-${index}`} type="button" onClick={() => setMessageBody(`${messageBody}${emoji}`)} className="rounded p-1 hover:bg-slate-100 dark:hover:bg-slate-800">
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
 );
 
 const Metric: React.FC<{ label: string; value: string }> = ({ label, value }) => (
