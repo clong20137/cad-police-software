@@ -1695,10 +1695,11 @@ export const Dashboard: React.FC = () => {
         <button
           type="button"
           onClick={recenterToCurrentLocation}
-          className="absolute bottom-28 right-4 z-20 inline-flex items-center gap-2 rounded-md border border-cad-line bg-white/95 px-3 py-2 text-sm font-bold text-cad-ink shadow-xl backdrop-blur transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-white dark:hover:bg-slate-800"
+          className="absolute bottom-28 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-line bg-white/95 text-cad-blue shadow-xl backdrop-blur transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
+          aria-label="Return to my location"
+          title="My location"
         >
-          <MapPin size={16} />
-          My location
+          <MapPin size={18} />
         </button>
 
         <button
