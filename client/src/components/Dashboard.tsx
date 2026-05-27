@@ -19,6 +19,7 @@ import {
   Send,
   Settings,
   Shield,
+  Smartphone,
   CheckCheck,
   Moon,
   Sun,
@@ -1793,6 +1794,14 @@ export const Dashboard: React.FC = () => {
                   User management
                 </Link>
               )}
+              <Link
+                to="/officer"
+                onClick={() => setSettingsOpen(false)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <Smartphone size={16} />
+                Officer console
+              </Link>
               <button
                 type="button"
                 onClick={logout}

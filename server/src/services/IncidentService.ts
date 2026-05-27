@@ -303,6 +303,80 @@ export class IncidentService {
     return this.getIncident(incidentId);
   }
 
+  static async updateAssignedUnitStatus(
+    incidentId: string,
+    userId: string,
+    status: IncidentUnitStatus
+  ): Promise<Incident | null> {
+    if (!unitStatusValues.has(status)) {
+      throw new Error('Invalid unit status');
+    }
+
+    const incident = await this.getIncident(incidentId);
+    if (!incident || !incident.units.some((unit) => unit.userId === userId)) {
+      return null;
+    }
+
+    await pool.execute(
+      `
+        UPDATE incident_units
+        SET status = ?,
+            cleared_at = CASE WHEN ? = 'Cleared' THEN UTC_TIMESTAMP() ELSE NULL END
+        WHERE incident_id = ? AND user_id = ?
+      `,
+      [status, status, incidentId, userId]
+    );
+
+    await pool.execute(
+      `
+        UPDATE users
+        SET
+          status = ?,
+          destination_lat = ?,
+          destination_lon = ?,
+          destination_label = ?
+        WHERE id = ? AND active = TRUE
+      `,
+      [
+        status === 'Cleared' ? 'Available' : status === 'On Scene' ? 'On Scene' : status === 'En Route' ? 'En Route' : 'Dispatched',
+        status === 'Cleared' ? null : incident.lat ?? null,
+        status === 'Cleared' ? null : incident.lon ?? null,
+        status === 'Cleared' ? null : incident.callNumber,
+        userId
+      ]
+    );
+
+    await this.addNote(incidentId, userId, {
+      noteType: status === 'Cleared' ? 'assignment' : 'status',
+      body: `Unit status changed to ${status}`
+    });
+
+    const nextIncidentStatus = status === 'On Scene' ? 'On Scene' : status === 'En Route' ? 'En Route' : 'Dispatched';
+    if (status !== 'Cleared') {
+      await pool.execute('UPDATE incidents SET status = ? WHERE id = ? AND status IN (?, ?)', [
+        nextIncidentStatus,
+        incidentId,
+        'Pending',
+        'Dispatched'
+      ]);
+    }
+
+    return this.getIncident(incidentId);
+  }
+
+  static async addAssignedUnitNote(
+    incidentId: string,
+    userId: string,
+    input: AddIncidentNoteRequest
+  ): Promise<IncidentNote | null> {
+    const incident = await this.getIncident(incidentId);
+    if (!incident || !incident.units.some((unit) => unit.userId === userId)) {
+      return null;
+    }
+
+    return this.addNote(incidentId, userId, input);
+  }
+
   static async addNote(
     incidentId: string,
     userId: string | null,

@@ -176,6 +176,19 @@ class AuthClient {
     return response.data;
   }
 
+  async updateMyIncidentStatus(incidentId: string, status: IncidentUnitStatus): Promise<Incident> {
+    const response = await this.api.patch<Incident>(`/incidents/${incidentId}/my-status`, { status });
+    return response.data;
+  }
+
+  async addMyIncidentNote(incidentId: string, body: string): Promise<IncidentNote> {
+    const response = await this.api.post<IncidentNote>(`/incidents/${incidentId}/my-notes`, {
+      body,
+      noteType: 'note'
+    });
+    return response.data;
+  }
+
   async updateLocation(lat: number, lon: number, speedMph?: number | null): Promise<User> {
     const response = await this.api.patch<User>('/auth/me/location', { lat, lon, speedMph });
     if (this.auth && response.data.id === this.auth.user.id) {

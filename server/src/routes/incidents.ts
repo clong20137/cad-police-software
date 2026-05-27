@@ -113,4 +113,52 @@ router.post(
   }
 );
 
+router.patch(
+  '/:id/my-status',
+  authMiddleware,
+  requirePermission('view_dispatch'),
+  async (
+    req: Request<{ id: string }, {}, AssignIncidentUnitRequest>,
+    res: Response
+  ): Promise<void> => {
+    try {
+      const incident = await IncidentService.updateAssignedUnitStatus(
+        req.params.id,
+        req.user?.id || '',
+        req.body.status || 'Assigned'
+      );
+      if (!incident) {
+        res.status(404).json({ error: 'Assigned incident not found' });
+        return;
+      }
+
+      await broadcastIncidents();
+      await broadcastTrackedUnits();
+      res.json(incident);
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message || 'Unable to update unit status' });
+    }
+  }
+);
+
+router.post(
+  '/:id/my-notes',
+  authMiddleware,
+  requirePermission('view_dispatch'),
+  async (req: Request<{ id: string }, {}, AddIncidentNoteRequest>, res: Response): Promise<void> => {
+    try {
+      const note = await IncidentService.addAssignedUnitNote(req.params.id, req.user?.id || '', req.body);
+      if (!note) {
+        res.status(404).json({ error: 'Assigned incident not found' });
+        return;
+      }
+
+      await broadcastIncidents();
+      res.status(201).json(note);
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message || 'Unable to add note' });
+    }
+  }
+);
+
 export default router;
