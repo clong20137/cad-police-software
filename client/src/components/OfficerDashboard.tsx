@@ -3,6 +3,9 @@ import { io, Socket } from 'socket.io-client';
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
   ClipboardList,
   LogOut,
   MapPin,
@@ -10,15 +13,19 @@ import {
   Navigation,
   Radio,
   Send,
+  Settings,
   Shield,
   Siren,
   Wifi,
-  WifiOff
+  WifiOff,
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
 import { Incident, IncidentUnitStatus, User } from '../types/auth';
+
+type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'location' | 'settings' | 'navigation' | 'status';
 
 interface OfficerGoogleMaps {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
@@ -54,6 +61,17 @@ const liveLocationOptions: PositionOptions = {
   timeout: 10000
 };
 
+const dockItems: Array<{ id: DockItem; label: string; icon: React.ReactNode }> = [
+  { id: 'calls', label: 'Calls', icon: <ClipboardList size={18} /> },
+  { id: 'call-detail', label: 'Detail', icon: <Shield size={18} /> },
+  { id: 'notes', label: 'Notes', icon: <Send size={18} /> },
+  { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
+  { id: 'location', label: 'Location', icon: <MapPin size={18} /> },
+  { id: 'navigation', label: 'Navigate', icon: <Navigation size={18} /> },
+  { id: 'status', label: 'Status', icon: <Radio size={18} /> },
+  { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
+];
+
 const priorityClasses: Record<Incident['priority'], string> = {
   Low: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
   Normal: 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-200',
@@ -85,15 +103,17 @@ export const OfficerDashboard: React.FC = () => {
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<'starting' | 'live' | 'blocked' | 'error'>('starting');
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
+  const [activeDockItem, setActiveDockItem] = useState<DockItem | null>(null);
   const [noteBody, setNoteBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
-  const [mapReady, setMapReady] = useState(false);
   const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null } | null>(null);
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
-  const mapHostRef = useRef<HTMLDivElement | null>(null);
   const mapMarkersRef = useRef<GoogleMarkerInstance[]>([]);
   const socketRef = useRef<Socket | null>(null);
 
@@ -112,6 +132,14 @@ export const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     loadIncidents();
   }, [loadIncidents]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActiveDockItem(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   useEffect(() => {
     const token = authClient.getAccessToken();
@@ -179,10 +207,7 @@ export const OfficerDashboard: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!runtimeConfig.googleMapsApiKey) {
-      return;
-    }
-
+    if (!runtimeConfig.googleMapsApiKey) return;
     if (window.google?.maps) {
       setMapReady(true);
       return;
@@ -205,15 +230,8 @@ export const OfficerDashboard: React.FC = () => {
 
   useEffect(() => {
     const googleMaps = window.google?.maps as unknown as OfficerGoogleMaps | undefined;
-    if (!mapReady || !googleMaps || !mapElementRef.current) {
-      return;
-    }
+    if (!mapReady || !googleMaps || !mapElementRef.current || mapInstanceRef.current) return;
 
-    if (mapInstanceRef.current && mapHostRef.current === mapElementRef.current) {
-      return;
-    }
-
-    mapHostRef.current = mapElementRef.current;
     mapInstanceRef.current = new googleMaps.Map(mapElementRef.current, {
       center: currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lon } : { lat: 39.7684, lng: -86.1581 },
       zoom: 13,
@@ -226,17 +244,17 @@ export const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     const map = mapInstanceRef.current;
     const googleMaps = window.google?.maps as unknown as OfficerGoogleMaps | undefined;
-    if (!map || !googleMaps) {
-      return;
-    }
+    if (!map || !googleMaps) return;
 
     mapMarkersRef.current.forEach((marker) => marker.setMap(null));
     mapMarkersRef.current = [];
     const bounds = new googleMaps.LatLngBounds();
+    let hasBounds = false;
 
     if (currentLocation) {
       const location = { lat: currentLocation.lat, lng: currentLocation.lon };
       bounds.extend(location);
+      hasBounds = true;
       mapMarkersRef.current.push(
         new googleMaps.Marker({
           position: location,
@@ -252,29 +270,30 @@ export const OfficerDashboard: React.FC = () => {
           }
         })
       );
-      map.setCenter(location);
     }
 
     assignedIncidents.forEach((incident) => {
-      if (incident.lat === undefined || incident.lon === undefined) {
-        return;
-      }
+      if (incident.lat === undefined || incident.lon === undefined) return;
       const location = { lat: incident.lat, lng: incident.lon };
       bounds.extend(location);
+      hasBounds = true;
       mapMarkersRef.current.push(
         new googleMaps.Marker({
           position: location,
           map,
           title: `${incident.callNumber} ${incident.type}`,
-          label: incident.priority === 'Emergency' ? '!' : ''
+          label: incident.priority === 'Emergency' ? '!' : incident.callNumber.slice(-2)
         })
       );
     });
 
-    if (currentLocation || assignedIncidents.some((incident) => incident.lat !== undefined && incident.lon !== undefined)) {
-      map.fitBounds(bounds);
-    }
+    if (hasBounds) map.fitBounds(bounds);
   }, [assignedIncidents, currentLocation]);
+
+  const recenterMap = () => {
+    if (!currentLocation) return;
+    mapInstanceRef.current?.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon });
+  };
 
   const updateStatus = async (status: IncidentUnitStatus) => {
     if (!selectedIncident) return;
@@ -297,7 +316,6 @@ export const OfficerDashboard: React.FC = () => {
     setMessage('');
     try {
       await authClient.addMyIncidentNote(selectedIncident.id, noteBody);
-      await loadIncidents();
       setNoteBody('');
       setMessage('Note added.');
     } catch {
@@ -308,275 +326,408 @@ export const OfficerDashboard: React.FC = () => {
   };
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-950 dark:bg-slate-950 dark:text-white">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-cad-blue text-white">
-              <Shield size={20} />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-500 dark:text-slate-400">
-                {user?.cadUnitNumber || user?.unitNumber || user?.badge || 'Patrol Unit'}
-              </p>
-              <h1 className="truncate text-lg font-bold">{user?.name || 'Officer Console'}</h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={logout}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
-              title="Sign out"
-            >
-              <LogOut size={18} />
-            </button>
-          </div>
+    <main className="relative h-screen overflow-hidden bg-slate-950 text-slate-950 dark:text-white">
+      <div className="absolute inset-0">
+        {runtimeConfig.googleMapsApiKey ? (
+          <div ref={mapElementRef} className="h-full w-full" />
+        ) : (
+          <FallbackOfficerMap
+            currentLocation={currentLocation}
+            assignedIncidents={assignedIncidents}
+            currentUserLabel={user?.cadUnitNumber || user?.unitNumber || user?.badge || 'ME'}
+          />
+        )}
+      </div>
+
+      <header className="pointer-events-none absolute left-4 right-4 top-4 z-20 flex items-center justify-between">
+        <div className="pointer-events-auto rounded-lg border border-slate-200 bg-white/95 px-4 py-3 shadow-xl backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Officer CAD</p>
+          <h1 className="text-lg font-black">{user?.cadUnitNumber || user?.unitNumber || user?.badge || user?.name}</h1>
         </div>
+        <button
+          type="button"
+          onClick={logout}
+          className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-xl backdrop-blur hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200 dark:hover:bg-slate-800"
+          title="Sign out"
+        >
+          <LogOut size={18} />
+        </button>
       </header>
 
-      <section className="mx-auto grid max-w-7xl gap-4 p-4 lg:grid-cols-[360px_1fr]">
-        <aside className="space-y-4">
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Location</p>
-                <p className="mt-1 text-sm font-semibold">
-                  {locationState === 'live' ? 'Live tracking active' : locationState === 'starting' ? 'Starting GPS' : 'Location needs attention'}
-                </p>
-              </div>
-              {locationState === 'live' ? <Wifi className="text-emerald-500" size={22} /> : <WifiOff className="text-amber-500" size={22} />}
+      <button
+        type="button"
+        onClick={recenterMap}
+        className="absolute bottom-24 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-cad-blue shadow-xl backdrop-blur hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200"
+        title="My location"
+      >
+        <MapPin size={19} />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setLeftOpen((value) => !value)}
+        className="absolute top-1/2 z-30 inline-flex h-12 w-8 -translate-y-1/2 items-center justify-center rounded-r-md border border-l-0 border-slate-200 bg-white/95 text-slate-700 shadow-xl transition-all duration-300 dark:border-slate-700 dark:bg-slate-900/95 dark:text-white"
+        style={{ left: leftOpen ? 'min(22rem, calc(100vw - 3rem))' : 0 }}
+        title={leftOpen ? 'Collapse left panel' : 'Open left panel'}
+      >
+        {leftOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+      </button>
+
+      <aside
+        className={`absolute bottom-24 left-4 top-20 z-20 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
+          leftOpen ? 'translate-x-0 opacity-100' : '-translate-x-[calc(100%+2rem)] opacity-0'
+        }`}
+      >
+        <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Live Tracking</p>
+              <p className="mt-1 text-sm font-semibold">
+                {locationState === 'live' ? 'Active' : locationState === 'starting' ? 'Starting GPS' : 'Needs attention'}
+              </p>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-950">
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Speed</p>
-                <p className="mt-1 text-xl font-bold">{currentSpeed === null ? '--' : Math.round(currentSpeed)} mph</p>
-              </div>
-              <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-950">
-                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Assigned</p>
-                <p className="mt-1 text-xl font-bold">{assignedIncidents.length}</p>
-              </div>
+            {locationState === 'live' ? <Wifi className="text-emerald-500" size={22} /> : <WifiOff className="text-amber-500" size={22} />}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-900">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Speed</p>
+              <p className="mt-1 text-xl font-bold">{currentSpeed === null ? '--' : Math.round(currentSpeed)} mph</p>
+            </div>
+            <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-900">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Calls</p>
+              <p className="mt-1 text-xl font-bold">{assignedIncidents.length}</p>
             </div>
           </div>
-
-          <div className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">My Calls</h2>
-              <ClipboardList size={18} className="text-slate-500" />
-            </div>
-            <div className="max-h-[52vh] overflow-auto p-2">
-              {assignedIncidents.length === 0 && (
-                <div className="rounded-md bg-slate-50 p-4 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
-                  No assigned calls.
-                </div>
-              )}
-              {assignedIncidents.map((incident) => {
-                const status = getMyUnitStatus(incident, user?.id);
-                const selected = selectedIncident?.id === incident.id;
-                return (
-                  <button
-                    key={incident.id}
-                    type="button"
-                    onClick={() => setSelectedIncidentId(incident.id)}
-                    className={`mb-2 w-full rounded-md border p-3 text-left transition ${
-                      selected
-                        ? 'border-cad-blue bg-blue-50 dark:border-blue-500 dark:bg-blue-950'
-                        : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold">{incident.callNumber}</p>
-                        <p className="truncate text-sm text-slate-600 dark:text-slate-300">{incident.type}</p>
-                      </div>
-                      <span className={`rounded-full px-2 py-1 text-xs font-bold ${priorityClasses[incident.priority]}`}>
-                        {incident.priority}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{incident.address}</p>
-                    {status && (
-                      <span className={`mt-3 inline-flex rounded-full px-2 py-1 text-xs font-bold ring-1 ${statusClasses[status]}`}>
-                        {status}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </aside>
-
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          {!selectedIncident ? (
-            <div className="grid min-h-[70vh] grid-rows-[minmax(320px,1fr)_auto]">
-              <OfficerMap
-                mapElementRef={mapElementRef}
-                hasGoogleKey={Boolean(runtimeConfig.googleMapsApiKey)}
-                currentLocation={currentLocation}
-              />
-              <div className="flex flex-col items-center justify-center p-8 text-center">
-                <Radio size={42} className="text-slate-400" />
-                <h2 className="mt-4 text-xl font-bold">No active assignment</h2>
-                <p className="mt-2 max-w-md text-sm text-slate-600 dark:text-slate-300">
-                  Assigned calls will appear here with response controls, notes, navigation, and live map context.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="grid min-h-[70vh] lg:grid-cols-[1fr_320px]">
-              <div className="p-4 sm:p-6">
-                <OfficerMap
-                  mapElementRef={mapElementRef}
-                  hasGoogleKey={Boolean(runtimeConfig.googleMapsApiKey)}
-                  currentLocation={currentLocation}
-                />
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-3 py-1 text-xs font-bold ${priorityClasses[selectedIncident.priority]}`}>
-                        {selectedIncident.priority}
-                      </span>
-                      {selectedStatus && (
-                        <span className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${statusClasses[selectedStatus]}`}>
-                          {selectedStatus}
-                        </span>
-                      )}
-                    </div>
-                    <h2 className="mt-3 text-2xl font-black">{selectedIncident.type}</h2>
-                    <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                      {selectedIncident.callNumber} opened {formatTime(selectedIncident.createdAt)}
-                    </p>
-                  </div>
-                  <a
-                    href={navigationUrl(selectedIncident)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-3 text-sm font-bold text-white hover:bg-blue-700"
-                  >
-                    <Navigation size={18} />
-                    Navigate
-                  </a>
-                </div>
-
-                <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-                  <div className="flex items-start gap-3">
-                    <MapPin size={20} className="mt-0.5 text-cad-blue" />
-                    <div>
-                      <p className="text-sm font-bold">{selectedIncident.address}</p>
-                      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                        {selectedIncident.description || 'No additional call details.'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => updateStatus('En Route')}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60"
-                  >
-                    <Siren size={18} />
-                    En Route
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => updateStatus('On Scene')}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-3 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60"
-                  >
-                    <AlertTriangle size={18} />
-                    On Scene
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => updateStatus('Cleared')}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
-                  >
-                    <CheckCircle2 size={18} />
-                    Clear
-                  </button>
-                </div>
-
-                <div className="mt-5">
-                  <label className="text-sm font-bold text-slate-700 dark:text-slate-200" htmlFor="officer-note">
-                    Add call note
-                  </label>
-                  <textarea
-                    id="officer-note"
-                    value={noteBody}
-                    onChange={(event) => setNoteBody(event.target.value)}
-                    rows={4}
-                    className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-blue-950"
-                    placeholder="Add road-side update..."
-                  />
-                  <div className="mt-2 flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{message}</p>
-                    <button
-                      type="button"
-                      disabled={busy || !noteBody.trim()}
-                      onClick={addNote}
-                      className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50 dark:bg-white dark:text-slate-950"
-                    >
-                      <Send size={16} />
-                      Send
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <aside className="border-t border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 lg:border-l lg:border-t-0">
-                <h3 className="text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Timeline</h3>
-                <div className="mt-3 space-y-3">
-                  {selectedIncident.notes.length === 0 && (
-                    <p className="text-sm text-slate-500 dark:text-slate-400">No notes yet.</p>
-                  )}
-                  {selectedIncident.notes.slice().reverse().map((note) => (
-                    <div key={note.id} className="rounded-md border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-900">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold">{note.userName || 'CAD'}</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">{formatTime(note.createdAt)}</span>
-                      </div>
-                      <p className="mt-1 text-slate-600 dark:text-slate-300">{note.body}</p>
-                    </div>
-                  ))}
-                </div>
-              </aside>
-            </div>
-          )}
         </section>
-      </section>
 
-      <nav className="fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 p-2 shadow-xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-        <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-cad-blue text-white" title="Map">
-          <MapPin size={20} />
-        </button>
-        <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800" title="Messages">
-          <MessageCircle size={20} />
-        </button>
-      </nav>
+        <section className="min-h-0 flex-1 overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 dark:border-slate-800">
+            <h2 className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">My Calls</h2>
+            <ClipboardList size={17} className="text-slate-500" />
+          </div>
+          <div className="h-full overflow-auto p-2">
+            {assignedIncidents.length === 0 && (
+              <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">No assigned calls.</p>
+            )}
+            {assignedIncidents.map((incident) => (
+              <IncidentButton
+                key={incident.id}
+                incident={incident}
+                selected={selectedIncident?.id === incident.id}
+                status={getMyUnitStatus(incident, user?.id)}
+                onClick={() => setSelectedIncidentId(incident.id)}
+              />
+            ))}
+          </div>
+        </section>
+      </aside>
+
+      <button
+        type="button"
+        onClick={() => setRightOpen((value) => !value)}
+        className="absolute right-4 top-20 z-30 inline-flex h-9 w-12 items-center justify-center rounded-md border border-slate-200 bg-white/95 text-slate-700 shadow-xl transition dark:border-slate-700 dark:bg-slate-900/95 dark:text-white"
+        title={rightOpen ? 'Collapse assignments' : 'Open assignments'}
+      >
+        <ChevronUp className={`transition-transform duration-300 ${rightOpen ? '' : 'rotate-180'}`} size={18} />
+      </button>
+
+      <aside
+        className={`absolute right-4 top-32 z-20 w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
+          rightOpen ? 'translate-y-0 opacity-100' : '-translate-y-4 pointer-events-none opacity-0'
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Active Assignments</h2>
+          <span className="rounded-full bg-cad-blue px-2 py-1 text-xs font-bold text-white">{assignedIncidents.length}</span>
+        </div>
+        <div className="mt-3 grid gap-2">
+          {assignedIncidents.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No active assignments.</p>}
+          {assignedIncidents.map((incident) => (
+            <button
+              key={incident.id}
+              type="button"
+              onClick={() => setSelectedIncidentId(incident.id)}
+              className="rounded-md border border-slate-200 bg-white p-3 text-left shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-bold">{incident.callNumber}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">{incident.type}</p>
+                </div>
+                <span className={`rounded-full px-2 py-1 text-xs font-bold ${priorityClasses[incident.priority]}`}>{incident.priority}</span>
+              </div>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{incident.address}</p>
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <QuickDock activeItem={activeDockItem} onOpen={setActiveDockItem} />
+
+      {activeDockItem && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/25 p-4 backdrop-blur-sm sm:items-center" onMouseDown={() => setActiveDockItem(null)}>
+          <div
+            className="w-full max-w-3xl origin-bottom animate-[dockModalIn_160ms_ease-out] rounded-lg border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">{dockItems.find((item) => item.id === activeDockItem)?.label}</h2>
+              <button type="button" onClick={() => setActiveDockItem(null)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-auto p-4">
+              <DockContent
+                activeItem={activeDockItem}
+                incidents={assignedIncidents}
+                selectedIncident={selectedIncident}
+                selectedStatus={selectedStatus}
+                currentLocation={currentLocation}
+                currentSpeed={currentSpeed}
+                locationState={locationState}
+                currentUserId={user?.id}
+                noteBody={noteBody}
+                setNoteBody={setNoteBody}
+                busy={busy}
+                message={message}
+                onSelectIncident={setSelectedIncidentId}
+                onUpdateStatus={updateStatus}
+                onAddNote={addNote}
+                onLogout={logout}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
 
-const OfficerMap: React.FC<{
-  mapElementRef: React.RefObject<HTMLDivElement>;
-  hasGoogleKey: boolean;
-  currentLocation: { lat: number; lon: number } | null;
-}> = ({ mapElementRef, hasGoogleKey, currentLocation }) => (
-  <div className="mb-5 overflow-hidden rounded-lg border border-slate-200 bg-slate-950 dark:border-slate-800">
-    {hasGoogleKey ? (
-      <div ref={mapElementRef} className="h-[320px] w-full" />
-    ) : (
-      <div className="flex h-[320px] items-center justify-center bg-slate-900 p-6 text-center text-sm text-slate-300">
-        Add REACT_APP_GOOGLE_API_KEY to show the live officer map.
+const IncidentButton: React.FC<{
+  incident: Incident;
+  selected: boolean;
+  status: IncidentUnitStatus | null;
+  onClick: () => void;
+}> = ({ incident, selected, status, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`mb-2 w-full rounded-md border p-3 text-left transition ${
+      selected
+        ? 'border-cad-blue bg-blue-50 dark:border-blue-500 dark:bg-blue-950'
+        : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900'
+    }`}
+  >
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-bold">{incident.callNumber}</p>
+        <p className="truncate text-sm text-slate-600 dark:text-slate-300">{incident.type}</p>
       </div>
-    )}
-    <div className="flex items-center justify-between border-t border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-white">
-      <span>Live patrol map</span>
-      <span>{currentLocation ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'Waiting for GPS'}</span>
+      <span className={`rounded-full px-2 py-1 text-xs font-bold ${priorityClasses[incident.priority]}`}>{incident.priority}</span>
+    </div>
+    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{incident.address}</p>
+    {status && <span className={`mt-3 inline-flex rounded-full px-2 py-1 text-xs font-bold ring-1 ${statusClasses[status]}`}>{status}</span>}
+  </button>
+);
+
+const QuickDock: React.FC<{ activeItem: DockItem | null; onOpen: (item: DockItem) => void }> = ({ activeItem, onOpen }) => (
+  <nav className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+    {dockItems.map((item) => (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => onOpen(item.id)}
+        className={`relative inline-flex h-12 w-12 items-center justify-center rounded-full transition ${
+          activeItem === item.id
+            ? 'bg-cad-blue text-white'
+            : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+        }`}
+        title={item.label}
+      >
+        {item.icon}
+      </button>
+    ))}
+  </nav>
+);
+
+const DockContent: React.FC<{
+  activeItem: DockItem;
+  incidents: Incident[];
+  selectedIncident: Incident | null;
+  selectedStatus: IncidentUnitStatus | null;
+  currentLocation: { lat: number; lon: number } | null;
+  currentSpeed: number | null;
+  locationState: string;
+  currentUserId?: string;
+  noteBody: string;
+  setNoteBody: (value: string) => void;
+  busy: boolean;
+  message: string;
+  onSelectIncident: (id: string) => void;
+  onUpdateStatus: (status: IncidentUnitStatus) => void;
+  onAddNote: () => void;
+  onLogout: () => void;
+}> = ({
+  activeItem,
+  incidents,
+  selectedIncident,
+  selectedStatus,
+  currentLocation,
+  currentSpeed,
+  locationState,
+  currentUserId,
+  noteBody,
+  setNoteBody,
+  busy,
+  message,
+  onSelectIncident,
+  onUpdateStatus,
+  onAddNote,
+  onLogout
+}) => {
+  if (activeItem === 'calls') {
+    return (
+      <div className="grid gap-2">
+        {incidents.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No active assignments.</p>}
+        {incidents.map((incident) => (
+          <IncidentButton
+            key={incident.id}
+            incident={incident}
+            selected={selectedIncident?.id === incident.id}
+            status={getMyUnitStatus(incident, currentUserId)}
+            onClick={() => onSelectIncident(incident.id)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  if (activeItem === 'call-detail' || activeItem === 'navigation') {
+    if (!selectedIncident) return <p className="text-sm text-slate-600 dark:text-slate-300">No call selected.</p>;
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <span className={`rounded-full px-3 py-1 text-xs font-bold ${priorityClasses[selectedIncident.priority]}`}>{selectedIncident.priority}</span>
+            <h3 className="mt-3 text-2xl font-black text-slate-950 dark:text-white">{selectedIncident.type}</h3>
+            <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{selectedIncident.callNumber} opened {formatTime(selectedIncident.createdAt)}</p>
+          </div>
+          <a href={navigationUrl(selectedIncident)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-3 text-sm font-bold text-white">
+            <Navigation size={18} />
+            Navigate
+          </a>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+          <p className="text-sm font-bold">{selectedIncident.address}</p>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{selectedIncident.description || 'No additional call details.'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeItem === 'status') {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Current status: {selectedStatus || 'No call selected'}</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <StatusButton disabled={busy || !selectedIncident} onClick={() => onUpdateStatus('En Route')} icon={<Siren size={18} />} label="En Route" className="bg-blue-600 hover:bg-blue-700" />
+          <StatusButton disabled={busy || !selectedIncident} onClick={() => onUpdateStatus('On Scene')} icon={<AlertTriangle size={18} />} label="On Scene" className="bg-red-600 hover:bg-red-700" />
+          <StatusButton disabled={busy || !selectedIncident} onClick={() => onUpdateStatus('Cleared')} icon={<CheckCircle2 size={18} />} label="Clear" className="bg-emerald-600 hover:bg-emerald-700" />
+        </div>
+        {message && <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{message}</p>}
+      </div>
+    );
+  }
+
+  if (activeItem === 'notes') {
+    return (
+      <div className="space-y-4">
+        <textarea
+          value={noteBody}
+          onChange={(event) => setNoteBody(event.target.value)}
+          rows={4}
+          className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+          placeholder="Add road-side update..."
+        />
+        <button type="button" disabled={busy || !noteBody.trim() || !selectedIncident} onClick={onAddNote} className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50 dark:bg-white dark:text-slate-950">
+          <Send size={16} />
+          Add note
+        </button>
+        {selectedIncident?.notes.slice().reverse().map((note) => (
+          <div key={note.id} className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-bold">{note.userName || 'CAD'}</span>
+              <span className="text-xs text-slate-500">{formatTime(note.createdAt)}</span>
+            </div>
+            <p className="mt-1 text-slate-600 dark:text-slate-300">{note.body}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (activeItem === 'location') {
+    return (
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Metric label="Tracking" value={locationState === 'live' ? 'Active' : locationState} />
+        <Metric label="Speed" value={currentSpeed === null ? '--' : `${Math.round(currentSpeed)} mph`} />
+        <Metric label="Position" value={currentLocation ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'Waiting'} />
+      </div>
+    );
+  }
+
+  if (activeItem === 'messages') {
+    return <p className="text-sm text-slate-600 dark:text-slate-300">Messages stay live through the CAD message system. Officer message compose can be wired into this dock next.</p>;
+  }
+
+  return (
+    <button type="button" onClick={onLogout} className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white dark:bg-white dark:text-slate-950">
+      <LogOut size={16} />
+      Sign out
+    </button>
+  );
+};
+
+const StatusButton: React.FC<{
+  disabled: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  className: string;
+}> = ({ disabled, onClick, icon, label, className }) => (
+  <button type="button" disabled={disabled} onClick={onClick} className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-3 text-sm font-bold text-white disabled:opacity-60 ${className}`}>
+    {icon}
+    {label}
+  </button>
+);
+
+const Metric: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-950">
+    <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
+    <p className="mt-1 break-words text-lg font-black text-slate-950 dark:text-white">{value}</p>
+  </div>
+);
+
+const FallbackOfficerMap: React.FC<{
+  currentLocation: { lat: number; lon: number } | null;
+  assignedIncidents: Incident[];
+  currentUserLabel: string;
+}> = ({ currentLocation, assignedIncidents, currentUserLabel }) => (
+  <div className="relative h-full w-full overflow-hidden bg-slate-900">
+    <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:48px_48px]" />
+    <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500 ring-4 ring-white shadow-xl" title={currentUserLabel} />
+    <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400/40 location-pulse" />
+    {assignedIncidents.map((incident, index) => (
+      <div
+        key={incident.id}
+        className="absolute rounded-full bg-red-600 px-3 py-1 text-xs font-black text-white ring-2 ring-white shadow-xl"
+        style={{ left: `${58 + (index % 4) * 7}%`, top: `${42 + (index % 3) * 10}%` }}
+      >
+        {incident.callNumber}
+      </div>
+    ))}
+    <div className="absolute bottom-4 right-4 rounded-md bg-white/90 px-3 py-2 text-xs font-bold text-slate-700">
+      {currentLocation ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'Waiting for GPS'}
     </div>
   </div>
 );
