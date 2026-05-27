@@ -58,6 +58,7 @@ declare global {
 
 interface GoogleMapInstance {
   setCenter: (location: { lat: number; lng: number }) => void;
+  setOptions: (options: Record<string, unknown>) => void;
 }
 
 interface GoogleInfoWindowInstance {
@@ -257,9 +258,9 @@ const addGooglePulseMarker = ({
   label: string;
   tone: 'gray' | 'green' | 'blue' | 'yellow' | 'red';
   onClick?: () => void;
-}) => {
+}): GoogleOverlayViewInstance | null => {
   if (!window.google?.maps) {
-    return;
+    return null;
   }
 
   const position = new window.google.maps.LatLng(lat, lon);
@@ -316,7 +317,9 @@ const addGooglePulseMarker = ({
     }
   }
 
-  new PulseOverlay().setMap(map);
+  const overlay = new PulseOverlay();
+  overlay.setMap(map);
+  return overlay;
 };
 
 export const Dashboard: React.FC = () => {
@@ -383,8 +386,12 @@ export const Dashboard: React.FC = () => {
   const [destinationLon, setDestinationLon] = useState('');
   const [destinationLabel, setDestinationLabel] = useState('');
   const mapRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
+  const mapOverlaysRef = useRef<GoogleOverlayViewInstance[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const selectedMessageUserIdRef = useRef('');
+  const directoryRef = useRef<User[]>([]);
   const knownIncidentIdsRef = useRef<Set<string>>(new Set());
   const initialIncidentsLoadedRef = useRef(false);
 
@@ -478,6 +485,14 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('cad_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    selectedMessageUserIdRef.current = selectedMessageUserId;
+  }, [selectedMessageUserId]);
+
+  useEffect(() => {
+    directoryRef.current = directory;
+  }, [directory]);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -624,7 +639,7 @@ export const Dashboard: React.FC = () => {
       if (incomingForMe) {
         setMessageBadgeCount((count) => count + 1);
         playAlert('message');
-        const sender = directory.find((item) => item.id === message.senderId);
+        const sender = directoryRef.current.find((item) => item.id === message.senderId);
         pushToast({
           title: 'New message',
           message: `${sender?.name || 'Unit'}: ${message.body || `${message.attachments.length} attachment(s)`}`,
@@ -633,8 +648,8 @@ export const Dashboard: React.FC = () => {
       }
       setMessages((current) => {
         const belongsToSelected =
-          message.senderId === selectedMessageUserId ||
-          message.recipientId === selectedMessageUserId ||
+          message.senderId === selectedMessageUserIdRef.current ||
+          message.recipientId === selectedMessageUserIdRef.current ||
           message.senderId === user?.id ||
           message.recipientId === user?.id;
         if (!belongsToSelected || current.some((item) => item.id === message.id)) {
@@ -655,7 +670,7 @@ export const Dashboard: React.FC = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [directory, playAlert, pushToast, selectedMessageUserId, user?.id]);
+  }, [playAlert, pushToast, user?.id]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -725,22 +740,29 @@ export const Dashboard: React.FC = () => {
         return;
       }
 
-      const map = new window.google.maps.Map(mapRef.current, {
-        center: { lat: center.lat, lng: center.lon },
-        zoom: 12,
-        disableDefaultUI: true,
-        zoomControl: true,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: true,
-        styles: theme === 'dark' ? darkMapStyles : []
-      });
+      if (!mapInstanceRef.current) {
+        mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+          center: { lat: center.lat, lng: center.lon },
+          zoom: 12,
+          disableDefaultUI: true,
+          zoomControl: true,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+          styles: theme === 'dark' ? darkMapStyles : []
+        });
+      }
+
+      const map = mapInstanceRef.current;
+      map.setOptions({ styles: theme === 'dark' ? darkMapStyles : [] });
+      mapOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
+      mapOverlaysRef.current = [];
 
       units.forEach((unit) => {
         const infoWindow = new window.google!.maps.InfoWindow({
           content: `<strong>${displayCadUnitNumber(unit)}</strong><br>${unit.name}<br>${displayStatus(unit)}`
         });
-        addGooglePulseMarker({
+        const unitOverlay = addGooglePulseMarker({
           map,
           lat: unit.lat,
           lon: unit.lon,
@@ -751,21 +773,23 @@ export const Dashboard: React.FC = () => {
             infoWindow.open({ map, position: { lat: unit.lat, lng: unit.lon } });
           }
         });
+        if (unitOverlay) mapOverlaysRef.current.push(unitOverlay);
         if (unit.destinationLat !== undefined && unit.destinationLon !== undefined) {
-          addGooglePulseMarker({
+          const destinationOverlay = addGooglePulseMarker({
             map,
             lat: unit.destinationLat,
             lon: unit.destinationLon,
             label: unit.destinationLabel || 'Destination',
             tone: 'yellow'
           });
+          if (destinationOverlay) mapOverlaysRef.current.push(destinationOverlay);
         }
       });
 
       incidents
         .filter((incident) => incident.lat !== undefined && incident.lon !== undefined)
         .forEach((incident) => {
-          addGooglePulseMarker({
+          const incidentOverlay = addGooglePulseMarker({
             map,
             lat: incident.lat as number,
             lon: incident.lon as number,
@@ -773,6 +797,7 @@ export const Dashboard: React.FC = () => {
             tone: incident.priority === 'Emergency' || incident.priority === 'High' ? 'red' : 'yellow',
             onClick: () => setSelectedIncidentId(incident.id)
           });
+          if (incidentOverlay) mapOverlaysRef.current.push(incidentOverlay);
         });
 
       map.setCenter({ lat: center.lat, lng: center.lon });
@@ -815,19 +840,20 @@ export const Dashboard: React.FC = () => {
   };
 
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
+  const messageThreads = directory.filter((item) => {
+    if (item.id === user?.id) return false;
+    const query = messageSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [item.name, item.cadUnitNumber, item.unitNumber]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
   const visibleMessages = messages.filter(
     (message) =>
       (message.senderId === user?.id && message.recipientId === selectedMessageUserId) ||
       (message.senderId === selectedMessageUserId && message.recipientId === user?.id)
   );
-  const searchedMessages = visibleMessages.filter((message) => {
-    const query = messageSearch.trim().toLowerCase();
-    if (!query) return true;
-    return (
-      message.body.toLowerCase().includes(query) ||
-      message.attachments.some((attachment) => attachment.fileName.toLowerCase().includes(query))
-    );
-  });
+  const searchedMessages = visibleMessages;
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
 
   const sendChatMessage = async () => {
@@ -1084,22 +1110,17 @@ export const Dashboard: React.FC = () => {
     if (activeQuickModal === 'messages') {
       return (
         <div className="grid h-[min(70vh,680px)] min-h-[520px] overflow-hidden rounded-md border border-cad-line sm:grid-cols-[220px_1fr]">
-          <div className="relative h-full overflow-y-auto border-r border-cad-line bg-slate-50 pb-20 dark:border-slate-700 dark:bg-slate-950">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedMessageUserId('');
-                setMessageBody('');
-                setMessageSearch('');
-              }}
-              className="sticky top-3 z-10 mx-3 mb-3 flex w-[calc(100%-1.5rem)] items-center justify-center gap-2 rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white shadow-lg"
-            >
-              <Send size={15} />
-              New Message
-            </button>
-            {directory
-              .filter((item) => item.id !== user?.id)
-              .map((item) => (
+          <div className="relative flex h-full min-h-0 flex-col border-r border-cad-line bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
+            <div className="shrink-0 border-b border-cad-line p-3 dark:border-slate-700">
+              <input
+                value={messageSearch}
+                onChange={(event) => setMessageSearch(event.target.value)}
+                placeholder="Search threads"
+                className="w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              />
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto pb-16">
+              {messageThreads.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -1121,36 +1142,25 @@ export const Dashboard: React.FC = () => {
                   </span>
                 </button>
               ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedMessageUserId('');
+                setMessageBody('');
+                setMessageSearch('');
+              }}
+              className="absolute bottom-3 left-1/2 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full bg-cad-blue text-white shadow-lg transition hover:bg-blue-700"
+              aria-label="New message"
+              title="New message"
+            >
+              <Send size={18} />
+            </button>
           </div>
           <div className="flex min-h-0 min-w-0 flex-col">
-            <div className="border-b border-cad-line bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
-              <label className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-300">
-                Compose To
-              </label>
-              <select
-                value={selectedMessageUserId}
-                onChange={(event) => setSelectedMessageUserId(event.target.value)}
-                className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-              >
-                <option value="">Select a user</option>
-                {directory
-                  .filter((item) => item.id !== user?.id)
-                  .map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name} {item.cadUnitNumber ? `(${item.cadUnitNumber})` : ''}
-                    </option>
-                  ))}
-              </select>
-              <input
-                value={messageSearch}
-                onChange={(event) => setMessageSearch(event.target.value)}
-                placeholder="Search messages or attachments"
-                className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-              />
-            </div>
             {selectedMessageUser ? (
               <>
-                <div className="border-b border-cad-line px-4 py-3">
+                <div className="border-b border-cad-line bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
                   <p className="text-sm font-bold">{selectedMessageUser.name}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     <span>{onlineUserIds.includes(selectedMessageUser.id) ? 'Active now' : `Last seen ${formatDateTime(selectedMessageUser.lastSeenAt)}`}</span>
@@ -1467,7 +1477,8 @@ export const Dashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setSidebarOpen((value) => !value)}
-          className="absolute left-0 top-1/2 z-20 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-cad-line bg-white/95 text-cad-blue shadow-xl backdrop-blur transition hover:bg-blue-50"
+          className="absolute top-1/2 z-20 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-cad-line bg-white/95 text-cad-blue shadow-xl backdrop-blur transition-all duration-300 ease-out hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
+          style={{ left: sidebarOpen ? 'calc(min(22rem, calc(100vw - 2rem)) + 1rem)' : '0' }}
           aria-label={sidebarOpen ? 'Collapse units' : 'Open units'}
         >
           {sidebarOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
@@ -1750,8 +1761,16 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {customizingSlot !== null && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-lg origin-bottom animate-[dockModalIn_220ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setCustomizingSlot(null);
+          }}
+        >
+          <div
+            className="w-full max-w-lg origin-bottom animate-[dockModalIn_220ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-cad-line p-4">
               <h2 className="text-lg font-bold">Customize Slot {customizingSlot + 1}</h2>
               <button type="button" onClick={() => setCustomizingSlot(null)} className="rounded-md p-2 hover:bg-slate-100">
@@ -1784,8 +1803,16 @@ export const Dashboard: React.FC = () => {
       )}
 
       {changePasswordOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-md origin-center animate-[dockModalIn_120ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setChangePasswordOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md origin-center animate-[dockModalIn_120ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-cad-line p-4 dark:border-slate-700">
               <h2 className="text-lg font-bold">Change Password</h2>
               <button type="button" onClick={() => setChangePasswordOpen(false)} className="rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
@@ -1824,8 +1851,16 @@ export const Dashboard: React.FC = () => {
       )}
 
       {activeQuickModal && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4">
-          <div className="mb-20 flex max-h-[calc(100vh-7rem)] w-full max-w-2xl origin-bottom animate-[dockModalIn_120ms_cubic-bezier(0.2,0.8,0.2,1)] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setActiveQuickModal(null);
+          }}
+        >
+          <div
+            className="mb-20 flex max-h-[calc(100vh-7rem)] w-full max-w-2xl origin-bottom animate-[dockModalIn_120ms_cubic-bezier(0.2,0.8,0.2,1)] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
             <div className="flex shrink-0 items-center justify-between border-b border-cad-line p-4">
               <h2 className="text-lg font-bold">{quickModalTitle}</h2>
               <button type="button" onClick={() => setActiveQuickModal(null)} className="rounded-md p-2 hover:bg-slate-100">
