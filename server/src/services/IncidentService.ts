@@ -234,7 +234,7 @@ export class IncidentService {
           status === 'On Scene' ? 'On Scene' : status === 'En Route' ? 'En Route' : 'Dispatched',
           incident.lat ?? null,
           incident.lon ?? null,
-          `${incident.callNumber} ${incident.address}`,
+          incident.callNumber,
           id
         ]
       );
@@ -295,7 +295,7 @@ export class IncidentService {
         status === 'Cleared' ? 'Available' : status === 'On Scene' ? 'On Scene' : status === 'En Route' ? 'En Route' : 'Dispatched',
         status === 'Cleared' ? null : incident.lat ?? null,
         status === 'Cleared' ? null : incident.lon ?? null,
-        status === 'Cleared' ? null : `${incident.callNumber} ${incident.address}`,
+        status === 'Cleared' ? null : incident.callNumber,
         userId
       ]
     );

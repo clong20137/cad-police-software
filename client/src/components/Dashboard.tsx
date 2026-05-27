@@ -65,6 +65,7 @@ interface GoogleMapInstance {
 
 interface GoogleInfoWindowInstance {
   open: (options: { map: GoogleMapInstance; position: { lat: number; lng: number } }) => void;
+  addListener: (eventName: string, handler: () => void) => void;
 }
 
 interface GoogleLatLngInstance {}
@@ -268,6 +269,18 @@ const displayStatus = (unit: User): UnitStatus => unit.status || 'Available';
 const displayUnitNumber = (unit: User): string => unit.unitNumber || unit.badge || 'Unassigned';
 const displayCadUnitNumber = (unit: User): string =>
   unit.cadUnitNumber || (unit.unitNumber ? `CAD-${unit.unitNumber}` : unit.name);
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+const compactDestinationLabel = (label?: string): string => {
+  if (!label) return 'Destination';
+  const callNumber = label.match(/\d{8}-\d{4}/)?.[0];
+  return callNumber || label;
+};
 const splitName = (name: string): { firstName: string; lastName: string } => {
   const parts = name.trim().split(/\s+/);
   return {
@@ -869,8 +882,31 @@ export const Dashboard: React.FC = () => {
       mapOverlaysRef.current = [];
 
       units.forEach((unit) => {
+        const messageButtonId = `message-unit-${unit.id}`;
         const infoWindow = new window.google!.maps.InfoWindow({
-          content: `<strong>${displayCadUnitNumber(unit)}</strong><br>${unit.name}<br>${displayStatus(unit)}<br>${locationReliabilityText(unit, locationClock)}`
+          content: `
+            <div style="min-width:180px;font-family:Arial,sans-serif;color:#0f172a">
+              <div style="font-weight:700;margin-bottom:2px">${escapeHtml(displayCadUnitNumber(unit))}</div>
+              <div>${escapeHtml(unit.name)}</div>
+              <div style="margin-top:4px;font-size:12px;color:#475569">${escapeHtml(displayStatus(unit))}</div>
+              <div style="font-size:12px;color:#475569">${escapeHtml(locationReliabilityText(unit, locationClock))}</div>
+              ${
+                unit.id !== user?.id
+                  ? `<button id="${messageButtonId}" type="button" style="margin-top:8px;border:0;border-radius:6px;background:#2563eb;color:white;padding:6px 10px;font-weight:700;cursor:pointer">Message</button>`
+                  : ''
+              }
+            </div>
+          `
+        });
+        infoWindow.addListener('domready', () => {
+          const button = document.getElementById(messageButtonId);
+          if (!button) return;
+          button.onclick = () => {
+            setSelectedMessageUserId(unit.id);
+            setMessageBody('');
+            setMessageSearch('');
+            setActiveQuickModal('messages');
+          };
         });
         const unitOverlay = addGooglePulseMarker({
           map,
@@ -889,7 +925,7 @@ export const Dashboard: React.FC = () => {
             map,
             lat: unit.destinationLat,
             lon: unit.destinationLon,
-            label: unit.destinationLabel || 'Destination',
+            label: compactDestinationLabel(unit.destinationLabel),
             tone: 'yellow'
           });
           if (destinationOverlay) mapOverlaysRef.current.push(destinationOverlay);
@@ -910,7 +946,6 @@ export const Dashboard: React.FC = () => {
           if (incidentOverlay) mapOverlaysRef.current.push(incidentOverlay);
         });
 
-      map.setCenter({ lat: center.lat, lng: center.lon });
     };
 
     const existingScript = document.getElementById(scriptId);
@@ -947,6 +982,11 @@ export const Dashboard: React.FC = () => {
     if (isTrackedUnit(updatedUser)) {
       setUnits((currentUnits) => [updatedUser, ...currentUnits.filter((unit) => unit.id !== updatedUser.id)]);
     }
+  };
+
+  const recenterToCurrentLocation = () => {
+    const target = currentLocation || center;
+    mapInstanceRef.current?.setCenter({ lat: target.lat, lng: target.lon });
   };
 
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
@@ -1651,6 +1691,15 @@ export const Dashboard: React.FC = () => {
           />
           <MetricCard icon={<MapPin size={14} />} label="Stale GPS" value={locationReliabilityCounts.stale + locationReliabilityCounts.offline} />
         </div>
+
+        <button
+          type="button"
+          onClick={recenterToCurrentLocation}
+          className="absolute bottom-28 right-4 z-20 inline-flex items-center gap-2 rounded-md border border-cad-line bg-white/95 px-3 py-2 text-sm font-bold text-cad-ink shadow-xl backdrop-blur transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-white dark:hover:bg-slate-800"
+        >
+          <MapPin size={16} />
+          My location
+        </button>
 
         <button
           type="button"
