@@ -131,6 +131,13 @@ const defaultQuickLaunchSlots: QuickLaunchSlot[] = [
   'settings'
 ];
 
+const liveLocationHeartbeatMs = 5000;
+const liveLocationOptions: PositionOptions = {
+  enableHighAccuracy: true,
+  maximumAge: 0,
+  timeout: 10000
+};
+
 const emojiCatalog = (() => {
   const priorityEmoji = ['🚓', '🚔', '🚨', '🚑', '🚒', '📍', '✅', '⚠️', '❗', '🙏'];
   const ranges = [
@@ -409,6 +416,8 @@ export const Dashboard: React.FC = () => {
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
   const directoryRef = useRef<User[]>([]);
+  const latestPositionRef = useRef<GeolocationPosition | null>(null);
+  const locationPublishInFlightRef = useRef(false);
   const knownIncidentIdsRef = useRef<Set<string>>(new Set());
   const initialIncidentsLoadedRef = useRef(false);
 
@@ -573,6 +582,43 @@ export const Dashboard: React.FC = () => {
     }, 5200);
   }, []);
 
+  const publishLiveLocation = useCallback(async (position: GeolocationPosition) => {
+    if (locationPublishInFlightRef.current) {
+      latestPositionRef.current = position;
+      return;
+    }
+
+    locationPublishInFlightRef.current = true;
+    latestPositionRef.current = position;
+
+    const nextLocation = {
+      lat: position.coords.latitude,
+      lon: position.coords.longitude
+    };
+    const speedMph =
+      typeof position.coords.speed === 'number' && position.coords.speed >= 0
+        ? position.coords.speed * 2.236936
+        : null;
+
+    setCurrentLocation(nextLocation);
+    setLocationError('');
+
+    try {
+      const updatedUser = await authClient.updateLocation(nextLocation.lat, nextLocation.lon, speedMph);
+      if (isTrackedUnit(updatedUser)) {
+        setUnits((currentUnits) => {
+          const others = currentUnits.filter((unit) => unit.id !== updatedUser.id);
+          return [updatedUser, ...others];
+        });
+        setSelectedUnitId((current) => current || updatedUser.id);
+      }
+    } catch {
+      setLocationError('Location detected, but the server did not save it.');
+    } finally {
+      locationPublishInFlightRef.current = false;
+    }
+  }, []);
+
   useEffect(() => {
     const query = incidentForm.address.trim();
     if (query.length < 3 || !window.google?.maps.places?.AutocompleteService) {
@@ -714,37 +760,28 @@ export const Dashboard: React.FC = () => {
     }
 
     const watcherId = navigator.geolocation.watchPosition(
-      async (position) => {
-        const nextLocation = {
-          lat: position.coords.latitude,
-          lon: position.coords.longitude
-        };
-        const speedMph =
-          typeof position.coords.speed === 'number' && position.coords.speed >= 0
-            ? position.coords.speed * 2.236936
-            : null;
-        setCurrentLocation(nextLocation);
-        setLocationError('');
-
-        try {
-          const updatedUser = await authClient.updateLocation(nextLocation.lat, nextLocation.lon, speedMph);
-          if (isTrackedUnit(updatedUser)) {
-            setUnits((currentUnits) => {
-              const others = currentUnits.filter((unit) => unit.id !== updatedUser.id);
-              return [updatedUser, ...others];
-            });
-            setSelectedUnitId((current) => current || updatedUser.id);
-          }
-        } catch {
-          setLocationError('Location detected, but the server did not save it.');
-        }
-      },
+      publishLiveLocation,
       () => setLocationError('Allow browser location access to track your position.'),
-      { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
+      liveLocationOptions
     );
 
-    return () => navigator.geolocation.clearWatch(watcherId);
-  }, [loadUnits]);
+    const heartbeatId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        publishLiveLocation,
+        () => setLocationError('Allow browser location access to track your position.'),
+        liveLocationOptions
+      );
+    }, liveLocationHeartbeatMs);
+
+    return () => {
+      navigator.geolocation.clearWatch(watcherId);
+      window.clearInterval(heartbeatId);
+    };
+  }, [publishLiveLocation]);
 
   useEffect(() => {
     if (!googleMapsApiKey || !mapRef.current) {
