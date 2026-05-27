@@ -9,8 +9,10 @@ import {
   AuthPayload,
   Permission,
   ROLE_PERMISSIONS,
+  ResetUserPasswordRequest,
   TokenPair,
   UnitStatus,
+  UpdateUserRequest,
   User,
   UserRole
 } from '../types/auth';
@@ -237,6 +239,68 @@ export class AuthService {
       'SELECT * FROM users ORDER BY created_at DESC LIMIT 200'
     );
     return rows.map(toUser);
+  }
+
+  static async updateUser(userId: string, input: UpdateUserRequest): Promise<User | null> {
+    const existingUser = await this.getUser(userId);
+    if (!existingUser) {
+      return null;
+    }
+
+    const nextRole = input.role && Object.values(UserRole).includes(input.role) ? input.role : existingUser.role;
+    await pool.execute(
+      `
+        UPDATE users
+        SET name = ?,
+            role = ?,
+            badge = ?,
+            unit_number = ?,
+            cad_unit_number = ?,
+            status = ?,
+            unit_group = ?,
+            district = ?,
+            active = ?
+        WHERE id = ?
+      `,
+      [
+        input.name?.trim() || existingUser.name,
+        nextRole,
+        input.badge === undefined ? existingUser.badge || null : input.badge?.trim() || null,
+        input.unitNumber === undefined ? existingUser.unitNumber || null : input.unitNumber?.trim() || null,
+        input.cadUnitNumber === undefined ? existingUser.cadUnitNumber || null : input.cadUnitNumber?.trim() || null,
+        input.status === undefined ? existingUser.status || null : input.status,
+        input.group === undefined ? existingUser.group || null : input.group?.trim() || null,
+        input.district === undefined ? existingUser.district || null : input.district?.trim() || null,
+        input.active === undefined ? existingUser.active : input.active,
+        userId
+      ]
+    );
+
+    if (input.active === false) {
+      await pool.execute('UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL', [
+        userId
+      ]);
+    }
+
+    return this.getUser(userId);
+  }
+
+  static async resetUserPassword(userId: string, input: ResetUserPasswordRequest): Promise<boolean> {
+    if (!input.newPassword || input.newPassword.length < 8) {
+      return false;
+    }
+
+    const user = await this.getUser(userId);
+    if (!user) {
+      return false;
+    }
+
+    const passwordHash = await bcrypt.hash(input.newPassword, BCRYPT_ROUNDS);
+    await pool.execute('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
+    await pool.execute('UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL', [
+      userId
+    ]);
+    return true;
   }
 
   static async touchLastSeen(userId: string): Promise<void> {

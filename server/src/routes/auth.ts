@@ -10,8 +10,10 @@ import {
   LocationUpdateRequest,
   LoginRequest,
   RefreshTokenRequest,
+  ResetUserPasswordRequest,
   RegisterRequest,
   SendMessageRequest,
+  UpdateUserRequest,
   UserRole
 } from '../types/auth';
 
@@ -228,6 +230,55 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const allUsers = await AuthService.getUsers();
     res.json(allUsers);
+  }
+);
+
+router.patch(
+  '/users/:id',
+  authMiddleware,
+  requirePermission('manage_users'),
+  async (req: Request<{ id: string }, {}, UpdateUserRequest>, res: Response): Promise<void> => {
+    if (req.params.id === req.user?.id && req.body.active === false) {
+      res.status(400).json({ error: 'You cannot deactivate your own account' });
+      return;
+    }
+
+    const user = await AuthService.updateUser(req.params.id, req.body);
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    await AuditLogService.fromRequest(req, {
+      action: 'user_updated',
+      resource: 'user',
+      resourceId: user.id,
+      metadata: { email: user.email, role: user.role, active: user.active }
+    });
+    await broadcastPresence();
+    await broadcastTrackedUnits();
+    res.json(user);
+  }
+);
+
+router.post(
+  '/users/:id/reset-password',
+  authMiddleware,
+  requirePermission('manage_users'),
+  async (req: Request<{ id: string }, {}, ResetUserPasswordRequest>, res: Response): Promise<void> => {
+    const changed = await AuthService.resetUserPassword(req.params.id, req.body);
+    if (!changed) {
+      res.status(400).json({ error: 'User not found or password is too short' });
+      return;
+    }
+
+    await AuditLogService.fromRequest(req, {
+      action: 'user_password_reset',
+      resource: 'user',
+      resourceId: req.params.id,
+      severity: 'warning'
+    });
+    res.json({ success: true });
   }
 );
 

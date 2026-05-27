@@ -11,8 +11,10 @@ import {
   RegisterRequest,
   RegisterResponse,
   ROLE_PERMISSIONS,
+  ResetUserPasswordRequest,
   SendMessageAttachment,
   TokenPair,
+  UpdateUserRequest,
   User
 } from '../types/auth';
 import { runtimeConfig } from '../config/runtimeConfig';
@@ -90,6 +92,25 @@ class AuthClient {
   async getDirectory(): Promise<User[]> {
     const response = await this.api.get<User[]>('/auth/directory');
     return response.data;
+  }
+
+  async getUsers(): Promise<User[]> {
+    const response = await this.api.get<User[]>('/auth/users');
+    return response.data;
+  }
+
+  async updateUser(userId: string, input: UpdateUserRequest): Promise<User> {
+    const response = await this.api.patch<User>(`/auth/users/${userId}`, input);
+    if (this.auth && response.data.id === this.auth.user.id) {
+      this.auth.user = response.data;
+      this.auth.permissions = ROLE_PERMISSIONS[response.data.role] || [];
+      this.saveToStorage();
+    }
+    return response.data;
+  }
+
+  async resetUserPassword(userId: string, input: ResetUserPasswordRequest): Promise<void> {
+    await this.api.post(`/auth/users/${userId}/reset-password`, input);
   }
 
   async getMessages(userId: string): Promise<ChatMessage[]> {

@@ -180,6 +180,22 @@ export interface AssignIncidentUnitRequest {
   status?: IncidentUnitStatus;
 }
 
+export interface UpdateUserRequest {
+  name?: string;
+  role?: UserRole;
+  badge?: string | null;
+  unitNumber?: string | null;
+  cadUnitNumber?: string | null;
+  status?: UnitStatus | null;
+  group?: string | null;
+  district?: string | null;
+  active?: boolean;
+}
+
+export interface ResetUserPasswordRequest {
+  newPassword: string;
+}
+
 export interface RefreshTokenRequest {
   refreshToken: string;
 }
