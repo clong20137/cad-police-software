@@ -33,7 +33,9 @@ type DockSlot = DockItem | null;
 
 interface OfficerGoogleMaps {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
-  Marker: new (options: GoogleMarkerOptions) => GoogleMarkerInstance;
+  OverlayView: new () => GoogleOverlayViewInstance;
+  LatLng: new (lat: number, lng: number) => GoogleLatLngInstance;
+  Polyline: new (options: GooglePolylineOptions) => GooglePolylineInstance;
   LatLngBounds: new () => GoogleLatLngBoundsInstance;
 }
 
@@ -41,19 +43,30 @@ interface GoogleMapInstance {
   setCenter: (location: { lat: number; lng: number }) => void;
   setZoom: (zoom: number) => void;
   fitBounds: (bounds: GoogleLatLngBoundsInstance) => void;
+  setOptions: (options: Record<string, unknown>) => void;
 }
 
-interface GoogleMarkerOptions {
-  position: { lat: number; lng: number };
-  map: GoogleMapInstance;
-  title?: string;
-  label?: string;
-  icon?: Record<string, unknown>;
-}
-
-interface GoogleMarkerInstance {
+interface GoogleOverlayViewInstance {
   setMap: (map: GoogleMapInstance | null) => void;
-  setPosition: (position: { lat: number; lng: number }) => void;
+  getPanes: () => { overlayMouseTarget: HTMLElement } | null;
+  getProjection: () => {
+    fromLatLngToDivPixel: (position: GoogleLatLngInstance) => { x: number; y: number } | null;
+  };
+}
+
+interface GoogleLatLngInstance {}
+
+interface GooglePolylineOptions {
+  path: Array<{ lat: number; lng: number }>;
+  geodesic?: boolean;
+  strokeColor?: string;
+  strokeOpacity?: number;
+  strokeWeight?: number;
+  map?: GoogleMapInstance;
+}
+
+interface GooglePolylineInstance {
+  setMap: (map: GoogleMapInstance | null) => void;
 }
 
 interface GoogleLatLngBoundsInstance {
@@ -109,8 +122,55 @@ const statusClasses: Record<IncidentUnitStatus, string> = {
   Cleared: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800'
 };
 
+const markerToneClass = {
+  green: 'bg-emerald-500 text-white ring-white',
+  yellow: 'bg-amber-400 text-slate-950 ring-white',
+  red: 'bg-red-600 text-white ring-white',
+  blue: 'bg-cad-blue text-white ring-white'
+};
+
+const markerPulseClass = {
+  green: 'bg-emerald-400/60',
+  yellow: 'bg-amber-300/65',
+  red: 'bg-red-500/60',
+  blue: 'bg-cad-blue/50'
+};
+
+const darkMapStyles = [
+  { elementType: 'geometry', stylers: [{ color: '#1f2937' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#111827' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#e5e7eb' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#374151' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#263244' }] }
+];
+
 const formatTime = (value: Date | string): string =>
   new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+const distanceMiles = (fromLat: number, fromLon: number, toLat: number, toLon: number): number => {
+  const earthRadiusMiles = 3958.8;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRadians(toLat - fromLat);
+  const dLon = toRadians(toLon - fromLon);
+  const lat1 = toRadians(fromLat);
+  const lat2 = toRadians(toLat);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const etaText = (
+  currentLocation: { lat: number; lon: number } | null,
+  incident: Incident,
+  speedMph: number | null
+): string => {
+  if (!currentLocation || incident.lat === undefined || incident.lon === undefined) return 'ETA pending';
+  const miles = distanceMiles(currentLocation.lat, currentLocation.lon, incident.lat, incident.lon);
+  if (!speedMph || speedMph <= 1) return `${miles.toFixed(1)} mi, ETA pending speed`;
+  return `${miles.toFixed(1)} mi, ${Math.max(1, Math.round((miles / speedMph) * 60))} min ETA`;
+};
 
 const navigationUrl = (incident: Incident): string => {
   const destination = incident.lat && incident.lon ? `${incident.lat},${incident.lon}` : incident.address;
@@ -120,6 +180,83 @@ const navigationUrl = (incident: Incident): string => {
 const getMyUnitStatus = (incident: Incident, userId?: string): IncidentUnitStatus | null =>
   incident.units.find((unit) => unit.userId === userId)?.status || null;
 
+const addOfficerOverlay = ({
+  map,
+  lat,
+  lon,
+  label,
+  tone,
+  sublabel,
+  onClick
+}: {
+  map: GoogleMapInstance;
+  lat: number;
+  lon: number;
+  label: string;
+  tone: keyof typeof markerToneClass;
+  sublabel?: string;
+  onClick?: () => void;
+}): GoogleOverlayViewInstance | null => {
+  const googleMaps = window.google?.maps as unknown as OfficerGoogleMaps | undefined;
+  if (!googleMaps) return null;
+
+  const position = new googleMaps.LatLng(lat, lon);
+
+  class OfficerOverlay extends googleMaps.OverlayView {
+    private container: HTMLElement | null = null;
+
+    onAdd() {
+      const container = document.createElement(onClick ? 'button' : 'div');
+      if (container instanceof HTMLButtonElement) container.type = 'button';
+      container.className = label
+        ? `absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full px-2 py-1 text-xs font-bold shadow-lg ring-2 ${markerToneClass[tone]}`
+        : `absolute flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full shadow-lg ring-2 ${markerToneClass[tone]}`;
+      container.style.cursor = onClick ? 'pointer' : 'default';
+
+      const pulse = document.createElement('span');
+      pulse.className = `pointer-events-none absolute inset-0 -z-10 rounded-full ${markerPulseClass[tone]} location-pulse`;
+      container.appendChild(pulse);
+
+      const pin = document.createElement('span');
+      pin.className = label ? 'h-3 w-3 shrink-0 rounded-full bg-current ring-2 ring-white/70' : 'h-3 w-3 rounded-full bg-current';
+      container.appendChild(pin);
+
+      if (label) {
+        const text = document.createElement('span');
+        text.textContent = label;
+        container.appendChild(text);
+      }
+
+      if (sublabel) {
+        const detail = document.createElement('span');
+        detail.className = 'ml-1 rounded-full bg-black/15 px-1.5 py-0.5 text-[10px]';
+        detail.textContent = sublabel;
+        container.appendChild(detail);
+      }
+
+      if (onClick) container.addEventListener('click', onClick);
+      this.container = container;
+      this.getPanes()?.overlayMouseTarget.appendChild(container);
+    }
+
+    draw() {
+      const point = this.getProjection().fromLatLngToDivPixel(position);
+      if (!point || !this.container) return;
+      this.container.style.left = `${point.x}px`;
+      this.container.style.top = `${point.y}px`;
+    }
+
+    onRemove() {
+      this.container?.remove();
+      this.container = null;
+    }
+  }
+
+  const overlay = new OfficerOverlay();
+  overlay.setMap(map);
+  return overlay;
+};
+
 export const OfficerDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -127,6 +264,7 @@ export const OfficerDashboard: React.FC = () => {
   const [locationState, setLocationState] = useState<'starting' | 'live' | 'blocked' | 'error'>('starting');
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const [locationTrail, setLocationTrail] = useState<Array<{ lat: number; lon: number; speedMph?: number | null }>>([]);
   const [mapReady, setMapReady] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
@@ -165,8 +303,9 @@ export const OfficerDashboard: React.FC = () => {
   const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null } | null>(null);
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
-  const selfMarkerRef = useRef<GoogleMarkerInstance | null>(null);
-  const callMarkersRef = useRef<Record<string, GoogleMarkerInstance>>({});
+  const mapOverlaysRef = useRef<GoogleOverlayViewInstance[]>([]);
+  const trailPolylineRef = useRef<GooglePolylineInstance | null>(null);
+  const hasFitCallBoundsRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
 
@@ -174,6 +313,7 @@ export const OfficerDashboard: React.FC = () => {
     () => incidents.filter((incident) => incident.units.some((unit) => unit.userId === user?.id && unit.status !== 'Cleared')),
     [incidents, user?.id]
   );
+  const assignmentMapKey = assignedIncidents.map((incident) => incident.id).join(',');
   const selectedIncident = assignedIncidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || null;
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
@@ -214,6 +354,10 @@ export const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('cad_officer_quick_slots', JSON.stringify(dockSlots));
   }, [dockSlots]);
+
+  useEffect(() => {
+    hasFitCallBoundsRef.current = false;
+  }, [assignmentMapKey]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -291,7 +435,15 @@ export const OfficerDashboard: React.FC = () => {
           lon: position.coords.longitude,
           speedMph
         };
-        setCurrentLocation({ lat: position.coords.latitude, lon: position.coords.longitude });
+        const nextLocation = { lat: position.coords.latitude, lon: position.coords.longitude };
+        setCurrentLocation(nextLocation);
+        setLocationTrail((current) => {
+          const previous = current[current.length - 1];
+          if (previous && distanceMiles(previous.lat, previous.lon, nextLocation.lat, nextLocation.lon) < 0.005) {
+            return current;
+          }
+          return [...current, { ...nextLocation, speedMph }].slice(-80);
+        });
         setCurrentSpeed(speedMph);
         setLocationState('live');
       },
@@ -347,7 +499,8 @@ export const OfficerDashboard: React.FC = () => {
       zoom: 13,
       mapTypeControl: false,
       streetViewControl: false,
-      fullscreenControl: false
+      fullscreenControl: false,
+      styles: darkMapStyles
     });
   }, [currentLocation, mapReady]);
 
@@ -356,63 +509,80 @@ export const OfficerDashboard: React.FC = () => {
     const googleMaps = window.google?.maps as unknown as OfficerGoogleMaps | undefined;
     if (!map || !googleMaps) return;
 
+    map.setOptions({ styles: darkMapStyles });
+    mapOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
+    mapOverlaysRef.current = [];
+    trailPolylineRef.current?.setMap(null);
+    trailPolylineRef.current = null;
+
     const bounds = new googleMaps.LatLngBounds();
     let hasCallBounds = false;
 
     if (currentLocation) {
-      const location = { lat: currentLocation.lat, lng: currentLocation.lon };
-      if (selfMarkerRef.current) {
-        selfMarkerRef.current.setPosition(location);
-      } else {
-        selfMarkerRef.current = new googleMaps.Marker({
-          position: location,
-          map,
-          title: 'My location',
-          icon: {
-            path: 0,
-            scale: 9,
-            fillColor: '#16a34a',
-            fillOpacity: 1,
-            strokeColor: '#ffffff',
-            strokeWeight: 3
-          }
+      const selectedIsEnRoute = selectedStatus === 'En Route';
+      mapOverlaysRef.current.push(
+        ...[
+          addOfficerOverlay({
+            map,
+            lat: currentLocation.lat,
+            lon: currentLocation.lon,
+            label: '',
+            tone: selectedIsEnRoute ? 'yellow' : 'green'
+          }),
+          addOfficerOverlay({
+            map,
+            lat: currentLocation.lat,
+            lon: currentLocation.lon,
+            label: currentSpeed === null ? '' : `${Math.round(currentSpeed)} mph`,
+            tone: selectedIsEnRoute ? 'yellow' : 'green'
+          })
+        ].filter(Boolean) as GoogleOverlayViewInstance[]
+      );
+
+      if (selectedIsEnRoute && locationTrail.length > 1) {
+        trailPolylineRef.current = new googleMaps.Polyline({
+          path: locationTrail.map((point) => ({ lat: point.lat, lng: point.lon })),
+          geodesic: true,
+          strokeColor: '#f59e0b',
+          strokeOpacity: 0.9,
+          strokeWeight: 4,
+          map
         });
       }
     }
-
-    const activeCallIds = new Set(assignedIncidents.map((incident) => incident.id));
-    Object.entries(callMarkersRef.current).forEach(([incidentId, marker]) => {
-      if (!activeCallIds.has(incidentId)) {
-        marker.setMap(null);
-        delete callMarkersRef.current[incidentId];
-      }
-    });
 
     assignedIncidents.forEach((incident) => {
       if (incident.lat === undefined || incident.lon === undefined) return;
       const location = { lat: incident.lat, lng: incident.lon };
       bounds.extend(location);
       hasCallBounds = true;
-      if (callMarkersRef.current[incident.id]) {
-        callMarkersRef.current[incident.id].setPosition(location);
-        return;
-      }
-      callMarkersRef.current[incident.id] = new googleMaps.Marker({
-          position: location,
-          map,
-          title: `${incident.callNumber} ${incident.type}`,
-          label: incident.priority === 'Emergency' ? '!' : incident.callNumber.slice(-2)
-        });
+      mapOverlaysRef.current.push(
+        ...[
+          addOfficerOverlay({
+            map,
+            lat: incident.lat,
+            lon: incident.lon,
+            label: incident.callNumber,
+            tone: incident.priority === 'Emergency' ? 'red' : 'blue',
+            sublabel: etaText(currentLocation, incident, currentSpeed),
+            onClick: () => {
+              setSelectedIncidentId(incident.id);
+              setActiveDockItem('call-detail');
+            }
+          })
+        ].filter(Boolean) as GoogleOverlayViewInstance[]
+      );
     });
 
-    if (hasCallBounds) {
+    if (hasCallBounds && !hasFitCallBoundsRef.current) {
       if (currentLocation) bounds.extend({ lat: currentLocation.lat, lng: currentLocation.lon });
       map.fitBounds(bounds);
+      hasFitCallBoundsRef.current = true;
     } else if (currentLocation) {
       map.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon });
       map.setZoom(15);
     }
-  }, [assignedIncidents, currentLocation]);
+  }, [assignedIncidents, currentLocation, currentSpeed, locationTrail, selectedStatus]);
 
   const recenterMap = () => {
     if (!currentLocation) return;
@@ -535,6 +705,7 @@ export const OfficerDashboard: React.FC = () => {
             currentLocation={currentLocation}
             assignedIncidents={assignedIncidents}
             currentUserLabel={user?.cadUnitNumber || user?.unitNumber || user?.badge || 'ME'}
+            currentSpeed={currentSpeed}
           />
         )}
       </div>
@@ -1049,6 +1220,10 @@ const DockContent: React.FC<{
             Navigate
           </a>
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Metric label="ETA" value={etaText(currentLocation, selectedIncident, currentSpeed)} />
+          <Metric label="Coordinates" value={selectedIncident.lat !== undefined && selectedIncident.lon !== undefined ? `${selectedIncident.lat.toFixed(5)}, ${selectedIncident.lon.toFixed(5)}` : 'No map pin'} />
+        </div>
         <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
           <p className="text-sm font-bold">{selectedIncident.address}</p>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{selectedIncident.description || 'No additional call details.'}</p>
@@ -1385,10 +1560,16 @@ const FallbackOfficerMap: React.FC<{
   currentLocation: { lat: number; lon: number } | null;
   assignedIncidents: Incident[];
   currentUserLabel: string;
-}> = ({ currentLocation, assignedIncidents, currentUserLabel }) => (
+  currentSpeed: number | null;
+}> = ({ currentLocation, assignedIncidents, currentUserLabel, currentSpeed }) => (
   <div className="relative h-full w-full overflow-hidden bg-slate-900">
     <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:48px_48px]" />
     <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500 ring-4 ring-white shadow-xl" title={currentUserLabel} />
+    {currentSpeed !== null && (
+      <div className="absolute left-[calc(50%+1rem)] top-[calc(50%-1.5rem)] rounded-full bg-emerald-500 px-2 py-1 text-xs font-bold text-white ring-2 ring-white">
+        {Math.round(currentSpeed)} mph
+      </div>
+    )}
     <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400/40 location-pulse" />
     {assignedIncidents.map((incident, index) => (
       <div
