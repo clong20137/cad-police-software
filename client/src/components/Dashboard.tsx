@@ -45,6 +45,7 @@ declare global {
         InfoWindow: new (options: Record<string, unknown>) => GoogleInfoWindowInstance;
         LatLng: new (lat: number, lng: number) => GoogleLatLngInstance;
         OverlayView: new () => GoogleOverlayViewInstance;
+        Geocoder: new () => GoogleGeocoder;
         places?: {
           AutocompleteService: new () => GoogleAutocompleteService;
           PlacesServiceStatus: {
@@ -66,6 +67,22 @@ interface GoogleInfoWindowInstance {
 }
 
 interface GoogleLatLngInstance {}
+
+interface GoogleGeocoderResult {
+  geometry?: {
+    location?: {
+      lat: () => number;
+      lng: () => number;
+    };
+  };
+}
+
+interface GoogleGeocoder {
+  geocode: (
+    request: { placeId: string },
+    callback: (results: GoogleGeocoderResult[] | null, status: string) => void
+  ) => void;
+}
 
 interface GoogleOverlayViewInstance {
   setMap: (map: GoogleMapInstance | null) => void;
@@ -921,6 +938,30 @@ export const Dashboard: React.FC = () => {
     );
   };
 
+  const selectAddressSuggestion = (suggestion: GooglePlacePrediction) => {
+    setIncidentForm((value) => ({ ...value, address: suggestion.description }));
+    setAddressSuggestionsOpen(false);
+
+    if (!window.google?.maps.Geocoder) {
+      return;
+    }
+
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ placeId: suggestion.place_id }, (results, status) => {
+      const location = status === 'OK' ? results?.[0]?.geometry?.location : undefined;
+      if (!location) {
+        return;
+      }
+
+      setIncidentForm((value) => ({
+        ...value,
+        address: suggestion.description,
+        lat: location.lat().toFixed(7),
+        lon: location.lng().toFixed(7)
+      }));
+    });
+  };
+
   const createIncident = async () => {
     if (!incidentForm.type.trim() || !incidentForm.address.trim()) {
       setIncidentError('Call type and address are required.');
@@ -928,8 +969,25 @@ export const Dashboard: React.FC = () => {
     }
 
     try {
-      const lat = incidentForm.lat ? Number(incidentForm.lat) : null;
-      const lon = incidentForm.lon ? Number(incidentForm.lon) : null;
+      const latText = incidentForm.lat.trim();
+      const lonText = incidentForm.lon.trim();
+      const hasLat = latText.length > 0;
+      const hasLon = lonText.length > 0;
+      if (hasLat !== hasLon) {
+        setIncidentError('Enter both latitude and longitude, or leave both blank.');
+        return;
+      }
+
+      const lat = hasLat ? Number(latText) : null;
+      const lon = hasLon ? Number(lonText) : null;
+      if (
+        (lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) ||
+        (lon !== null && (!Number.isFinite(lon) || lon < -180 || lon > 180))
+      ) {
+        setIncidentError('Coordinates must be valid latitude and longitude values.');
+        return;
+      }
+
       const incident = await authClient.createIncident({
         type: incidentForm.type,
         priority: incidentForm.priority,
@@ -954,8 +1012,15 @@ export const Dashboard: React.FC = () => {
         lat: '',
         lon: ''
       });
-    } catch {
-      setIncidentError('Unable to create the call. Check the required fields and coordinates.');
+    } catch (error) {
+      const apiMessage =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response?: { data?: { error?: unknown } } }).response?.data?.error === 'string'
+          ? (error as { response: { data: { error: string } } }).response.data.error
+          : '';
+      setIncidentError(apiMessage || 'Unable to create the call. Check the required fields and coordinates.');
     }
   };
 
@@ -1011,14 +1076,14 @@ export const Dashboard: React.FC = () => {
         value={incidentForm.type}
         onChange={(event) => setIncidentForm((value) => ({ ...value, type: event.target.value }))}
         placeholder="Call type"
-        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
       />
       <select
         value={incidentForm.priority}
         onChange={(event) =>
           setIncidentForm((value) => ({ ...value, priority: event.target.value as IncidentPriority }))
         }
-        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
       >
         {(['Low', 'Normal', 'High', 'Emergency'] as IncidentPriority[]).map((priority) => (
           <option key={priority} value={priority}>
@@ -1035,19 +1100,16 @@ export const Dashboard: React.FC = () => {
           }}
           onFocus={() => setAddressSuggestionsOpen(true)}
           placeholder="Address"
-          className="w-full rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+          className="w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
         />
         {addressSuggestionsOpen && addressSuggestions.length > 0 && (
-          <div className="absolute inset-x-0 top-11 z-20 rounded-md border border-cad-line bg-white shadow-xl">
+          <div className="absolute inset-x-0 top-11 z-20 rounded-md border border-cad-line bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
             {addressSuggestions.map((suggestion) => (
               <button
                 key={suggestion.place_id}
                 type="button"
-                onClick={() => {
-                  setIncidentForm((value) => ({ ...value, address: suggestion.description }));
-                  setAddressSuggestionsOpen(false);
-                }}
-                className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-blue-50"
+                onClick={() => selectAddressSuggestion(suggestion)}
+                className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-blue-50 dark:border-slate-800 dark:hover:bg-slate-800"
               >
                 {suggestion.description}
               </button>
@@ -1059,38 +1121,38 @@ export const Dashboard: React.FC = () => {
         value={incidentForm.callerName}
         onChange={(event) => setIncidentForm((value) => ({ ...value, callerName: event.target.value }))}
         placeholder="Caller name"
-        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
       />
       <input
         value={incidentForm.callerPhone}
         onChange={(event) => setIncidentForm((value) => ({ ...value, callerPhone: event.target.value }))}
         placeholder="Caller phone"
-        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
       />
       <input
         value={incidentForm.lat}
         onChange={(event) => setIncidentForm((value) => ({ ...value, lat: event.target.value }))}
         placeholder="Lat"
-        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
       />
       <input
         value={incidentForm.lon}
         onChange={(event) => setIncidentForm((value) => ({ ...value, lon: event.target.value }))}
         placeholder="Lon"
-        className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
       />
       <textarea
         value={incidentForm.description}
         onChange={(event) => setIncidentForm((value) => ({ ...value, description: event.target.value }))}
         placeholder="Call notes"
-        className="min-h-28 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 sm:col-span-2"
+        className="min-h-28 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white sm:col-span-2"
       />
       {incidentError && <p className="text-sm font-medium text-red-600 sm:col-span-2">{incidentError}</p>}
       <div className="flex justify-end gap-2 sm:col-span-2">
         <button
           type="button"
           onClick={() => setActiveQuickModal(null)}
-          className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700"
+          className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"
         >
           Cancel
         </button>
@@ -1688,7 +1750,7 @@ export const Dashboard: React.FC = () => {
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-3">
-        <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-xl border border-white/30 bg-cad-navy/95 p-2 shadow-2xl backdrop-blur md:grid-cols-8">
+        <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-xl border border-cad-line bg-white/95 p-2 text-cad-ink shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 dark:text-white md:grid-cols-8">
           {quickLaunchSlots.map((slot, index) => {
             const item = quickLaunchOptions.find((option) => option.id === slot);
             const badgeCount = slot === 'messages' ? messageBadgeCount : slot === 'calls' || slot === 'call-detail' ? callBadgeCount : 0;
@@ -1699,27 +1761,27 @@ export const Dashboard: React.FC = () => {
                 onDragStart={() => setDraggedSlotIndex(index)}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={() => swapQuickLaunchSlots(index)}
-                className="relative flex h-16 w-16 items-center justify-center rounded-lg border border-white/15 bg-white/10 text-white"
+                className="relative flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-cad-ink transition hover:border-blue-200 hover:bg-blue-50 dark:border-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
               >
-                <GripVertical className="absolute left-1 top-1 text-white/45" size={12} />
+                <GripVertical className="absolute left-1 top-1 text-slate-400 dark:text-white/45" size={12} />
                 <button
                   type="button"
                   onClick={() => (item ? openQuickLaunch(item.id) : setCustomizingSlot(index))}
-                  className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-semibold hover:bg-white/10"
+                  className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-semibold"
                   aria-label={item ? `Open ${item.label}` : `Customize slot ${index + 1}`}
                 >
                   {item?.icon || <Settings size={18} />}
                   <span className="max-w-full truncate px-1">{item?.label || 'Empty'}</span>
                 </button>
                 {badgeCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-cad-navy">
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white ring-2 ring-white dark:ring-slate-950">
                     {badgeCount > 9 ? '9+' : badgeCount}
                   </span>
                 )}
                 <button
                   type="button"
                   onClick={() => setCustomizingSlot(index)}
-                  className="absolute right-1 top-1 rounded bg-white/10 p-1 text-white/70 hover:text-white"
+                  className="absolute right-1 top-1 rounded bg-black/5 p-1 text-slate-500 hover:text-cad-ink dark:bg-white/10 dark:text-white/70 dark:hover:text-white"
                   aria-label={`Customize slot ${index + 1}`}
                 >
                   <Settings size={11} />
