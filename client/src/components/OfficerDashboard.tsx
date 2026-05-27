@@ -75,6 +75,17 @@ interface GoogleLatLngBoundsInstance {
   extend: (location: { lat: number; lng: number }) => void;
 }
 
+type WakeLockSentinel = {
+  release: () => Promise<void>;
+  addEventListener: (eventName: 'release', handler: () => void) => void;
+};
+
+type WakeLockNavigator = Navigator & {
+  wakeLock?: {
+    request: (type: 'screen') => Promise<WakeLockSentinel>;
+  };
+};
+
 const liveLocationHeartbeatMs = 5000;
 const liveLocationOptions: PositionOptions = {
   enableHighAccuracy: true,
@@ -346,6 +357,9 @@ export const OfficerDashboard: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null } | null>(null);
+  const uploadingLocationRef = useRef(false);
+  const lastLocationUploadAtRef = useRef(0);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
   const mapOverlaysRef = useRef<GoogleOverlayViewInstance[]>([]);
@@ -470,6 +484,24 @@ export const OfficerDashboard: React.FC = () => {
       return;
     }
 
+    const uploadLatestLocation = async (force = false) => {
+      const nextLocation = latestLocationRef.current;
+      if (!nextLocation || uploadingLocationRef.current) return;
+      const now = Date.now();
+      if (!force && now - lastLocationUploadAtRef.current < 2500) return;
+
+      uploadingLocationRef.current = true;
+      try {
+        await authClient.updateLocation(nextLocation.lat, nextLocation.lon, nextLocation.speedMph);
+        lastLocationUploadAtRef.current = now;
+        setLocationState('live');
+      } catch {
+        setLocationState('error');
+      } finally {
+        uploadingLocationRef.current = false;
+      }
+    };
+
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const speedMph =
@@ -492,25 +524,60 @@ export const OfficerDashboard: React.FC = () => {
         });
         setCurrentSpeed(speedMph);
         setLocationState('live');
+        uploadLatestLocation();
       },
       () => setLocationState('error'),
       liveLocationOptions
     );
 
     const heartbeat = window.setInterval(async () => {
-      const nextLocation = latestLocationRef.current;
-      if (!nextLocation) return;
-      try {
-        await authClient.updateLocation(nextLocation.lat, nextLocation.lon, nextLocation.speedMph);
-        setLocationState('live');
-      } catch {
-        setLocationState('error');
-      }
+      uploadLatestLocation(true);
     }, liveLocationHeartbeatMs);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        uploadLatestLocation(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       navigator.geolocation.clearWatch(watchId);
       window.clearInterval(heartbeat);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    let canceled = false;
+
+    const requestWakeLock = async () => {
+      const wakeLock = (navigator as WakeLockNavigator).wakeLock;
+      if (!wakeLock || document.visibilityState !== 'visible') return;
+      try {
+        wakeLockRef.current = await wakeLock.request('screen');
+        wakeLockRef.current.addEventListener('release', () => {
+          wakeLockRef.current = null;
+        });
+      } catch {
+        wakeLockRef.current = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (!canceled && document.visibilityState === 'visible' && !wakeLockRef.current) {
+        requestWakeLock();
+      }
+    };
+
+    requestWakeLock();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      canceled = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      wakeLockRef.current?.release().catch(() => undefined);
+      wakeLockRef.current = null;
     };
   }, []);
 
