@@ -19,6 +19,7 @@ const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
 const REFRESH_TOKEN_DAYS = 7;
 const BCRYPT_ROUNDS = 12;
+const TRACKED_UNIT_RETENTION_MINUTES = 30;
 
 const tokenHash = (token: string): string =>
   crypto.createHash('sha256').update(token).digest('hex');
@@ -250,10 +251,35 @@ export class AuthService {
         WHERE active = TRUE
           AND lat IS NOT NULL
           AND lon IS NOT NULL
+          AND last_location_at IS NOT NULL
+          AND last_location_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? MINUTE)
         ORDER BY last_location_at DESC, updated_at DESC
-      `
+      `,
+      [TRACKED_UNIT_RETENTION_MINUTES]
     );
     return rows.map(toUser);
+  }
+
+  static async clearExpiredTrackedUnits(): Promise<number> {
+    const [result] = await pool.execute<ResultSetHeader>(
+      `
+        UPDATE users
+        SET lat = NULL,
+            lon = NULL,
+            speed_mph = NULL,
+            destination_lat = NULL,
+            destination_lon = NULL,
+            destination_label = NULL
+        WHERE lat IS NOT NULL
+          AND lon IS NOT NULL
+          AND (
+            last_location_at IS NULL
+            OR last_location_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? MINUTE)
+          )
+      `,
+      [TRACKED_UNIT_RETENTION_MINUTES]
+    );
+    return result.affectedRows;
   }
 
   static async updateLocation(

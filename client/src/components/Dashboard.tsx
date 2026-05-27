@@ -108,6 +108,7 @@ type TrackedUnit = User & { lat: number; lon: number };
 type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'map' | 'settings';
 type QuickLaunchSlot = QuickLaunchId | null;
 type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
+type UnitLocationReliability = 'live' | 'stale' | 'offline';
 
 const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.ReactNode }> = [
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
@@ -132,6 +133,8 @@ const defaultQuickLaunchSlots: QuickLaunchSlot[] = [
 ];
 
 const liveLocationHeartbeatMs = 5000;
+const locationFreshMs = 15000;
+const locationOfflineMs = 45000;
 const liveLocationOptions: PositionOptions = {
   enableHighAccuracy: true,
   maximumAge: 0,
@@ -183,7 +186,39 @@ const incidentPriorityStyles: Record<IncidentPriority, string> = {
   Emergency: 'bg-red-600 text-white'
 };
 
-const markerTone = (unit: User, currentUserId?: string): 'gray' | 'green' | 'blue' | 'yellow' | 'red' => {
+const locationAgeMs = (unit: User, now: number): number | null => {
+  if (!unit.lastLocationAt) return null;
+  const timestamp = new Date(unit.lastLocationAt).getTime();
+  return Number.isFinite(timestamp) ? Math.max(0, now - timestamp) : null;
+};
+
+const locationReliability = (unit: User, now: number): UnitLocationReliability => {
+  const age = locationAgeMs(unit, now);
+  if (age === null || age >= locationOfflineMs) return 'offline';
+  if (age >= locationFreshMs) return 'stale';
+  return 'live';
+};
+
+const formatRelativeAge = (age: number | null): string => {
+  if (age === null) return 'unknown';
+  const seconds = Math.max(0, Math.round(age / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours}h ago`;
+};
+
+const locationReliabilityText = (unit: User, now: number): string => {
+  const reliability = locationReliability(unit, now);
+  const age = formatRelativeAge(locationAgeMs(unit, now));
+  if (reliability === 'live') return `Live - updated ${age}`;
+  if (reliability === 'stale') return `Stale - updated ${age}`;
+  return `Offline - last update ${age}`;
+};
+
+const markerTone = (unit: User, currentUserId?: string, now = Date.now()): 'gray' | 'green' | 'blue' | 'yellow' | 'red' => {
+  if (locationReliability(unit, now) !== 'live') return 'gray';
   const status = unit.status;
   if (status === 'En Route') return 'yellow';
   if (status === 'On Scene' || status === 'Traffic Stop') return 'red';
@@ -350,6 +385,7 @@ export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [locationClock, setLocationClock] = useState(() => Date.now());
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('cad_theme') === 'dark' ? 'dark' : 'light'
   );
@@ -454,6 +490,17 @@ export const Dashboard: React.FC = () => {
       ),
     [units]
   );
+  const locationReliabilityCounts = useMemo(
+    () =>
+      units.reduce<Record<UnitLocationReliability, number>>(
+        (counts, unit) => ({
+          ...counts,
+          [locationReliability(unit, locationClock)]: counts[locationReliability(unit, locationClock)] + 1
+        }),
+        { live: 0, stale: 0, offline: 0 }
+      ),
+    [locationClock, units]
+  );
 
   useEffect(() => {
     if (!selectedUnit) {
@@ -511,6 +558,11 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('cad_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const clockId = window.setInterval(() => setLocationClock(Date.now()), 5000);
+    return () => window.clearInterval(clockId);
+  }, []);
 
   useEffect(() => {
     selectedMessageUserIdRef.current = selectedMessageUserId;
@@ -814,14 +866,14 @@ export const Dashboard: React.FC = () => {
 
       units.forEach((unit) => {
         const infoWindow = new window.google!.maps.InfoWindow({
-          content: `<strong>${displayCadUnitNumber(unit)}</strong><br>${unit.name}<br>${displayStatus(unit)}`
+          content: `<strong>${displayCadUnitNumber(unit)}</strong><br>${unit.name}<br>${displayStatus(unit)}<br>${locationReliabilityText(unit, locationClock)}`
         });
         const unitOverlay = addGooglePulseMarker({
           map,
           lat: unit.lat,
           lon: unit.lon,
           label: unit.id === user?.id ? '' : displayCadUnitNumber(unit),
-          tone: markerTone(unit, user?.id),
+          tone: markerTone(unit, user?.id, locationClock),
           onClick: () => {
             setSelectedUnitId(unit.id);
             infoWindow.open({ map, position: { lat: unit.lat, lng: unit.lon } });
@@ -869,7 +921,7 @@ export const Dashboard: React.FC = () => {
     script.async = true;
     script.onload = initializeMap;
     document.head.appendChild(script);
-  }, [center.lat, center.lon, currentLocation, incidents, theme, units, user?.id]);
+  }, [center.lat, center.lon, currentLocation, incidents, locationClock, theme, units, user?.id]);
 
   const saveDestination = async () => {
     if (!selectedIsCurrentUser) return;
@@ -1454,6 +1506,7 @@ export const Dashboard: React.FC = () => {
           <Detail label="Unit" value={displayCadUnitNumber(selectedUnit)} />
           <Detail label="Name" value={selectedUnit.name} />
           <Detail label="Status" value={displayStatus(selectedUnit)} />
+          <Detail label="Tracking" value={locationReliabilityText(selectedUnit, locationClock)} />
           <Detail label="Location" value={`${selectedUnit.lat.toFixed(6)}, ${selectedUnit.lon.toFixed(6)}`} />
         </dl>
       ) : (
@@ -1557,6 +1610,7 @@ export const Dashboard: React.FC = () => {
             selectedUnit={selectedUnit}
             currentLocation={currentLocation}
             currentUserId={user?.id}
+            locationClock={locationClock}
             onSelectUnit={(unit) => setSelectedUnitId(unit.id)}
             onSelectIncident={(incident) => setSelectedIncidentId(incident.id)}
           />
@@ -1571,6 +1625,7 @@ export const Dashboard: React.FC = () => {
             label="Red Status"
             value={statusCounts['On Scene'] + statusCounts['Traffic Stop']}
           />
+          <MetricCard icon={<MapPin size={14} />} label="Stale GPS" value={locationReliabilityCounts.stale + locationReliabilityCounts.offline} />
         </div>
 
         <button
@@ -1616,10 +1671,28 @@ export const Dashboard: React.FC = () => {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold">{displayCadUnitNumber(unit)}</p>
                       <p className="truncate text-xs text-slate-600">{unit.name}</p>
+                      <p
+                        className={`mt-1 truncate text-xs font-semibold ${
+                          locationReliability(unit, locationClock) === 'live'
+                            ? 'text-emerald-600 dark:text-emerald-300'
+                            : locationReliability(unit, locationClock) === 'stale'
+                              ? 'text-amber-600 dark:text-amber-300'
+                              : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {locationReliabilityText(unit, locationClock)}
+                      </p>
                     </div>
-                    <span className={`rounded-full px-2 py-1 text-[11px] font-bold ring-1 ${statusStyles[displayStatus(unit)]}`}>
-                      {displayStatus(unit)}
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className={`rounded-full px-2 py-1 text-[11px] font-bold ring-1 ${statusStyles[displayStatus(unit)]}`}>
+                        {displayStatus(unit)}
+                      </span>
+                      {locationReliability(unit, locationClock) !== 'live' && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
+                          {locationReliability(unit, locationClock)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
               ))}
@@ -1755,6 +1828,7 @@ export const Dashboard: React.FC = () => {
                   <Detail label="Last Name" value={splitName(selectedUnit.name).lastName || 'N/A'} />
                   <Detail label="CAD Unit Number" value={displayCadUnitNumber(selectedUnit)} />
                   <Detail label="Status" value={displayStatus(selectedUnit)} />
+                  <Detail label="Tracking" value={locationReliabilityText(selectedUnit, locationClock)} />
                   <Detail label="Group" value={selectedUnit.group || 'Unassigned'} />
                   <Detail label="District" value={selectedUnit.district || 'Unassigned'} />
                   <Detail label="Lat" value={selectedUnit.lat.toFixed(6)} />
@@ -2026,7 +2100,7 @@ const OverlayPanel: React.FC<{
 const Detail: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
   <div className="grid grid-cols-[140px_1fr] gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
     <dt className="font-semibold text-slate-500">{label}</dt>
-    <dd className="font-medium text-cad-ink">{value}</dd>
+    <dd className="font-medium text-cad-ink dark:text-white">{value}</dd>
   </div>
 );
 
@@ -2036,9 +2110,10 @@ const FallbackMap: React.FC<{
   selectedUnit: TrackedUnit | null;
   currentLocation: { lat: number; lon: number } | null;
   currentUserId?: string;
+  locationClock: number;
   onSelectUnit: (unit: TrackedUnit) => void;
   onSelectIncident: (incident: Incident) => void;
-}> = ({ units, incidents, selectedUnit, currentLocation, currentUserId, onSelectUnit, onSelectIncident }) => {
+}> = ({ units, incidents, selectedUnit, currentLocation, currentUserId, locationClock, onSelectUnit, onSelectIncident }) => {
   const pinnedIncidents = incidents.filter(
     (incident): incident is Incident & { lat: number; lon: number } =>
       incident.lat !== undefined && incident.lon !== undefined
@@ -2090,11 +2165,11 @@ const FallbackMap: React.FC<{
         >
           <span
             className={`pointer-events-none absolute inset-0 -z-10 rounded-full ${
-              markerPulseClass[markerTone(unit, currentUserId)]
+              markerPulseClass[markerTone(unit, currentUserId, locationClock)]
             } location-pulse`}
           />
           <span
-            className={`h-3 w-3 rounded-full ring-2 ${markerToneClass[markerTone(unit, currentUserId)]}`}
+            className={`h-3 w-3 rounded-full ring-2 ${markerToneClass[markerTone(unit, currentUserId, locationClock)]}`}
             aria-hidden="true"
           />
           {unit.id === currentUserId ? '' : displayCadUnitNumber(unit)}

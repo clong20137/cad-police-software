@@ -9,6 +9,7 @@ import { AuthPayload } from '../types/auth';
 
 let io: Server | null = null;
 const onlineUsers = new Map<string, number>();
+const UNIT_RELIABILITY_BROADCAST_MS = 15000;
 
 export const initializeRealtime = (server: HttpServer): Server => {
   io = new Server(server, {
@@ -61,6 +62,12 @@ export const initializeRealtime = (server: HttpServer): Server => {
       await broadcastPresence();
     });
   });
+
+  const reliabilityTimer = setInterval(async () => {
+    await AuthService.clearExpiredTrackedUnits();
+    await broadcastTrackedUnits();
+  }, UNIT_RELIABILITY_BROADCAST_MS);
+  reliabilityTimer.unref();
 
   return io;
 };
