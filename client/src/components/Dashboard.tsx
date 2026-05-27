@@ -1522,13 +1522,13 @@ export const Dashboard: React.FC = () => {
                 setSelectedIncidentId(incident.id);
                 setActiveQuickModal('call-detail');
               }}
-              className="w-full rounded-md border border-slate-200 p-3 text-left hover:bg-slate-50"
+              className="w-full rounded-md border border-slate-200 bg-white p-3 text-left hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800"
             >
               <p className="text-sm font-bold">{incident.callNumber} · {incident.type}</p>
-              <p className="mt-1 text-xs text-slate-600">{incident.address}</p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{incident.address}</p>
             </button>
           ))}
-          {incidents.length === 0 && <p className="text-sm text-slate-600">No active calls.</p>}
+          {incidents.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No active calls.</p>}
         </div>
       );
     }
@@ -1544,10 +1544,10 @@ export const Dashboard: React.FC = () => {
                 setSelectedUnitId(unit.id);
                 setActiveQuickModal('unit-detail');
               }}
-              className="flex w-full items-center justify-between rounded-md border border-slate-200 p-3 text-left hover:bg-slate-50"
+              className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-white p-3 text-left hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800"
             >
               <span className="text-sm font-bold">{displayCadUnitNumber(unit)}</span>
-              <span className="text-xs text-slate-600">{displayStatus(unit)}</span>
+              <span className="text-xs text-slate-600 dark:text-slate-300">{displayStatus(unit)}</span>
             </button>
           ))}
         </div>
@@ -1695,7 +1695,7 @@ export const Dashboard: React.FC = () => {
         <button
           type="button"
           onClick={recenterToCurrentLocation}
-          className="absolute bottom-28 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-line bg-white/95 text-cad-blue shadow-xl backdrop-blur transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
+          className="absolute bottom-4 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-line bg-white/95 text-cad-blue shadow-xl backdrop-blur transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
           aria-label="Return to my location"
           title="My location"
         >
@@ -1784,7 +1784,7 @@ export const Dashboard: React.FC = () => {
             {incidentError && <p className="px-1 py-2 text-sm font-medium text-red-600">{incidentError}</p>}
             <div className="max-h-72 space-y-2 overflow-y-auto">
               {incidents.length === 0 && (
-                <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">No active calls are in the queue.</p>
+                <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">No active calls are in the queue.</p>
               )}
               {incidents.map((incident) => (
                 <button
@@ -1797,13 +1797,13 @@ export const Dashboard: React.FC = () => {
                   className={`w-full rounded-lg border p-3 text-left transition ${
                     selectedIncident?.id === incident.id
                       ? 'border-cad-blue bg-blue-50'
-                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold">{incident.callNumber} · {incident.type}</p>
-                      <p className="mt-1 truncate text-xs text-slate-600">{incident.address}</p>
+                      <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-300">{incident.address}</p>
                     </div>
                     <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${incidentPriorityStyles[incident.priority]}`}>
                       {incident.priority}
@@ -1813,7 +1813,7 @@ export const Dashboard: React.FC = () => {
                     <span className={`rounded-full px-2 py-1 text-xs font-bold ring-1 ${incidentStatusStyles[incident.status]}`}>
                       {incident.status}
                     </span>
-                    <span className="text-xs text-slate-500">{incident.units.length} units</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{incident.units.length} units</span>
                   </div>
                 </button>
               ))}
@@ -1838,7 +1838,7 @@ export const Dashboard: React.FC = () => {
                   <Detail label="Phone" value={selectedIncident.callerPhone || 'Unknown'} />
                 </dl>
                 {selectedIncident.description && (
-                  <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">{selectedIncident.description}</p>
+                  <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-950 dark:text-slate-200">{selectedIncident.description}</p>
                 )}
                 {selectedIncident.disposition && (
                   <Detail label="Disposition" value={selectedIncident.disposition} />
@@ -1846,9 +1846,9 @@ export const Dashboard: React.FC = () => {
                 <div>
                   <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">Assigned Units</h3>
                   <div className="mt-2 space-y-2">
-                    {selectedIncident.units.length === 0 && <p className="text-sm text-slate-600">No units assigned.</p>}
+                    {selectedIncident.units.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No units assigned.</p>}
                     {selectedIncident.units.map((assignedUnit) => (
-                      <div key={assignedUnit.userId} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm">
+                      <div key={assignedUnit.userId} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950">
                         <span className="font-semibold">{assignedUnit.cadUnitNumber || assignedUnit.name}</span>
                         <span>{assignedUnit.status}</span>
                       </div>
@@ -1859,7 +1859,7 @@ export const Dashboard: React.FC = () => {
                   <select
                     value={assignmentUnitId}
                     onChange={(event) => setAssignmentUnitId(event.target.value)}
-                    className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                    className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                   >
                     <option value="">Select unit</option>
                     {units.map((unit) => (
@@ -1878,7 +1878,7 @@ export const Dashboard: React.FC = () => {
                       key={status}
                       type="button"
                       onClick={() => updateIncidentStatus(status)}
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                     >
                       {status}
                     </button>
@@ -1888,19 +1888,19 @@ export const Dashboard: React.FC = () => {
                   value={incidentDisposition}
                   onChange={(event) => setIncidentDisposition(event.target.value)}
                   placeholder="Close/cancel disposition"
-                  className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                  className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                 />
-                <div className="rounded-md border border-cad-line p-3">
+                <div className="rounded-md border border-cad-line p-3 dark:border-slate-700">
                   <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">Call Timeline</h3>
                   <div className="mt-3 max-h-40 space-y-2 overflow-y-auto">
-                    {(selectedIncident.notes || []).length === 0 && <p className="text-sm text-slate-600">No notes yet.</p>}
+                    {(selectedIncident.notes || []).length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No notes yet.</p>}
                     {(selectedIncident.notes || []).map((note) => (
-                      <div key={note.id} className="rounded-md bg-slate-50 p-2 text-sm">
+                      <div key={note.id} className="rounded-md bg-slate-50 p-2 text-sm dark:bg-slate-950">
                         <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-500">
                           <span>{note.noteType} {note.userName ? `by ${note.userName}` : ''}</span>
                           <span>{formatDateTime(note.createdAt)}</span>
                         </div>
-                        <p className="mt-1 text-slate-700">{note.body}</p>
+                        <p className="mt-1 text-slate-700 dark:text-slate-200">{note.body}</p>
                       </div>
                     ))}
                   </div>
@@ -1909,7 +1909,7 @@ export const Dashboard: React.FC = () => {
                       value={incidentNoteBody}
                       onChange={(event) => setIncidentNoteBody(event.target.value)}
                       placeholder="Add call note"
-                      className="min-w-0 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                      className="min-w-0 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                     />
                     <button type="button" onClick={addIncidentNote} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
                       Add
@@ -1918,7 +1918,7 @@ export const Dashboard: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-600">Create or select a call to manage assignments.</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">Create or select a call to manage assignments.</p>
             )}
           </OverlayPanel>
 
@@ -2165,7 +2165,7 @@ const MetricCard: React.FC<{ icon: React.ReactNode; label: string; value: number
   <div className="flex min-h-12 min-w-36 items-center justify-between rounded-md border border-cad-line bg-white/95 px-3 py-2 shadow-control backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
     <div className="flex min-w-0 items-center gap-2">
       <span className="text-cad-blue">{icon}</span>
-      <p className="truncate text-xs font-semibold text-slate-600">{label}</p>
+      <p className="truncate text-xs font-semibold text-slate-600 dark:text-slate-300">{label}</p>
     </div>
     <p className="text-lg font-bold">{value}</p>
   </div>
@@ -2183,7 +2183,7 @@ const OverlayPanel: React.FC<{
     <div className="flex items-center justify-between gap-3 border-b border-cad-line px-3 py-2 dark:border-slate-700">
       <div className="min-w-0">
         <h2 className="truncate text-sm font-bold">{title}</h2>
-        {subtitle && <p className="truncate text-xs text-slate-600">{subtitle}</p>}
+        {subtitle && <p className="truncate text-xs text-slate-600 dark:text-slate-300">{subtitle}</p>}
       </div>
       <button
         type="button"
@@ -2208,7 +2208,7 @@ const OverlayPanel: React.FC<{
 
 const Detail: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
   <div className="grid grid-cols-[140px_1fr] gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
-    <dt className="font-semibold text-slate-500">{label}</dt>
+    <dt className="font-semibold text-slate-500 dark:text-slate-400">{label}</dt>
     <dd className="font-medium text-cad-ink dark:text-white">{value}</dd>
   </div>
 );
