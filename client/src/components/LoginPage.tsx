@@ -43,7 +43,7 @@ export const LoginPage: React.FC = () => {
         : await login(email, password);
 
       if (success) {
-        navigate('/dashboard');
+        navigate('/');
       } else {
         setError(isRegistering ? 'Registration failed' : 'Invalid credentials');
       }

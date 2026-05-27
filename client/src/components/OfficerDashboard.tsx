@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import {
   AlertTriangle,
@@ -20,6 +19,33 @@ import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
 import { Incident, IncidentUnitStatus, User } from '../types/auth';
+
+interface OfficerGoogleMaps {
+  Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
+  Marker: new (options: GoogleMarkerOptions) => GoogleMarkerInstance;
+  LatLngBounds: new () => GoogleLatLngBoundsInstance;
+}
+
+interface GoogleMapInstance {
+  setCenter: (location: { lat: number; lng: number }) => void;
+  fitBounds: (bounds: GoogleLatLngBoundsInstance) => void;
+}
+
+interface GoogleMarkerOptions {
+  position: { lat: number; lng: number };
+  map: GoogleMapInstance;
+  title?: string;
+  label?: string;
+  icon?: Record<string, unknown>;
+}
+
+interface GoogleMarkerInstance {
+  setMap: (map: GoogleMapInstance | null) => void;
+}
+
+interface GoogleLatLngBoundsInstance {
+  extend: (location: { lat: number; lng: number }) => void;
+}
 
 const liveLocationHeartbeatMs = 5000;
 const liveLocationOptions: PositionOptions = {
@@ -62,7 +88,13 @@ export const OfficerDashboard: React.FC = () => {
   const [noteBody, setNoteBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null } | null>(null);
+  const mapElementRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
+  const mapHostRef = useRef<HTMLDivElement | null>(null);
+  const mapMarkersRef = useRef<GoogleMarkerInstance[]>([]);
   const socketRef = useRef<Socket | null>(null);
 
   const assignedIncidents = useMemo(
@@ -121,6 +153,7 @@ export const OfficerDashboard: React.FC = () => {
           lon: position.coords.longitude,
           speedMph
         };
+        setCurrentLocation({ lat: position.coords.latitude, lon: position.coords.longitude });
         setCurrentSpeed(speedMph);
         setLocationState('live');
       },
@@ -144,6 +177,104 @@ export const OfficerDashboard: React.FC = () => {
       window.clearInterval(heartbeat);
     };
   }, []);
+
+  useEffect(() => {
+    if (!runtimeConfig.googleMapsApiKey) {
+      return;
+    }
+
+    if (window.google?.maps) {
+      setMapReady(true);
+      return;
+    }
+
+    const existingScript = document.getElementById('google-maps-script');
+    if (existingScript) {
+      existingScript.addEventListener('load', () => setMapReady(true), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'google-maps-script';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${runtimeConfig.googleMapsApiKey}`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setMapReady(true);
+    document.head.appendChild(script);
+  }, []);
+
+  useEffect(() => {
+    const googleMaps = window.google?.maps as unknown as OfficerGoogleMaps | undefined;
+    if (!mapReady || !googleMaps || !mapElementRef.current) {
+      return;
+    }
+
+    if (mapInstanceRef.current && mapHostRef.current === mapElementRef.current) {
+      return;
+    }
+
+    mapHostRef.current = mapElementRef.current;
+    mapInstanceRef.current = new googleMaps.Map(mapElementRef.current, {
+      center: currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lon } : { lat: 39.7684, lng: -86.1581 },
+      zoom: 13,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false
+    });
+  }, [currentLocation, mapReady]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const googleMaps = window.google?.maps as unknown as OfficerGoogleMaps | undefined;
+    if (!map || !googleMaps) {
+      return;
+    }
+
+    mapMarkersRef.current.forEach((marker) => marker.setMap(null));
+    mapMarkersRef.current = [];
+    const bounds = new googleMaps.LatLngBounds();
+
+    if (currentLocation) {
+      const location = { lat: currentLocation.lat, lng: currentLocation.lon };
+      bounds.extend(location);
+      mapMarkersRef.current.push(
+        new googleMaps.Marker({
+          position: location,
+          map,
+          title: 'My location',
+          icon: {
+            path: 0,
+            scale: 9,
+            fillColor: '#16a34a',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 3
+          }
+        })
+      );
+      map.setCenter(location);
+    }
+
+    assignedIncidents.forEach((incident) => {
+      if (incident.lat === undefined || incident.lon === undefined) {
+        return;
+      }
+      const location = { lat: incident.lat, lng: incident.lon };
+      bounds.extend(location);
+      mapMarkersRef.current.push(
+        new googleMaps.Marker({
+          position: location,
+          map,
+          title: `${incident.callNumber} ${incident.type}`,
+          label: incident.priority === 'Emergency' ? '!' : ''
+        })
+      );
+    });
+
+    if (currentLocation || assignedIncidents.some((incident) => incident.lat !== undefined && incident.lon !== undefined)) {
+      map.fitBounds(bounds);
+    }
+  }, [assignedIncidents, currentLocation]);
 
   const updateStatus = async (status: IncidentUnitStatus) => {
     if (!selectedIncident) return;
@@ -192,12 +323,6 @@ export const OfficerDashboard: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Link
-              to="/dashboard"
-              className="hidden rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900 sm:inline-flex"
-            >
-              Dispatch
-            </Link>
             <button
               type="button"
               onClick={logout}
@@ -283,16 +408,28 @@ export const OfficerDashboard: React.FC = () => {
 
         <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
           {!selectedIncident ? (
-            <div className="flex min-h-[60vh] flex-col items-center justify-center p-8 text-center">
-              <Radio size={42} className="text-slate-400" />
-              <h2 className="mt-4 text-xl font-bold">No active assignment</h2>
-              <p className="mt-2 max-w-md text-sm text-slate-600 dark:text-slate-300">
-                Assigned calls will appear here with response controls, notes, and navigation.
-              </p>
+            <div className="grid min-h-[70vh] grid-rows-[minmax(320px,1fr)_auto]">
+              <OfficerMap
+                mapElementRef={mapElementRef}
+                hasGoogleKey={Boolean(runtimeConfig.googleMapsApiKey)}
+                currentLocation={currentLocation}
+              />
+              <div className="flex flex-col items-center justify-center p-8 text-center">
+                <Radio size={42} className="text-slate-400" />
+                <h2 className="mt-4 text-xl font-bold">No active assignment</h2>
+                <p className="mt-2 max-w-md text-sm text-slate-600 dark:text-slate-300">
+                  Assigned calls will appear here with response controls, notes, navigation, and live map context.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="grid min-h-[70vh] lg:grid-cols-[1fr_320px]">
               <div className="p-4 sm:p-6">
+                <OfficerMap
+                  mapElementRef={mapElementRef}
+                  hasGoogleKey={Boolean(runtimeConfig.googleMapsApiKey)}
+                  currentLocation={currentLocation}
+                />
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -413,16 +550,33 @@ export const OfficerDashboard: React.FC = () => {
       </section>
 
       <nav className="fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 p-2 shadow-xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-        <Link to="/dashboard" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800" title="Map">
+        <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-cad-blue text-white" title="Map">
           <MapPin size={20} />
-        </Link>
+        </button>
         <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800" title="Messages">
           <MessageCircle size={20} />
-        </button>
-        <button type="button" onClick={loadIncidents} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-cad-blue text-white" title="Refresh calls">
-          <ClipboardList size={20} />
         </button>
       </nav>
     </main>
   );
 };
+
+const OfficerMap: React.FC<{
+  mapElementRef: React.RefObject<HTMLDivElement>;
+  hasGoogleKey: boolean;
+  currentLocation: { lat: number; lon: number } | null;
+}> = ({ mapElementRef, hasGoogleKey, currentLocation }) => (
+  <div className="mb-5 overflow-hidden rounded-lg border border-slate-200 bg-slate-950 dark:border-slate-800">
+    {hasGoogleKey ? (
+      <div ref={mapElementRef} className="h-[320px] w-full" />
+    ) : (
+      <div className="flex h-[320px] items-center justify-center bg-slate-900 p-6 text-center text-sm text-slate-300">
+        Add REACT_APP_GOOGLE_API_KEY to show the live officer map.
+      </div>
+    )}
+    <div className="flex items-center justify-between border-t border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-white">
+      <span>Live patrol map</span>
+      <span>{currentLocation ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'Waiting for GPS'}</span>
+    </div>
+  </div>
+);

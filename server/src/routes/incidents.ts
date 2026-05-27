@@ -6,7 +6,8 @@ import {
   AssignIncidentUnitRequest,
   AddIncidentNoteRequest,
   CreateIncidentRequest,
-  UpdateIncidentStatusRequest
+  UpdateIncidentStatusRequest,
+  UserRole
 } from '../types/auth';
 
 const router = Router();
@@ -122,6 +123,11 @@ router.patch(
     res: Response
   ): Promise<void> => {
     try {
+      if (req.user?.role !== UserRole.OFFICER) {
+        res.status(403).json({ error: 'Officer access required' });
+        return;
+      }
+
       const incident = await IncidentService.updateAssignedUnitStatus(
         req.params.id,
         req.user?.id || '',
@@ -147,6 +153,11 @@ router.post(
   requirePermission('view_dispatch'),
   async (req: Request<{ id: string }, {}, AddIncidentNoteRequest>, res: Response): Promise<void> => {
     try {
+      if (req.user?.role !== UserRole.OFFICER) {
+        res.status(403).json({ error: 'Officer access required' });
+        return;
+      }
+
       const note = await IncidentService.addAssignedUnitNote(req.params.id, req.user?.id || '', req.body);
       if (!note) {
         res.status(404).json({ error: 'Assigned incident not found' });
