@@ -1344,6 +1344,107 @@ export const Dashboard: React.FC = () => {
     </div>
   );
 
+  const renderCallManagement = (showCallList: boolean) => (
+    <div className={`grid h-[min(72vh,720px)] min-h-[540px] overflow-hidden rounded-md border border-cad-line dark:border-slate-700 ${showCallList ? 'md:grid-cols-[280px_1fr]' : ''}`}>
+      {showCallList && (
+        <div className="flex min-h-0 flex-col border-r border-cad-line bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
+          <div className="shrink-0 border-b border-cad-line p-3 text-sm font-bold dark:border-slate-700">Active Calls</div>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+            {incidents.length === 0 && <p className="rounded-md bg-white p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">No active calls.</p>}
+            {incidents.map((incident) => (
+              <button
+                key={incident.id}
+                type="button"
+                onClick={() => setSelectedIncidentId(incident.id)}
+                className={`w-full rounded-lg border p-3 text-left transition ${
+                  selectedIncident?.id === incident.id
+                    ? 'border-cad-blue bg-blue-50 dark:bg-blue-950/50'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800'
+                }`}
+              >
+                <p className="truncate text-sm font-bold">{incident.callNumber} · {incident.type}</p>
+                <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-300">{incident.address}</p>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${incidentPriorityStyles[incident.priority]}`}>
+                    {incident.priority}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{incident.units.length} units</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="min-h-0 overflow-y-auto bg-white p-4 dark:bg-slate-900">
+        {selectedIncident ? (
+          <div className="space-y-4">
+            <dl className="grid gap-3 text-sm">
+              <Detail label="Call" value={selectedIncident.callNumber} />
+              <Detail label="Type" value={selectedIncident.type} />
+              <Detail label="Priority" value={selectedIncident.priority} />
+              <Detail label="Status" value={selectedIncident.status} />
+              <Detail label="Address" value={selectedIncident.address} />
+              <Detail label="Caller" value={selectedIncident.callerName || 'Unknown'} />
+              <Detail label="Phone" value={selectedIncident.callerPhone || 'Unknown'} />
+            </dl>
+            {selectedIncident.description && <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-950 dark:text-slate-200">{selectedIncident.description}</p>}
+            {selectedIncident.disposition && <Detail label="Disposition" value={selectedIncident.disposition} />}
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Assigned Units</h3>
+              <div className="mt-2 space-y-2">
+                {selectedIncident.units.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No units assigned.</p>}
+                {selectedIncident.units.map((assignedUnit) => (
+                  <div key={assignedUnit.userId} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950">
+                    <span className="font-semibold">{assignedUnit.cadUnitNumber || assignedUnit.name}</span>
+                    <span>{assignedUnit.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <select value={assignmentUnitId} onChange={(event) => setAssignmentUnitId(event.target.value)} className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                <option value="">Select unit</option>
+                {units.map((unit) => (
+                  <option key={unit.id} value={unit.id}>{displayCadUnitNumber(unit)} · {unit.name}</option>
+                ))}
+              </select>
+              <button type="button" onClick={assignIncidentUnit} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">Assign</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+              {(['Dispatched', 'En Route', 'On Scene', 'Closed', 'Canceled'] as IncidentStatus[]).map((status) => (
+                <button key={status} type="button" onClick={() => updateIncidentStatus(status)} className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                  {status}
+                </button>
+              ))}
+            </div>
+            <input value={incidentDisposition} onChange={(event) => setIncidentDisposition(event.target.value)} placeholder="Close/cancel disposition" className="w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+            <div className="rounded-md border border-cad-line p-3 dark:border-slate-700">
+              <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Call Timeline</h3>
+              <div className="mt-3 max-h-48 space-y-2 overflow-y-auto">
+                {(selectedIncident.notes || []).length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No notes yet.</p>}
+                {(selectedIncident.notes || []).map((note) => (
+                  <div key={note.id} className="rounded-md bg-slate-50 p-2 text-sm dark:bg-slate-950">
+                    <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-500">
+                      <span>{note.noteType} {note.userName ? `by ${note.userName}` : ''}</span>
+                      <span>{formatDateTime(note.createdAt)}</span>
+                    </div>
+                    <p className="mt-1 text-slate-700 dark:text-slate-200">{note.body}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                <input value={incidentNoteBody} onChange={(event) => setIncidentNoteBody(event.target.value)} placeholder="Add call note" className="min-w-0 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                <button type="button" onClick={addIncidentNote} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">Add</button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full min-h-96 items-center justify-center p-4 text-sm text-slate-600 dark:text-slate-300">Select a call to manage.</div>
+        )}
+      </div>
+    </div>
+  );
+
   const renderQuickModalContent = () => {
     if (activeQuickModal === 'messages') {
       return (
@@ -1545,6 +1646,10 @@ export const Dashboard: React.FC = () => {
     }
 
     if (activeQuickModal === 'calls') {
+      return renderCallManagement(true);
+    }
+
+    if ((activeQuickModal as string) === 'calls') {
       return (
         <div className="max-h-[70vh] space-y-2 overflow-y-auto">
           {incidents.map((incident) => (
@@ -1602,6 +1707,10 @@ export const Dashboard: React.FC = () => {
     }
 
     if (activeQuickModal === 'call-detail') {
+      return renderCallManagement(false);
+    }
+
+    if ((activeQuickModal as string) === 'call-detail') {
       return selectedIncident ? (
         <dl className="grid gap-3 text-sm">
           <Detail label="Call" value={selectedIncident.callNumber} />
@@ -2167,13 +2276,17 @@ export const Dashboard: React.FC = () => {
 
       {activeQuickModal && (
         <div
-          className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4"
+          className={`fixed inset-0 z-40 flex justify-center bg-slate-950/45 p-4 ${
+            activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'items-center' : 'items-end'
+          }`}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setActiveQuickModal(null);
           }}
         >
           <div
-            className="mb-20 flex max-h-[calc(100vh-7rem)] w-full max-w-2xl origin-bottom animate-[dockModalIn_120ms_cubic-bezier(0.2,0.8,0.2,1)] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            className={`flex max-h-[calc(100vh-7rem)] w-full origin-bottom animate-[dockModalIn_120ms_cubic-bezier(0.2,0.8,0.2,1)] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${
+              activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'max-w-5xl' : 'mb-20 max-w-2xl'
+            }`}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between border-b border-cad-line p-4">
