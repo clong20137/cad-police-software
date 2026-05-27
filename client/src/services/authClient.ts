@@ -226,7 +226,7 @@ class AuthClient {
     if (stored) {
       try {
         this.auth = JSON.parse(stored);
-        if (this.auth && !this.auth.permissions) {
+        if (this.auth) {
           this.auth.permissions = ROLE_PERMISSIONS[this.auth.user.role] || [];
         }
         if (!this.isAuthenticated()) {

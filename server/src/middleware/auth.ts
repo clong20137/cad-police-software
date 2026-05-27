@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { AuthPayload } from '../types/auth';
+import { AuthPayload, ROLE_PERMISSIONS, UserRole } from '../types/auth';
 import { securityConfig } from '../config/security';
+import { AuthService } from '../services/AuthService';
 
 declare global {
   namespace Express {
@@ -25,8 +26,24 @@ export const authMiddleware = (
 
   try {
     const decoded = jwt.verify(token, securityConfig.jwtSecret) as AuthPayload;
-    req.user = decoded;
-    next();
+    AuthService.getUser(decoded.id)
+      .then((user) => {
+        if (!user || !user.active) {
+          res.status(401).json({ error: 'User not found or inactive' });
+          return;
+        }
+
+        req.user = {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          permissions: ROLE_PERMISSIONS[user.role] || decoded.permissions || []
+        };
+        next();
+      })
+      .catch(() => {
+        res.status(401).json({ error: 'Invalid token' });
+      });
   } catch (error) {
     res.status(401).json({ error: 'Invalid token' });
   }
@@ -39,7 +56,7 @@ export const requirePermission = (permission: string) => {
       return;
     }
 
-    if (!req.user.permissions.includes(permission)) {
+    if (req.user.role !== UserRole.ADMIN && !req.user.permissions.includes(permission)) {
       res.status(403).json({ error: 'Insufficient permissions' });
       return;
     }
