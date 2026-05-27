@@ -29,6 +29,7 @@ export const initializeRealtime = (server: HttpServer): Server => {
     try {
       const user = jwt.verify(token, securityConfig.jwtSecret) as AuthPayload;
       socket.data.userId = user.id;
+      socket.data.role = user.role;
       next();
     } catch {
       next();
@@ -38,6 +39,9 @@ export const initializeRealtime = (server: HttpServer): Server => {
   io.on('connection', async (socket) => {
     socket.join('units');
     socket.join('incidents');
+    if (socket.data.role) {
+      socket.join(`role:${socket.data.role}`);
+    }
     if (socket.data.userId) {
       socket.join(`user:${socket.data.userId}`);
       onlineUsers.set(socket.data.userId, (onlineUsers.get(socket.data.userId) || 0) + 1);
@@ -46,6 +50,23 @@ export const initializeRealtime = (server: HttpServer): Server => {
     }
     socket.emit('units:update', await AuthService.getTrackedUnits());
     socket.emit('incidents:update', await IncidentService.getActiveIncidents());
+    socket.emit('realtime:ready', {
+      serverTime: new Date().toISOString(),
+      onlineUserIds: Array.from(onlineUsers.keys())
+    });
+
+    socket.on('client:resync', async (_payload: { reason?: string } = {}) => {
+      await AuthService.clearExpiredTrackedUnits();
+      socket.emit('units:update', await AuthService.getTrackedUnits());
+      socket.emit('incidents:update', await IncidentService.getActiveIncidents());
+      socket.emit('presence:update', {
+        onlineUserIds: Array.from(onlineUsers.keys()),
+        users: await AuthService.getUsers()
+      });
+      socket.emit('realtime:resynced', {
+        serverTime: new Date().toISOString()
+      });
+    });
 
     socket.on('disconnect', async () => {
       if (!socket.data.userId) {
@@ -115,4 +136,15 @@ export const broadcastIncidents = async (): Promise<void> => {
   }
 
   io.to('incidents').emit('incidents:update', await IncidentService.getActiveIncidents());
+};
+
+export const broadcastOfficerAssignment = async (officerId: string): Promise<void> => {
+  if (!io) {
+    return;
+  }
+
+  io.to(`user:${officerId}`).emit('assignment:changed', {
+    officerId,
+    serverTime: new Date().toISOString()
+  });
 };

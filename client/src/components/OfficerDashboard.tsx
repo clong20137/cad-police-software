@@ -313,6 +313,8 @@ export const OfficerDashboard: React.FC = () => {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<'starting' | 'live' | 'blocked' | 'error'>('starting');
+  const [realtimeState, setRealtimeState] = useState<'connecting' | 'live' | 'reconnecting' | 'offline'>('connecting');
+  const [lastRealtimeSync, setLastRealtimeSync] = useState<Date | null>(null);
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationTrail, setLocationTrail] = useState<Array<{ lat: number; lon: number; speedMph?: number | null }>>([]);
@@ -376,6 +378,14 @@ export const OfficerDashboard: React.FC = () => {
   const selectedIncident = assignedIncidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || null;
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
   const selectedAssignmentWarning = assignmentWarning(selectedIncident, user?.id);
+  const realtimeStatusLabel =
+    realtimeState === 'live'
+      ? `Live${lastRealtimeSync ? ` - synced ${lastRealtimeSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`
+      : realtimeState === 'reconnecting'
+        ? 'Reconnecting'
+        : realtimeState === 'offline'
+          ? 'Offline'
+          : 'Connecting';
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
   const messageThreads = directory.filter((item) => {
     if (item.id === user?.id) return false;
@@ -438,9 +448,40 @@ export const OfficerDashboard: React.FC = () => {
 
     const socket = io(runtimeConfig.socketUrl, {
       transports: ['websocket', 'polling'],
-      auth: { token }
+      auth: { token },
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      timeout: 20000
     });
     socketRef.current = socket;
+    setRealtimeState('connecting');
+    const requestResync = (reason: string) => {
+      socket.emit('client:resync', { reason, clientTime: new Date().toISOString() });
+    };
+    socket.on('connect', () => {
+      setRealtimeState('live');
+      requestResync('connect');
+    });
+    socket.io.on('reconnect_attempt', () => setRealtimeState('reconnecting'));
+    socket.io.on('reconnect', () => {
+      setRealtimeState('live');
+      requestResync('reconnect');
+    });
+    socket.io.on('reconnect_error', () => setRealtimeState('reconnecting'));
+    socket.io.on('reconnect_failed', () => setRealtimeState('offline'));
+    socket.on('disconnect', () => setRealtimeState('offline'));
+    socket.on('connect_error', () => setRealtimeState('reconnecting'));
+    socket.on('realtime:ready', () => {
+      setRealtimeState('live');
+      setLastRealtimeSync(new Date());
+    });
+    socket.on('realtime:resynced', () => {
+      setRealtimeState('live');
+      setLastRealtimeSync(new Date());
+    });
+    socket.on('assignment:changed', () => requestResync('assignment-changed'));
     socket.on('incidents:update', (nextIncidents: Incident[]) => setIncidents(nextIncidents));
     socket.on('presence:update', (presence: { onlineUserIds: string[]; users: User[] }) => {
       setOnlineUserIds(presence.onlineUserIds || []);
@@ -853,7 +894,18 @@ export const OfficerDashboard: React.FC = () => {
           <h1 className="text-xl font-semibold">Officer CAD</h1>
           <p className="text-xs text-slate-300">{user?.cadUnitNumber || user?.unitNumber || user?.badge || user?.name}</p>
         </div>
-        <div className="relative">
+        <div className="relative flex items-center gap-2">
+          <span
+            className={`hidden rounded-full px-3 py-1 text-xs font-bold sm:inline-flex ${
+              realtimeState === 'live'
+                ? 'bg-emerald-500/20 text-emerald-100 ring-1 ring-emerald-300/30'
+                : realtimeState === 'offline'
+                  ? 'bg-red-500/20 text-red-100 ring-1 ring-red-300/30'
+                  : 'bg-amber-500/20 text-amber-100 ring-1 ring-amber-300/30'
+            }`}
+          >
+            {realtimeStatusLabel}
+          </span>
           <button
             type="button"
             onClick={() => setSettingsOpen((value) => !value)}

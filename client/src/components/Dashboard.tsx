@@ -430,6 +430,8 @@ export const Dashboard: React.FC = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [, setLocationError] = useState<string>('');
   const [unitLoadError, setUnitLoadError] = useState<string>('');
+  const [realtimeState, setRealtimeState] = useState<'connecting' | 'live' | 'reconnecting' | 'offline'>('connecting');
+  const [lastRealtimeSync, setLastRealtimeSync] = useState<Date | null>(null);
   const [directory, setDirectory] = useState<User[]>([]);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [selectedMessageUserId, setSelectedMessageUserId] = useState<string>('');
@@ -736,10 +738,49 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     const socket = io(realtimeUrl, {
       transports: ['websocket', 'polling'],
-      withCredentials: true
+      withCredentials: true,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      timeout: 20000
     });
 
     socketRef.current = socket;
+    setRealtimeState('connecting');
+    const requestResync = (reason: string) => {
+      socket.emit('client:resync', { reason, clientTime: new Date().toISOString() });
+    };
+    socket.on('connect', () => {
+      setRealtimeState('live');
+      setUnitLoadError('');
+      requestResync('connect');
+    });
+    socket.io.on('reconnect_attempt', () => {
+      setRealtimeState('reconnecting');
+    });
+    socket.io.on('reconnect', () => {
+      setRealtimeState('live');
+      requestResync('reconnect');
+      pushToast({ title: 'Realtime restored', message: 'CAD data resynced.', tone: 'success' });
+    });
+    socket.io.on('reconnect_error', () => {
+      setRealtimeState('reconnecting');
+    });
+    socket.io.on('reconnect_failed', () => {
+      setRealtimeState('offline');
+    });
+    socket.on('disconnect', () => {
+      setRealtimeState('offline');
+    });
+    socket.on('realtime:ready', () => {
+      setRealtimeState('live');
+      setLastRealtimeSync(new Date());
+    });
+    socket.on('realtime:resynced', () => {
+      setRealtimeState('live');
+      setLastRealtimeSync(new Date());
+    });
     socket.on('units:update', (nextUnits: User[]) => {
       const trackedUnits = nextUnits.filter(isTrackedUnit);
       setUnits(trackedUnits);
@@ -752,6 +793,7 @@ export const Dashboard: React.FC = () => {
       });
     });
     socket.on('connect_error', () => {
+      setRealtimeState('reconnecting');
       setUnitLoadError('Live unit stream unavailable. Retrying connection.');
     });
     socket.on('presence:update', (presence: { onlineUserIds: string[]; users: User[] }) => {
@@ -1247,6 +1289,14 @@ export const Dashboard: React.FC = () => {
   const quickModalTitle = activeQuickModal
     ? quickLaunchOptions.find((item) => item.id === activeQuickModal)?.label || 'Quick Launch'
     : '';
+  const realtimeStatusLabel =
+    realtimeState === 'live'
+      ? `Live${lastRealtimeSync ? ` - synced ${lastRealtimeSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`
+      : realtimeState === 'reconnecting'
+        ? 'Reconnecting'
+        : realtimeState === 'offline'
+          ? 'Offline'
+          : 'Connecting';
 
   const renderNewCallForm = () => (
     <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
@@ -1750,7 +1800,18 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="relative">
+        <div className="relative flex items-center gap-2">
+          <span
+            className={`hidden rounded-full px-3 py-1 text-xs font-bold sm:inline-flex ${
+              realtimeState === 'live'
+                ? 'bg-emerald-500/20 text-emerald-100 ring-1 ring-emerald-300/30'
+                : realtimeState === 'offline'
+                  ? 'bg-red-500/20 text-red-100 ring-1 ring-red-300/30'
+                  : 'bg-amber-500/20 text-amber-100 ring-1 ring-amber-300/30'
+            }`}
+          >
+            {realtimeStatusLabel}
+          </span>
           <button
             type="button"
             onClick={() => setTheme((value) => (value === 'dark' ? 'light' : 'dark'))}

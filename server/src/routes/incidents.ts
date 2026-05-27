@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requirePermission } from '../middleware/auth';
-import { broadcastIncidents, broadcastTrackedUnits } from '../realtime/socket';
+import { broadcastIncidents, broadcastOfficerAssignment, broadcastTrackedUnits } from '../realtime/socket';
 import { IncidentService } from '../services/IncidentService';
 import {
   AssignIncidentUnitRequest,
@@ -73,6 +73,7 @@ router.post(
 
       await broadcastIncidents();
       await broadcastTrackedUnits();
+      await broadcastOfficerAssignment(req.user.id);
       res.status(201).json(assigned || incident);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message || 'Unable to create officer event' });
@@ -97,6 +98,7 @@ router.patch(
 
       await broadcastIncidents();
       await broadcastTrackedUnits();
+      await Promise.all(incident.units.map((unit) => broadcastOfficerAssignment(unit.userId)));
       res.json(incident);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message || 'Unable to update incident' });
@@ -151,6 +153,7 @@ router.post(
 
       await broadcastIncidents();
       await broadcastTrackedUnits();
+      await broadcastOfficerAssignment(req.body.userId);
       res.json(incident);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message || 'Unable to assign unit' });
