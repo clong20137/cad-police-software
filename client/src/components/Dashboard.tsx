@@ -1851,16 +1851,6 @@ export const Dashboard: React.FC = () => {
                 <Lock size={16} />
                 Change password
               </button>
-              {hasPermission('manage_users') && (
-                <Link
-                  to="/admin/users"
-                  onClick={() => setSettingsOpen(false)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                  <Users size={16} />
-                  User management
-                </Link>
-              )}
               {hasPermission('manage_system') && (
                 <Link
                   to="/admin/configuration"
@@ -1868,7 +1858,7 @@ export const Dashboard: React.FC = () => {
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   <SlidersHorizontal size={16} />
-                  Admin configuration
+                  Admin
                 </Link>
               )}
               <button

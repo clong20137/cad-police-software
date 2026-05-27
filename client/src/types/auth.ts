@@ -206,6 +206,33 @@ export interface ResetUserPasswordRequest {
   newPassword: string;
 }
 
+export type AdminConfigSection = 'agencies' | 'districts' | 'units' | 'calls' | 'statuses' | 'security';
+
+export interface AdminConfigurationItem {
+  id: string;
+  section: AdminConfigSection;
+  name: string;
+  code: string;
+  agency: string;
+  category: string;
+  active: boolean;
+  sortOrder: number;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertConfigurationItemRequest {
+  section?: AdminConfigSection;
+  name?: string;
+  code?: string;
+  agency?: string;
+  category?: string;
+  active?: boolean;
+  sortOrder?: number;
+  metadata?: Record<string, unknown>;
+}
+
 export type Permission =
   | 'view_dispatch'
   | 'create_dispatch'

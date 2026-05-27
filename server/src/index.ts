@@ -3,6 +3,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth';
+import configurationRoutes from './routes/configuration';
 import incidentRoutes from './routes/incidents';
 import { cspMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
@@ -30,6 +31,7 @@ app.use(requestLogger);
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/configuration', configurationRoutes);
 app.use('/api/incidents', incidentRoutes);
 
 // Health check

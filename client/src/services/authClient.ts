@@ -2,6 +2,7 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import {
   ChatMessage,
   ChangePasswordRequest,
+  AdminConfigurationItem,
   CreateIncidentRequest,
   Incident,
   IncidentNote,
@@ -18,6 +19,7 @@ import {
   TokenPair,
   UpdateIncidentStatusRequest,
   UpdateUserRequest,
+  UpsertConfigurationItemRequest,
   User
 } from '../types/auth';
 import { runtimeConfig } from '../config/runtimeConfig';
@@ -26,7 +28,10 @@ const API_URL = runtimeConfig.apiUrl;
 const SIGNED_REQUESTS = [
   { method: 'POST', pathPattern: /^\/api\/auth\/change-password$/ },
   { method: 'PATCH', pathPattern: /^\/api\/auth\/users\/[^/]+$/ },
-  { method: 'POST', pathPattern: /^\/api\/auth\/users\/[^/]+\/reset-password$/ }
+  { method: 'POST', pathPattern: /^\/api\/auth\/users\/[^/]+\/reset-password$/ },
+  { method: 'POST', pathPattern: /^\/api\/configuration$/ },
+  { method: 'PATCH', pathPattern: /^\/api\/configuration\/[^/]+$/ },
+  { method: 'DELETE', pathPattern: /^\/api\/configuration\/[^/]+$/ }
 ];
 
 interface StoredAuth {
@@ -124,6 +129,28 @@ class AuthClient {
 
   async resetUserPassword(userId: string, input: ResetUserPasswordRequest): Promise<void> {
     await this.api.post(`/auth/users/${userId}/reset-password`, input);
+  }
+
+  async getAdminConfiguration(): Promise<AdminConfigurationItem[]> {
+    const response = await this.api.get<AdminConfigurationItem[]>('/configuration');
+    return response.data;
+  }
+
+  async createAdminConfigurationItem(input: UpsertConfigurationItemRequest): Promise<AdminConfigurationItem> {
+    const response = await this.api.post<AdminConfigurationItem>('/configuration', input);
+    return response.data;
+  }
+
+  async updateAdminConfigurationItem(
+    itemId: string,
+    input: UpsertConfigurationItemRequest
+  ): Promise<AdminConfigurationItem> {
+    const response = await this.api.patch<AdminConfigurationItem>(`/configuration/${itemId}`, input);
+    return response.data;
+  }
+
+  async deleteAdminConfigurationItem(itemId: string): Promise<void> {
+    await this.api.delete(`/configuration/${itemId}`);
   }
 
   async getMessages(userId: string): Promise<ChatMessage[]> {

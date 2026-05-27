@@ -112,6 +112,7 @@ export const initializeDatabase = async (): Promise<void> => {
   await initializeMessagingTables();
   await initializeIncidentTables();
   await initializeAuditLogTables();
+  await initializeAdminConfigurationTables();
 };
 
 export const initializePasswordHistoryTables = async (): Promise<void> => {
@@ -398,6 +399,40 @@ export const initializeAuditLogTables = async (): Promise<void> => {
         ON DELETE SET NULL
     )
   `);
+};
+
+export const initializeAdminConfigurationTables = async (): Promise<void> => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS admin_configuration_items (
+      id VARCHAR(36) PRIMARY KEY,
+      section VARCHAR(40) NOT NULL,
+      name VARCHAR(160) NOT NULL,
+      code VARCHAR(80) NOT NULL,
+      agency VARCHAR(120) NOT NULL,
+      category VARCHAR(120) NOT NULL,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      sort_order INT NOT NULL DEFAULT 0,
+      metadata JSON NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_admin_config_section_sort (section, sort_order),
+      UNIQUE KEY uq_admin_config_section_code (section, code)
+    )
+  `);
+};
+
+export type AdminConfigurationRow = RowDataPacket & {
+  id: string;
+  section: string;
+  name: string;
+  code: string;
+  agency: string;
+  category: string;
+  active: number | boolean;
+  sort_order: number;
+  metadata: Record<string, unknown> | string | null;
+  created_at: Date;
+  updated_at: Date;
 };
 
 export type UserRow = RowDataPacket & {

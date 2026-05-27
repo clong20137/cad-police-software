@@ -1,30 +1,41 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Building2,
+  CheckCircle2,
   ClipboardList,
   Map,
   Moon,
   Plus,
   Radio,
-  Save,
   Shield,
   Sun,
   Trash2,
-  Truck
+  Truck,
+  UserCog,
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { authClient } from '../services/authClient';
+import {
+  AdminConfigSection,
+  AdminConfigurationItem,
+  UnitStatus,
+  UpdateUserRequest,
+  User,
+  UserRole
+} from '../types/auth';
 
-type ConfigSection = 'agencies' | 'districts' | 'units' | 'calls' | 'statuses' | 'security';
+type EditableConfigSection = Exclude<AdminConfigSection, 'security'>;
+type AdminSection = EditableConfigSection | 'users' | 'security';
+type ToastTone = 'success' | 'error';
 
-type ConfigItem = {
+type ToastNotice = {
   id: string;
-  name: string;
-  code: string;
-  agency: string;
-  category: string;
-  active: boolean;
+  title: string;
+  message: string;
+  tone: ToastTone;
 };
 
 type SecurityConfig = {
@@ -35,40 +46,8 @@ type SecurityConfig = {
   websocketHeartbeatSeconds: number;
 };
 
-const storageKey = 'cad_admin_configuration';
-
-const defaultItems: Record<ConfigSection, ConfigItem[]> = {
-  agencies: [
-    { id: 'agency-police', name: 'Police', code: 'POL', agency: 'CAD', category: 'Public Safety', active: true },
-    { id: 'agency-ems', name: 'EMS', code: 'EMS', agency: 'CAD', category: 'Medical', active: true },
-    { id: 'agency-fire', name: 'Fire', code: 'FIRE', agency: 'CAD', category: 'Fire', active: true },
-    { id: 'agency-tow', name: 'Towing', code: 'TOW', agency: 'CAD', category: 'Service', active: true }
-  ],
-  districts: [
-    { id: 'district-north', name: 'North District', code: 'NORTH', agency: 'Police', category: 'District', active: true },
-    { id: 'district-south', name: 'South District', code: 'SOUTH', agency: 'Police', category: 'District', active: true }
-  ],
-  units: [
-    { id: 'unit-patrol', name: 'Patrol Unit', code: 'PATROL', agency: 'Police', category: 'Officer', active: true },
-    { id: 'unit-medic', name: 'Medic Unit', code: 'MEDIC', agency: 'EMS', category: 'Ambulance', active: true },
-    { id: 'unit-engine', name: 'Engine', code: 'ENG', agency: 'Fire', category: 'Apparatus', active: true },
-    { id: 'unit-tow', name: 'Tow Truck', code: 'TOW', agency: 'Towing', category: 'Truck', active: true }
-  ],
-  calls: [
-    { id: 'call-traffic-stop', name: 'Traffic Stop', code: 'TS', agency: 'Police', category: 'Law', active: true },
-    { id: 'call-medical', name: 'Medical Emergency', code: 'MED', agency: 'EMS', category: 'Medical', active: true },
-    { id: 'call-fire', name: 'Structure Fire', code: 'FIRE', agency: 'Fire', category: 'Fire', active: true },
-    { id: 'call-tow', name: 'Tow Request', code: 'TOW', agency: 'Towing', category: 'Service', active: true }
-  ],
-  statuses: [
-    { id: 'status-available', name: 'Available', code: 'AVL', agency: 'All', category: 'Unit', active: true },
-    { id: 'status-enroute', name: 'En Route', code: 'ENR', agency: 'All', category: 'Unit', active: true },
-    { id: 'status-onscene', name: 'On Scene', code: 'ONS', agency: 'All', category: 'Unit', active: true },
-    { id: 'status-clear', name: 'Cleared', code: 'CLR', agency: 'All', category: 'Disposition', active: true }
-  ],
-  security: []
-};
-
+const unitStatuses: UnitStatus[] = ['Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop'];
+const configSections: EditableConfigSection[] = ['agencies', 'districts', 'units', 'calls', 'statuses'];
 const defaultSecurity: SecurityConfig = {
   idleTimeoutMinutes: 30,
   requireHttps: true,
@@ -77,7 +56,8 @@ const defaultSecurity: SecurityConfig = {
   websocketHeartbeatSeconds: 20
 };
 
-const sections: Array<{ id: ConfigSection; label: string; icon: React.ReactNode }> = [
+const sections: Array<{ id: AdminSection; label: string; icon: React.ReactNode }> = [
+  { id: 'users', label: 'Users', icon: <UserCog size={17} /> },
   { id: 'agencies', label: 'Agencies', icon: <Building2 size={17} /> },
   { id: 'districts', label: 'Districts', icon: <Map size={17} /> },
   { id: 'units', label: 'Units', icon: <Truck size={17} /> },
@@ -86,71 +66,195 @@ const sections: Array<{ id: ConfigSection; label: string; icon: React.ReactNode 
   { id: 'security', label: 'Security', icon: <Shield size={17} /> }
 ];
 
-const createItem = (section: ConfigSection): ConfigItem => ({
-  id: `${section}-${Date.now()}`,
-  name: '',
-  code: '',
-  agency: section === 'statuses' ? 'All' : 'Police',
-  category: '',
-  active: true
-});
+const isConfigSection = (section: AdminSection): section is EditableConfigSection =>
+  configSections.includes(section as EditableConfigSection);
+
+const getSecurityNumber = (items: AdminConfigurationItem[], code: string, fallback: number): number => {
+  const value = items.find((item) => item.section === 'security' && item.code === code)?.metadata?.value;
+  return typeof value === 'number' ? value : fallback;
+};
+
+const getSecurityBoolean = (items: AdminConfigurationItem[], code: string, fallback: boolean): boolean => {
+  const value = items.find((item) => item.section === 'security' && item.code === code)?.metadata?.value;
+  return typeof value === 'boolean' ? value : fallback;
+};
 
 export const AdminConfigurationPage: React.FC = () => {
   const { hasPermission } = useAuth();
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('cad_theme') === 'dark' ? 'dark' : 'light'
   );
-  const [activeSection, setActiveSection] = useState<ConfigSection>('agencies');
-  const [items, setItems] = useState<Record<ConfigSection, ConfigItem[]>>(() => {
-    const saved = localStorage.getItem(storageKey);
-    if (!saved) return defaultItems;
+  const [activeSection, setActiveSection] = useState<AdminSection>('users');
+  const [items, setItems] = useState<AdminConfigurationItem[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [search, setSearch] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [security, setSecurity] = useState<SecurityConfig>(defaultSecurity);
+  const [toasts, setToasts] = useState<ToastNotice[]>([]);
+  const updateTimers = useRef<Record<string, number>>({});
+
+  const addToast = useCallback((title: string, message: string, tone: ToastTone = 'success') => {
+    const id = `${Date.now()}-${Math.random()}`;
+    setToasts((current) => [{ id, title, message, tone }, ...current].slice(0, 4));
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 3500);
+  }, []);
+
+  const loadAdmin = useCallback(async () => {
     try {
-      return { ...defaultItems, ...JSON.parse(saved).items };
+      const [configItems, adminUsers] = await Promise.all([
+        authClient.getAdminConfiguration(),
+        authClient.getUsers()
+      ]);
+      setItems(configItems);
+      setSecurity({
+        idleTimeoutMinutes: getSecurityNumber(configItems, 'IDLE_TIMEOUT_MINUTES', defaultSecurity.idleTimeoutMinutes),
+        requireHttps: getSecurityBoolean(configItems, 'REQUIRE_HTTPS', defaultSecurity.requireHttps),
+        requireDbSsl: getSecurityBoolean(configItems, 'REQUIRE_DB_SSL', defaultSecurity.requireDbSsl),
+        locationStaleSeconds: getSecurityNumber(configItems, 'LOCATION_STALE_SECONDS', defaultSecurity.locationStaleSeconds),
+        websocketHeartbeatSeconds: getSecurityNumber(
+          configItems,
+          'WEBSOCKET_HEARTBEAT_SECONDS',
+          defaultSecurity.websocketHeartbeatSeconds
+        )
+      });
+      setUsers(adminUsers);
+      setSelectedUserId((current) => current || adminUsers[0]?.id || '');
     } catch {
-      return defaultItems;
+      addToast('Admin load failed', 'Unable to load admin data from the server.', 'error');
     }
-  });
-  const [security, setSecurity] = useState<SecurityConfig>(() => {
-    const saved = localStorage.getItem(storageKey);
-    if (!saved) return defaultSecurity;
-    try {
-      return { ...defaultSecurity, ...JSON.parse(saved).security };
-    } catch {
-      return defaultSecurity;
+  }, [addToast]);
+
+  useEffect(() => {
+    if (hasPermission('manage_system')) {
+      loadAdmin();
     }
-  });
-  const [message, setMessage] = useState('');
+  }, [hasPermission, loadAdmin]);
 
   useEffect(() => {
     localStorage.setItem('cad_theme', theme);
   }, [theme]);
 
-  const activeItems = useMemo(() => items[activeSection] || [], [activeSection, items]);
+  useEffect(() => {
+    const timers = updateTimers.current;
+    return () => {
+      Object.values(timers).forEach((timer) => window.clearTimeout(timer));
+    };
+  }, []);
 
-  const saveConfiguration = () => {
-    localStorage.setItem(storageKey, JSON.stringify({ items, security }));
-    setMessage('Configuration saved on this workstation.');
+  const activeItems = useMemo(
+    () => (isConfigSection(activeSection) ? items.filter((item) => item.section === activeSection) : []),
+    [activeSection, items]
+  );
+
+  const selectedUser = users.find((item) => item.id === selectedUserId) || null;
+  const filteredUsers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return users;
+    return users.filter((item) =>
+      [item.name, item.email, item.role, item.badge, item.unitNumber, item.cadUnitNumber, item.group, item.district]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    );
+  }, [search, users]);
+
+  const scheduleItemUpdate = (itemId: string, update: Partial<AdminConfigurationItem>) => {
+    setItems((current) => current.map((item) => (item.id === itemId ? { ...item, ...update } : item)));
+    window.clearTimeout(updateTimers.current[itemId]);
+    updateTimers.current[itemId] = window.setTimeout(async () => {
+      try {
+        const item = await authClient.updateAdminConfigurationItem(itemId, update);
+        setItems((current) => current.map((currentItem) => (currentItem.id === item.id ? item : currentItem)));
+        addToast('Configuration updated', `${item.name} was saved.`);
+      } catch {
+        addToast('Configuration failed', 'Unable to save that configuration change.', 'error');
+        loadAdmin();
+      }
+    }, 650);
   };
 
-  const updateItem = (id: string, update: Partial<ConfigItem>) => {
-    setItems((current) => ({
-      ...current,
-      [activeSection]: current[activeSection].map((item) => (item.id === id ? { ...item, ...update } : item))
-    }));
+  const addItem = async () => {
+    if (!isConfigSection(activeSection)) return;
+    try {
+      const item = await authClient.createAdminConfigurationItem({
+        section: activeSection,
+        name: 'New Item',
+        code: `NEW-${Date.now().toString().slice(-5)}`,
+        agency: activeSection === 'statuses' ? 'All' : 'Police',
+        category: '',
+        active: true,
+        sortOrder: activeItems.length * 10 + 10,
+        metadata: {}
+      });
+      setItems((current) => [item, ...current]);
+      addToast('Configuration added', `${item.name} was created.`);
+    } catch {
+      addToast('Create failed', 'Unable to create configuration item.', 'error');
+    }
   };
 
-  const addItem = () => {
-    setItems((current) => ({
-      ...current,
-      [activeSection]: [createItem(activeSection), ...current[activeSection]]
-    }));
+  const removeItem = async (itemId: string) => {
+    const item = items.find((entry) => entry.id === itemId);
+    setItems((current) => current.filter((entry) => entry.id !== itemId));
+    try {
+      await authClient.deleteAdminConfigurationItem(itemId);
+      addToast('Configuration removed', `${item?.name || 'Item'} was deleted.`);
+    } catch {
+      addToast('Delete failed', 'Unable to delete configuration item.', 'error');
+      loadAdmin();
+    }
   };
 
-  const removeItem = (id: string) => {
-    setItems((current) => ({
-      ...current,
-      [activeSection]: current[activeSection].filter((item) => item.id !== id)
-    }));
+  const scheduleUserUpdate = (userId: string, update: UpdateUserRequest) => {
+    setUsers((current) => current.map((item) => (item.id === userId ? ({ ...item, ...update } as User) : item)));
+    window.clearTimeout(updateTimers.current[`user-${userId}`]);
+    updateTimers.current[`user-${userId}`] = window.setTimeout(async () => {
+      try {
+        const updated = await authClient.updateUser(userId, update);
+        setUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        addToast('User updated', `${updated.name} was saved.`);
+      } catch {
+        addToast('User update failed', 'Unable to save user changes.', 'error');
+        loadAdmin();
+      }
+    }, 650);
+  };
+
+  const resetUserPassword = async () => {
+    if (!selectedUser) return;
+    if (resetPassword.length < 12) {
+      addToast('Password too short', 'Use at least 12 characters.', 'error');
+      return;
+    }
+    try {
+      await authClient.resetUserPassword(selectedUser.id, { newPassword: resetPassword });
+      setResetPassword('');
+      addToast('Password reset', `${selectedUser.name} will need to sign in again.`);
+    } catch {
+      addToast('Password reset failed', 'Unable to reset that password.', 'error');
+    }
+  };
+
+  const updateSecurity = async (key: keyof SecurityConfig, code: string, value: number | boolean) => {
+    setSecurity((current) => ({ ...current, [key]: value }));
+    const item = items.find((entry) => entry.section === 'security' && entry.code === code);
+    if (!item) {
+      addToast('Security update failed', 'The server did not return that security setting.', 'error');
+      return;
+    }
+
+    try {
+      const updated = await authClient.updateAdminConfigurationItem(item.id, {
+        metadata: { ...item.metadata, value }
+      });
+      setItems((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+      addToast('Security updated', `${updated.name} was saved.`);
+    } catch {
+      addToast('Security update failed', 'Unable to save security configuration.', 'error');
+      loadAdmin();
+    }
   };
 
   if (!hasPermission('manage_system')) {
@@ -165,28 +269,18 @@ export const AdminConfigurationPage: React.FC = () => {
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold">Admin Configuration</h1>
-            <p className="text-xs text-slate-300">CAD setup for Police, EMS, Fire, and Towing</p>
+            <h1 className="text-xl font-semibold">Admin</h1>
+            <p className="text-xs text-slate-300">Users and CAD configuration</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setTheme((value) => (value === 'dark' ? 'light' : 'dark'))}
-            className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20"
-            aria-label="Toggle light dark mode"
-          >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-          <button
-            type="button"
-            onClick={saveConfiguration}
-            className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            <Save size={16} />
-            Save
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setTheme((value) => (value === 'dark' ? 'light' : 'dark'))}
+          className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20"
+          aria-label="Toggle light dark mode"
+        >
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
       </header>
 
       <main className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[260px_1fr]">
@@ -212,13 +306,9 @@ export const AdminConfigurationPage: React.FC = () => {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-cad-line pb-4 dark:border-slate-700">
             <div>
               <h2 className="text-lg font-bold">{sections.find((section) => section.id === activeSection)?.label}</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                {activeSection === 'security'
-                  ? 'Operational guardrails for sessions, transport, and live tracking.'
-                  : 'Codes here become the controlled values dispatchers and officers use.'}
-              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Changes autosave after you edit a field.</p>
             </div>
-            {activeSection !== 'security' && (
+            {isConfigSection(activeSection) && (
               <button
                 type="button"
                 onClick={addItem}
@@ -230,56 +320,69 @@ export const AdminConfigurationPage: React.FC = () => {
             )}
           </div>
 
-          {activeSection === 'security' ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <label className="grid gap-1 text-sm font-semibold">
-                Idle timeout minutes
-                <input
-                  type="number"
-                  min={5}
-                  value={security.idleTimeoutMinutes}
-                  onChange={(event) => setSecurity((value) => ({ ...value, idleTimeoutMinutes: Number(event.target.value) }))}
-                  className="rounded-md border border-cad-line bg-white px-3 py-2 font-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-              </label>
-              <label className="grid gap-1 text-sm font-semibold">
-                Location stale seconds
-                <input
-                  type="number"
-                  min={10}
-                  value={security.locationStaleSeconds}
-                  onChange={(event) => setSecurity((value) => ({ ...value, locationStaleSeconds: Number(event.target.value) }))}
-                  className="rounded-md border border-cad-line bg-white px-3 py-2 font-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-              </label>
-              <label className="grid gap-1 text-sm font-semibold">
-                Websocket heartbeat seconds
-                <input
-                  type="number"
-                  min={5}
-                  value={security.websocketHeartbeatSeconds}
-                  onChange={(event) => setSecurity((value) => ({ ...value, websocketHeartbeatSeconds: Number(event.target.value) }))}
-                  className="rounded-md border border-cad-line bg-white px-3 py-2 font-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-              </label>
-              <label className="flex items-center justify-between rounded-md border border-cad-line px-3 py-2 text-sm font-semibold dark:border-slate-700">
-                Require HTTPS
-                <input
-                  type="checkbox"
-                  checked={security.requireHttps}
-                  onChange={(event) => setSecurity((value) => ({ ...value, requireHttps: event.target.checked }))}
-                />
-              </label>
-              <label className="flex items-center justify-between rounded-md border border-cad-line px-3 py-2 text-sm font-semibold dark:border-slate-700">
-                Require DB SSL
-                <input
-                  type="checkbox"
-                  checked={security.requireDbSsl}
-                  onChange={(event) => setSecurity((value) => ({ ...value, requireDbSsl: event.target.checked }))}
-                />
-              </label>
+          {activeSection === 'users' && (
+            <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+              <aside className="overflow-hidden rounded-lg border border-cad-line dark:border-slate-700">
+                <div className="border-b border-cad-line p-3 dark:border-slate-700">
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users" className="w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                </div>
+                <div className="max-h-[64vh] overflow-y-auto">
+                  {filteredUsers.map((item) => (
+                    <button key={item.id} type="button" onClick={() => setSelectedUserId(item.id)} className={`w-full border-b border-slate-100 px-3 py-3 text-left text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800 ${selectedUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : ''}`}>
+                      <span className="block truncate font-bold">{item.name}</span>
+                      <span className="mt-1 block truncate text-xs text-slate-500 dark:text-slate-400">{item.email}</span>
+                      <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">{item.role}</span>
+                    </button>
+                  ))}
+                </div>
+              </aside>
+
+              <div className="rounded-lg border border-cad-line p-4 dark:border-slate-700">
+                {selectedUser ? (
+                  <>
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-cad-line pb-4 dark:border-slate-700">
+                      <div>
+                        <h3 className="text-lg font-bold">{selectedUser.name}</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">{selectedUser.email}</p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 rounded-full border border-cad-line px-3 py-1.5 text-sm font-semibold dark:border-slate-700">
+                        <input type="checkbox" checked={selectedUser.active} onChange={(event) => scheduleUserUpdate(selectedUser.id, { active: event.target.checked })} />
+                        Active
+                      </label>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      <input value={selectedUser.name} onChange={(event) => scheduleUserUpdate(selectedUser.id, { name: event.target.value })} placeholder="Name" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <select value={selectedUser.role} onChange={(event) => scheduleUserUpdate(selectedUser.id, { role: event.target.value as UserRole })} className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                        {Object.values(UserRole).map((role) => <option key={role} value={role}>{role}</option>)}
+                      </select>
+                      <input value={selectedUser.badge || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { badge: event.target.value })} placeholder="Badge" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <input value={selectedUser.unitNumber || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { unitNumber: event.target.value })} placeholder="Unit number" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <input value={selectedUser.cadUnitNumber || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { cadUnitNumber: event.target.value })} placeholder="CAD unit number" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <select value={selectedUser.status || 'Available'} onChange={(event) => scheduleUserUpdate(selectedUser.id, { status: event.target.value as UnitStatus })} className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                        {unitStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                      </select>
+                      <input value={selectedUser.group || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { group: event.target.value })} placeholder="Group" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <input value={selectedUser.district || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { district: event.target.value })} placeholder="District" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                    </div>
+                    <div className="mt-5 rounded-md border border-cad-line p-4 dark:border-slate-700">
+                      <h3 className="flex items-center gap-2 text-sm font-bold"><Shield size={16} /> Reset Password</h3>
+                      <div className="mt-3 flex max-w-xl gap-2">
+                        <input type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} placeholder="New password" className="min-w-0 flex-1 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                        <button type="button" onClick={resetUserPassword} className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold dark:border-slate-700 dark:text-slate-200">Reset</button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex min-h-96 items-center justify-center text-sm text-slate-600 dark:text-slate-300">
+                    <UserCog size={18} className="mr-2" />
+                    Select a user to manage.
+                  </div>
+                )}
+              </div>
             </div>
-          ) : (
+          )}
+
+          {isConfigSection(activeSection) && (
             <div className="overflow-hidden rounded-lg border border-cad-line dark:border-slate-700">
               <div className="hidden grid-cols-[1.2fr_0.7fr_0.8fr_0.8fr_100px_52px] gap-2 border-b border-cad-line bg-slate-50 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 md:grid">
                 <span>Name</span>
@@ -292,44 +395,15 @@ export const AdminConfigurationPage: React.FC = () => {
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
                 {activeItems.map((item) => (
                   <div key={item.id} className="grid gap-2 p-3 md:grid-cols-[1.2fr_0.7fr_0.8fr_0.8fr_100px_52px]">
-                    <input
-                      value={item.name}
-                      onChange={(event) => updateItem(item.id, { name: event.target.value })}
-                      placeholder="Name"
-                      className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    />
-                    <input
-                      value={item.code}
-                      onChange={(event) => updateItem(item.id, { code: event.target.value.toUpperCase() })}
-                      placeholder="Code"
-                      className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    />
-                    <input
-                      value={item.agency}
-                      onChange={(event) => updateItem(item.id, { agency: event.target.value })}
-                      placeholder="Agency"
-                      className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    />
-                    <input
-                      value={item.category}
-                      onChange={(event) => updateItem(item.id, { category: event.target.value })}
-                      placeholder="Category"
-                      className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    />
+                    <input value={item.name} onChange={(event) => scheduleItemUpdate(item.id, { name: event.target.value })} placeholder="Name" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                    <input value={item.code} onChange={(event) => scheduleItemUpdate(item.id, { code: event.target.value.toUpperCase() })} placeholder="Code" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                    <input value={item.agency} onChange={(event) => scheduleItemUpdate(item.id, { agency: event.target.value })} placeholder="Agency" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                    <input value={item.category} onChange={(event) => scheduleItemUpdate(item.id, { category: event.target.value })} placeholder="Category" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
                     <label className="flex items-center gap-2 rounded-md border border-cad-line px-3 py-2 text-sm font-semibold dark:border-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={item.active}
-                        onChange={(event) => updateItem(item.id, { active: event.target.checked })}
-                      />
+                      <input type="checkbox" checked={item.active} onChange={(event) => scheduleItemUpdate(item.id, { active: event.target.checked })} />
                       Active
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => removeItem(item.id)}
-                      className="inline-flex h-10 items-center justify-center rounded-md border border-cad-line text-slate-500 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:hover:bg-red-950/40 dark:hover:text-red-200"
-                      aria-label={`Remove ${item.name || item.code || 'configuration item'}`}
-                    >
+                    <button type="button" onClick={() => removeItem(item.id)} className="inline-flex h-10 items-center justify-center rounded-md border border-cad-line text-slate-500 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:hover:bg-red-950/40 dark:hover:text-red-200" aria-label={`Remove ${item.name || item.code || 'configuration item'}`}>
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -338,9 +412,61 @@ export const AdminConfigurationPage: React.FC = () => {
             </div>
           )}
 
-          {message && <p className="mt-4 text-sm font-semibold text-slate-600 dark:text-slate-300">{message}</p>}
+          {activeSection === 'security' && (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <NumberSetting label="Idle timeout minutes" value={security.idleTimeoutMinutes} min={5} onChange={(value) => updateSecurity('idleTimeoutMinutes', 'IDLE_TIMEOUT_MINUTES', value)} />
+              <NumberSetting label="Location stale seconds" value={security.locationStaleSeconds} min={10} onChange={(value) => updateSecurity('locationStaleSeconds', 'LOCATION_STALE_SECONDS', value)} />
+              <NumberSetting label="Websocket heartbeat seconds" value={security.websocketHeartbeatSeconds} min={5} onChange={(value) => updateSecurity('websocketHeartbeatSeconds', 'WEBSOCKET_HEARTBEAT_SECONDS', value)} />
+              <ToggleSetting label="Require HTTPS" checked={security.requireHttps} onChange={(value) => updateSecurity('requireHttps', 'REQUIRE_HTTPS', value)} />
+              <ToggleSetting label="Require DB SSL" checked={security.requireDbSsl} onChange={(value) => updateSecurity('requireDbSsl', 'REQUIRE_DB_SSL', value)} />
+            </div>
+          )}
         </section>
       </main>
+
+      <div className="fixed right-4 top-20 z-50 grid w-[min(24rem,calc(100vw-2rem))] gap-2">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={`flex items-start gap-3 rounded-lg border bg-white p-3 shadow-xl dark:bg-slate-900 ${toast.tone === 'success' ? 'border-emerald-200 dark:border-emerald-800' : 'border-red-200 dark:border-red-800'}`}>
+            <CheckCircle2 size={18} className={toast.tone === 'success' ? 'mt-0.5 text-emerald-600' : 'mt-0.5 text-red-600'} />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold">{toast.title}</p>
+              <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300">{toast.message}</p>
+            </div>
+            <button type="button" onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))} className="text-slate-400 hover:text-slate-700 dark:hover:text-white" aria-label="Dismiss notification">
+              <X size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
+
+const NumberSetting: React.FC<{ label: string; value: number; min: number; onChange: (value: number) => void }> = ({
+  label,
+  value,
+  min,
+  onChange
+}) => (
+  <label className="grid gap-1 text-sm font-semibold">
+    {label}
+    <input
+      type="number"
+      min={min}
+      value={value}
+      onChange={(event) => onChange(Number(event.target.value))}
+      className="rounded-md border border-cad-line bg-white px-3 py-2 font-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+    />
+  </label>
+);
+
+const ToggleSetting: React.FC<{ label: string; checked: boolean; onChange: (value: boolean) => void }> = ({
+  label,
+  checked,
+  onChange
+}) => (
+  <label className="flex items-center justify-between rounded-md border border-cad-line px-3 py-2 text-sm font-semibold dark:border-slate-700">
+    {label}
+    <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+  </label>
+);

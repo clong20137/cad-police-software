@@ -5,7 +5,6 @@ import { UserRole } from './types/auth';
 import { LoginPage } from './components/LoginPage';
 import { Dashboard } from './components/Dashboard';
 import { AdminConfigurationPage } from './components/AdminConfigurationPage';
-import { AdminUsersPage } from './components/AdminUsersPage';
 import { OfficerDashboard } from './components/OfficerDashboard';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: UserRole[] }> = ({ children, allowedRoles }) => {
@@ -50,7 +49,7 @@ const App: React.FC = () => {
             path="/admin/users"
             element={
               <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
-                <AdminUsersPage />
+                <Navigate to="/admin/configuration" replace />
               </ProtectedRoute>
             }
           />
