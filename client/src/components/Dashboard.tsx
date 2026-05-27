@@ -479,6 +479,39 @@ export const Dashboard: React.FC = () => {
     localStorage.setItem('cad_theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+
+      if (emojiOpen) {
+        setEmojiOpen(false);
+        return;
+      }
+      if (addressSuggestionsOpen) {
+        setAddressSuggestionsOpen(false);
+        return;
+      }
+      if (changePasswordOpen) {
+        setChangePasswordOpen(false);
+        return;
+      }
+      if (customizingSlot !== null) {
+        setCustomizingSlot(null);
+        return;
+      }
+      if (activeQuickModal) {
+        setActiveQuickModal(null);
+        return;
+      }
+      if (settingsOpen) {
+        setSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [activeQuickModal, addressSuggestionsOpen, changePasswordOpen, customizingSlot, emojiOpen, settingsOpen]);
+
   const playAlert = useCallback((kind: 'message' | 'call') => {
     try {
       const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -1050,8 +1083,8 @@ export const Dashboard: React.FC = () => {
   const renderQuickModalContent = () => {
     if (activeQuickModal === 'messages') {
       return (
-        <div className="grid min-h-[520px] overflow-hidden rounded-md border border-cad-line sm:grid-cols-[220px_1fr]">
-          <div className="relative max-h-[70vh] overflow-y-auto border-r border-cad-line bg-slate-50 pb-20 dark:border-slate-700 dark:bg-slate-950">
+        <div className="grid h-[min(70vh,680px)] min-h-[520px] overflow-hidden rounded-md border border-cad-line sm:grid-cols-[220px_1fr]">
+          <div className="relative h-full overflow-y-auto border-r border-cad-line bg-slate-50 pb-20 dark:border-slate-700 dark:bg-slate-950">
             <button
               type="button"
               onClick={() => {
@@ -1089,7 +1122,7 @@ export const Dashboard: React.FC = () => {
                 </button>
               ))}
           </div>
-          <div className="flex min-w-0 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-col">
             <div className="border-b border-cad-line bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
               <label className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-300">
                 Compose To
@@ -1127,7 +1160,7 @@ export const Dashboard: React.FC = () => {
                     </span>
                   </div>
                 </div>
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-white p-4">
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-white p-4 dark:bg-slate-950">
                   {searchedMessages.map((message) => {
                     const mine = message.senderId === user?.id;
                     return (
@@ -1166,7 +1199,7 @@ export const Dashboard: React.FC = () => {
                     );
                   })}
                 </div>
-                <div className="relative border-t border-cad-line p-3 dark:border-slate-700">
+                <div className="relative shrink-0 border-t border-cad-line p-3 dark:border-slate-700">
                   {emojiOpen && (
                     <div className="absolute bottom-16 left-3 z-30 w-80 rounded-lg border border-cad-line bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
                       <input
@@ -1250,7 +1283,7 @@ export const Dashboard: React.FC = () => {
                 </div>
               </>
             ) : (
-              <div className="flex min-h-80 items-center justify-center p-4 text-sm text-slate-600">
+              <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-slate-600 dark:text-slate-300">
                 Select a user to start messaging.
               </div>
             )}
@@ -1792,14 +1825,14 @@ export const Dashboard: React.FC = () => {
 
       {activeQuickModal && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4">
-          <div className="mb-20 w-full max-w-2xl origin-bottom animate-[dockModalIn_120ms_cubic-bezier(0.2,0.8,0.2,1)] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-center justify-between border-b border-cad-line p-4">
+          <div className="mb-20 flex max-h-[calc(100vh-7rem)] w-full max-w-2xl origin-bottom animate-[dockModalIn_120ms_cubic-bezier(0.2,0.8,0.2,1)] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex shrink-0 items-center justify-between border-b border-cad-line p-4">
               <h2 className="text-lg font-bold">{quickModalTitle}</h2>
               <button type="button" onClick={() => setActiveQuickModal(null)} className="rounded-md p-2 hover:bg-slate-100">
                 <X size={18} />
               </button>
             </div>
-            <div className="p-4">{renderQuickModalContent()}</div>
+            <div className="min-h-0 overflow-hidden p-4">{renderQuickModalContent()}</div>
           </div>
         </div>
       )}
