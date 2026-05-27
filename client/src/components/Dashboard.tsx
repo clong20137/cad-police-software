@@ -1054,8 +1054,8 @@ export const Dashboard: React.FC = () => {
   };
 
   const changePassword = async () => {
-    if (passwordForm.newPassword.length < 8) {
-      setPasswordMessage('New password must be at least 8 characters.');
+    if (passwordForm.newPassword.length < 12) {
+      setPasswordMessage('New password must be at least 12 characters.');
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {

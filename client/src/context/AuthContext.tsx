@@ -15,6 +15,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const IDLE_TIMEOUT_MINUTES = Number(process.env.REACT_APP_IDLE_TIMEOUT_MINUTES || 30);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -68,6 +69,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPermissions([]);
     setIsLoading(false);
   }, []);
+
+  useEffect(() => {
+    if (!user || !Number.isFinite(IDLE_TIMEOUT_MINUTES) || IDLE_TIMEOUT_MINUTES <= 0) {
+      return;
+    }
+
+    let idleTimer = 0;
+    const resetIdleTimer = (): void => {
+      window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        logout();
+      }, IDLE_TIMEOUT_MINUTES * 60 * 1000);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'visibilitychange'];
+    events.forEach((eventName) => window.addEventListener(eventName, resetIdleTimer, { passive: true }));
+    resetIdleTimer();
+
+    return () => {
+      window.clearTimeout(idleTimer);
+      events.forEach((eventName) => window.removeEventListener(eventName, resetIdleTimer));
+    };
+  }, [logout, user]);
 
   const hasPermission = useCallback((permission: Permission): boolean => {
     return permissions.includes(permission);

@@ -3,6 +3,7 @@ import { AuthService } from '../services/AuthService';
 import { AuditLogService } from '../services/AuditLogService';
 import { MessageService } from '../services/MessageService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
+import { requireRequestSignature, sensitiveRateLimiter } from '../middleware/security';
 import { broadcastMessage, broadcastMessageRead, broadcastPresence, broadcastTrackedUnits } from '../realtime/socket';
 import {
   DestinationUpdateRequest,
@@ -21,6 +22,8 @@ const router = Router();
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const MAX_LOGIN_ATTEMPTS = 8;
+const getErrorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error ? error.message : fallback;
 
 const isRateLimited = (key: string): boolean => {
   const now = Date.now();
@@ -36,7 +39,7 @@ const isRateLimited = (key: string): boolean => {
 };
 
 // Public routes
-router.post('/register', async (req: Request<{}, {}, RegisterRequest>, res: Response): Promise<void> => {
+router.post('/register', sensitiveRateLimiter, async (req: Request<{}, {}, RegisterRequest>, res: Response): Promise<void> => {
   try {
     const {
       email,
@@ -56,8 +59,8 @@ router.post('/register', async (req: Request<{}, {}, RegisterRequest>, res: Resp
       return;
     }
 
-    if (password.length < 8) {
-      res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (password.length < 12) {
+      res.status(400).json({ error: 'Password must be at least 12 characters' });
       return;
     }
 
@@ -88,11 +91,11 @@ router.post('/register', async (req: Request<{}, {}, RegisterRequest>, res: Resp
     const tokens = await AuthService.generateTokens(user);
     res.status(201).json({ success: true, user, tokens });
   } catch (error) {
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(400).json({ error: getErrorMessage(error, 'Registration failed') });
   }
 });
 
-router.post('/login', async (req: Request<{}, {}, LoginRequest>, res: Response): Promise<void> => {
+router.post('/login', sensitiveRateLimiter, async (req: Request<{}, {}, LoginRequest>, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
     const rateLimitKey = `${req.ip}:${email || 'unknown'}`;
@@ -181,31 +184,42 @@ router.post('/logout', authMiddleware, async (req: Request, res: Response): Prom
 
 router.post(
   '/change-password',
+  sensitiveRateLimiter,
   authMiddleware,
+  requireRequestSignature,
   async (req: Request<{}, {}, ChangePasswordRequest>, res: Response): Promise<void> => {
-    const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword || newPassword.length < 8) {
-      res.status(400).json({ error: 'Current password and a new password of at least 8 characters are required' });
-      return;
-    }
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword || newPassword.length < 12) {
+        res.status(400).json({ error: 'Current password and a new password of at least 12 characters are required' });
+        return;
+      }
 
-    const changed = await AuthService.changePassword(req.user?.id || '', currentPassword, newPassword);
-    if (!changed) {
+      const changed = await AuthService.changePassword(req.user?.id || '', currentPassword, newPassword);
+      if (!changed) {
+        await AuditLogService.fromRequest(req, {
+          action: 'password_change_failed',
+          resource: 'auth',
+          severity: 'warning'
+        });
+        res.status(400).json({ error: 'Current password is incorrect' });
+        return;
+      }
+
+      await AuditLogService.fromRequest(req, {
+        action: 'password_changed',
+        resource: 'auth',
+        severity: 'warning'
+      });
+      res.json({ success: true });
+    } catch (error) {
       await AuditLogService.fromRequest(req, {
         action: 'password_change_failed',
         resource: 'auth',
         severity: 'warning'
       });
-      res.status(400).json({ error: 'Current password is incorrect' });
-      return;
+      res.status(400).json({ error: getErrorMessage(error, 'Unable to change password') });
     }
-
-    await AuditLogService.fromRequest(req, {
-      action: 'password_changed',
-      resource: 'auth',
-      severity: 'warning'
-    });
-    res.json({ success: true });
   }
 );
 
@@ -235,8 +249,10 @@ router.get(
 
 router.patch(
   '/users/:id',
+  sensitiveRateLimiter,
   authMiddleware,
   requirePermission('manage_users'),
+  requireRequestSignature,
   async (req: Request<{ id: string }, {}, UpdateUserRequest>, res: Response): Promise<void> => {
     if (req.params.id === req.user?.id && req.body.active === false) {
       res.status(400).json({ error: 'You cannot deactivate your own account' });
@@ -263,22 +279,28 @@ router.patch(
 
 router.post(
   '/users/:id/reset-password',
+  sensitiveRateLimiter,
   authMiddleware,
   requirePermission('manage_users'),
+  requireRequestSignature,
   async (req: Request<{ id: string }, {}, ResetUserPasswordRequest>, res: Response): Promise<void> => {
-    const changed = await AuthService.resetUserPassword(req.params.id, req.body);
-    if (!changed) {
-      res.status(400).json({ error: 'User not found or password is too short' });
-      return;
-    }
+    try {
+      const changed = await AuthService.resetUserPassword(req.params.id, req.body);
+      if (!changed) {
+        res.status(400).json({ error: 'User not found or password is too short' });
+        return;
+      }
 
-    await AuditLogService.fromRequest(req, {
-      action: 'user_password_reset',
-      resource: 'user',
-      resourceId: req.params.id,
-      severity: 'warning'
-    });
-    res.json({ success: true });
+      await AuditLogService.fromRequest(req, {
+        action: 'user_password_reset',
+        resource: 'user',
+        resourceId: req.params.id,
+        severity: 'warning'
+      });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(400).json({ error: getErrorMessage(error, 'Unable to reset password') });
+    }
   }
 );
 

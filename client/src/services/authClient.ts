@@ -22,6 +22,11 @@ import {
 import { runtimeConfig } from '../config/runtimeConfig';
 
 const API_URL = runtimeConfig.apiUrl;
+const SIGNED_REQUESTS = [
+  { method: 'POST', pathPattern: /^\/api\/auth\/change-password$/ },
+  { method: 'PATCH', pathPattern: /^\/api\/auth\/users\/[^/]+$/ },
+  { method: 'POST', pathPattern: /^\/api\/auth\/users\/[^/]+\/reset-password$/ }
+];
 
 interface StoredAuth {
   user: User;
@@ -41,9 +46,14 @@ class AuthClient {
     });
 
     // Add request interceptor for JWT
-    this.api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+    this.api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
       if (this.auth?.tokens.accessToken) {
         config.headers.Authorization = `Bearer ${this.auth.tokens.accessToken}`;
+      }
+      if (this.auth?.tokens.accessToken && this.needsSignature(config)) {
+        const timestamp = Date.now().toString();
+        config.headers['x-cad-timestamp'] = timestamp;
+        config.headers['x-cad-signature'] = await this.signRequest(config, timestamp, this.auth.tokens.accessToken);
       }
       return config;
     });
@@ -265,6 +275,39 @@ class AuthClient {
         localStorage.removeItem('cad_auth');
       }
     }
+  }
+
+  private needsSignature(config: InternalAxiosRequestConfig): boolean {
+    const method = (config.method || 'GET').toUpperCase();
+    const path = this.getRequestPath(config);
+    return SIGNED_REQUESTS.some((request) => request.method === method && request.pathPattern.test(path));
+  }
+
+  private getRequestPath(config: InternalAxiosRequestConfig): string {
+    const baseUrl = new URL(config.baseURL || API_URL);
+    const [rawPath, rawSearch = ''] = (config.url || '').split('?');
+    const basePath = baseUrl.pathname.replace(/\/$/, '');
+    const requestPath = rawPath.replace(/^\//, '');
+    return `${basePath}/${requestPath}${rawSearch ? `?${rawSearch}` : ''}`;
+  }
+
+  private async signRequest(config: InternalAxiosRequestConfig, timestamp: string, token: string): Promise<string> {
+    const body =
+      config.data && typeof config.data === 'object' && Object.keys(config.data).length > 0
+        ? JSON.stringify(config.data)
+        : '';
+    const payload = [(config.method || 'GET').toUpperCase(), this.getRequestPath(config), timestamp, body].join('\n');
+    const key = await window.crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(token),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const signature = await window.crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+    return Array.from(new Uint8Array(signature))
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
   }
 }
 

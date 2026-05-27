@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { ResultSetHeader } from 'mysql2';
 import { securityConfig } from '../config/security';
-import { pool, LocationHistoryRow, UserRow } from '../db/mysql';
+import { pool, LocationHistoryRow, PasswordHistoryRow, UserRow } from '../db/mysql';
 import {
   AuthPayload,
   Permission,
@@ -25,6 +25,16 @@ const BCRYPT_ROUNDS = 12;
 const TRACKED_UNIT_RETENTION_MINUTES = 30;
 const LOCATION_TRAIL_MINUTES = 60;
 const LOCATION_TRAIL_LIMIT = 80;
+const COMMON_PASSWORDS = new Set([
+  'password',
+  'password1',
+  'password123',
+  'qwerty123',
+  'admin123',
+  'changeme',
+  'letmein',
+  'welcome1'
+]);
 
 const tokenHash = (token: string): string =>
   crypto.createHash('sha256').update(token).digest('hex');
@@ -67,6 +77,9 @@ const allowedRegistrationRoles = new Set<UserRole>([
   UserRole.OFFICER,
   UserRole.VIEWER
 ]);
+
+const normalizePasswordSearchText = (value?: string | null): string =>
+  (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export class AuthService {
   static async generateTokens(user: User): Promise<TokenPair> {
@@ -146,6 +159,10 @@ export class AuthService {
       return null;
     }
 
+    if (this.isPasswordExpired(user.password_changed_at)) {
+      return null;
+    }
+
     const passwordMatches = await bcrypt.compare(password, user.password_hash);
     return passwordMatches ? toUser(user) : null;
   }
@@ -162,8 +179,15 @@ export class AuthService {
       return false;
     }
 
+    this.assertPasswordPolicy(newPassword, user);
+    await this.assertPasswordNotReused(userId, newPassword, user.password_hash);
+
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await pool.execute('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
+    await pool.execute('UPDATE users SET password_hash = ?, password_changed_at = UTC_TIMESTAMP() WHERE id = ?', [
+      passwordHash,
+      userId
+    ]);
+    await this.rememberPassword(userId, passwordHash);
     await pool.execute('UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL', [
       userId
     ]);
@@ -191,6 +215,11 @@ export class AuthService {
     const normalizedGroup = group?.trim() || null;
     const normalizedDistrict = district?.trim() || null;
     const safeRole = allowedRegistrationRoles.has(role) ? role : UserRole.VIEWER;
+    this.assertPasswordPolicy(password, {
+      email: normalizedEmail,
+      name: normalizedName,
+      id: ''
+    });
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const userId = uuidv4();
 
@@ -225,6 +254,7 @@ export class AuthService {
         passwordHash
       ]
     );
+    await this.rememberPassword(userId, passwordHash);
 
     const user = await this.getUser(userId);
     if (!user) {
@@ -297,17 +327,25 @@ export class AuthService {
   }
 
   static async resetUserPassword(userId: string, input: ResetUserPasswordRequest): Promise<boolean> {
-    if (!input.newPassword || input.newPassword.length < 8) {
+    if (!input.newPassword) {
       return false;
     }
 
-    const user = await this.getUser(userId);
+    const [rows] = await pool.execute<UserRow[]>('SELECT * FROM users WHERE id = ? LIMIT 1', [userId]);
+    const user = rows[0];
     if (!user) {
       return false;
     }
 
+    this.assertPasswordPolicy(input.newPassword, user);
+    await this.assertPasswordNotReused(userId, input.newPassword, user.password_hash);
+
     const passwordHash = await bcrypt.hash(input.newPassword, BCRYPT_ROUNDS);
-    await pool.execute('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
+    await pool.execute('UPDATE users SET password_hash = ?, password_changed_at = UTC_TIMESTAMP() WHERE id = ?', [
+      passwordHash,
+      userId
+    ]);
+    await this.rememberPassword(userId, passwordHash);
     await pool.execute('UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL', [
       userId
     ]);
@@ -447,5 +485,90 @@ export class AuthService {
       [normalizeEmail(email)]
     );
     return rows[0] || null;
+  }
+
+  private static isPasswordExpired(changedAt: Date | null): boolean {
+    if (!securityConfig.passwordPolicy.maxAgeDays || !changedAt) {
+      return false;
+    }
+
+    const maxAgeMs = securityConfig.passwordPolicy.maxAgeDays * 24 * 60 * 60 * 1000;
+    return Date.now() - new Date(changedAt).getTime() > maxAgeMs;
+  }
+
+  private static assertPasswordPolicy(password: string, user: Pick<UserRow, 'email' | 'name' | 'id'>): void {
+    const policy = securityConfig.passwordPolicy;
+    const lowerPassword = password.toLowerCase();
+    const searchablePassword = normalizePasswordSearchText(password);
+    const searchableEmail = normalizePasswordSearchText(user.email?.split('@')[0]);
+    const searchableName = normalizePasswordSearchText(user.name);
+
+    if (password.length < policy.minLength) {
+      throw new Error(`Password must be at least ${policy.minLength} characters.`);
+    }
+
+    if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+      throw new Error('Password must include uppercase, lowercase, number, and symbol characters.');
+    }
+
+    if (COMMON_PASSWORDS.has(lowerPassword) || /(.)\1{3,}/.test(password)) {
+      throw new Error('Password is too easy to guess.');
+    }
+
+    if (
+      searchableEmail.length >= 4 &&
+      searchablePassword.includes(searchableEmail)
+    ) {
+      throw new Error('Password cannot contain your email name.');
+    }
+
+    if (searchableName.length >= 4 && searchablePassword.includes(searchableName)) {
+      throw new Error('Password cannot contain your name.');
+    }
+  }
+
+  private static async assertPasswordNotReused(
+    userId: string,
+    newPassword: string,
+    currentHash: string
+  ): Promise<void> {
+    const recentHashes = [currentHash];
+    const [rows] = await pool.execute<PasswordHistoryRow[]>(
+      `
+        SELECT password_hash
+        FROM password_history
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      `,
+      [userId, securityConfig.passwordPolicy.historyCount]
+    );
+
+    recentHashes.push(...rows.map((row) => row.password_hash));
+    for (const hash of recentHashes) {
+      if (await bcrypt.compare(newPassword, hash)) {
+        throw new Error('Password was used recently. Choose a new password.');
+      }
+    }
+  }
+
+  private static async rememberPassword(userId: string, passwordHash: string): Promise<void> {
+    await pool.execute('INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)', [userId, passwordHash]);
+    await pool.execute(
+      `
+        DELETE FROM password_history
+        WHERE user_id = ?
+          AND id NOT IN (
+            SELECT id FROM (
+              SELECT id
+              FROM password_history
+              WHERE user_id = ?
+              ORDER BY created_at DESC
+              LIMIT ?
+            ) recent_passwords
+          )
+      `,
+      [userId, userId, securityConfig.passwordPolicy.historyCount]
+    );
   }
 }

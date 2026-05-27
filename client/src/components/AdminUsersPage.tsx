@@ -100,8 +100,8 @@ export const AdminUsersPage: React.FC = () => {
 
   const resetUserPassword = async () => {
     if (!selectedUser) return;
-    if (resetPassword.length < 8) {
-      setMessage('Password must be at least 8 characters.');
+    if (resetPassword.length < 12) {
+      setMessage('Password must be at least 12 characters.');
       return;
     }
     try {

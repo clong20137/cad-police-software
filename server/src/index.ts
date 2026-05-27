@@ -7,6 +7,7 @@ import incidentRoutes from './routes/incidents';
 import { cspMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
+import { apiRateLimiter, enforceHttps, ipAccessControl, sanitizeInput } from './middleware/security';
 import { securityConfig } from './config/security';
 import { initializeDatabase } from './db/mysql';
 import { initializeRealtime } from './realtime/socket';
@@ -17,9 +18,14 @@ const server = http.createServer(app);
 
 // Middleware
 app.disable('x-powered-by');
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '12mb' }));
 app.use(cors({ origin: securityConfig.frontendUrl, credentials: true }));
 app.use(cspMiddleware);
+app.use(enforceHttps);
+app.use(ipAccessControl);
+app.use('/api', apiRateLimiter);
+app.use(sanitizeInput);
 app.use(requestLogger);
 
 // Routes

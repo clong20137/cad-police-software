@@ -1,4 +1,5 @@
-import mysql, { Pool, RowDataPacket } from 'mysql2/promise';
+import fs from 'fs';
+import mysql, { Pool, PoolOptions, RowDataPacket } from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { UserRole } from '../types/auth';
@@ -14,6 +15,18 @@ const assertSafeDatabaseName = (name: string): string => {
 
 const dbName = assertSafeDatabaseName(databaseName);
 const BCRYPT_ROUNDS = 12;
+const mysqlSslOptions = (): PoolOptions['ssl'] | undefined => {
+  if (process.env.MYSQL_SSL !== 'true' && !process.env.MYSQL_SSL_CA_PATH) {
+    return undefined;
+  }
+
+  return {
+    ca: process.env.MYSQL_SSL_CA_PATH ? fs.readFileSync(process.env.MYSQL_SSL_CA_PATH, 'utf8') : undefined,
+    rejectUnauthorized: process.env.MYSQL_SSL_REJECT_UNAUTHORIZED !== 'false'
+  };
+};
+
+const ssl = mysqlSslOptions();
 
 export const pool: Pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
@@ -23,7 +36,8 @@ export const pool: Pool = mysql.createPool({
   database: dbName,
   waitForConnections: true,
   connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT || 10),
-  namedPlaceholders: true
+  namedPlaceholders: true,
+  ssl
 });
 
 export const initializeDatabase = async (): Promise<void> => {
@@ -31,7 +45,8 @@ export const initializeDatabase = async (): Promise<void> => {
     host: process.env.MYSQL_HOST || 'localhost',
     port: Number(process.env.MYSQL_PORT || 3306),
     user: process.env.MYSQL_USER || 'root',
-    password: process.env.MYSQL_PASSWORD || ''
+    password: process.env.MYSQL_PASSWORD || '',
+    ssl
   });
 
   try {
@@ -63,6 +78,7 @@ export const initializeDatabase = async (): Promise<void> => {
       last_location_at DATETIME NULL,
       last_seen_at DATETIME NULL,
       password_hash VARCHAR(255) NOT NULL,
+      password_changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       active BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -72,6 +88,7 @@ export const initializeDatabase = async (): Promise<void> => {
   `);
 
   await ensureUserLocationColumns();
+  await ensureUserSecurityColumns();
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -90,10 +107,26 @@ export const initializeDatabase = async (): Promise<void> => {
   `);
 
   await seedInitialAdmin();
+  await initializePasswordHistoryTables();
   await initializeLocationHistoryTables();
   await initializeMessagingTables();
   await initializeIncidentTables();
   await initializeAuditLogTables();
+};
+
+export const initializePasswordHistoryTables = async (): Promise<void> => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_history (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_password_history_user_created (user_id, created_at),
+      CONSTRAINT fk_password_history_user_id
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
+    )
+  `);
 };
 
 export const initializeLocationHistoryTables = async (): Promise<void> => {
@@ -127,18 +160,34 @@ const seedInitialAdmin = async (): Promise<void> => {
   const badge = (process.env.SEED_ADMIN_BADGE || 'ADM001').trim();
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
+  const userId = uuidv4();
   await pool.execute(
     `
       INSERT INTO users (id, email, name, role, badge, password_hash)
       VALUES (?, ?, ?, ?, ?, ?)
     `,
-    [uuidv4(), email, name, UserRole.ADMIN, badge, passwordHash]
+    [userId, email, name, UserRole.ADMIN, badge, passwordHash]
   );
+  await initializePasswordHistoryTables();
+  await pool.execute('INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)', [userId, passwordHash]);
 
   console.log(`Seeded initial admin user: ${email}`);
   if (!process.env.SEED_ADMIN_PASSWORD) {
     console.warn('Using default seed admin password. Set SEED_ADMIN_PASSWORD before production use.');
   }
+};
+
+const ensureUserSecurityColumns = async (): Promise<void> => {
+  try {
+    await pool.query('ALTER TABLE users ADD COLUMN password_changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP');
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code !== 'ER_DUP_FIELDNAME') {
+      throw error;
+    }
+  }
+
+  await pool.query('UPDATE users SET password_changed_at = created_at WHERE password_changed_at IS NULL');
 };
 
 const ensureUserLocationColumns = async (): Promise<void> => {
@@ -353,9 +402,15 @@ export type UserRow = RowDataPacket & {
   last_location_at: Date | null;
   last_seen_at: Date | null;
   password_hash: string;
+  password_changed_at: Date;
   active: number | boolean;
   created_at: Date;
   updated_at: Date;
+};
+
+export type PasswordHistoryRow = RowDataPacket & {
+  password_hash: string;
+  created_at: Date;
 };
 
 export type LocationHistoryRow = RowDataPacket & {
