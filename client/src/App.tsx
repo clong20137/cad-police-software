@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { UserRole } from './types/auth';
 import { LoginPage } from './components/LoginPage';
 import { Dashboard } from './components/Dashboard';
+import { AdminConfigurationPage } from './components/AdminConfigurationPage';
 import { AdminUsersPage } from './components/AdminUsersPage';
 import { OfficerDashboard } from './components/OfficerDashboard';
 
@@ -50,6 +51,14 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
                 <AdminUsersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/configuration"
+            element={
+              <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
+                <AdminConfigurationPage />
               </ProtectedRoute>
             }
           />

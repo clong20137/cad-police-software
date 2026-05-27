@@ -18,9 +18,12 @@ import {
   Send,
   Settings,
   Shield,
+  SlidersHorizontal,
   CheckCheck,
   Moon,
   Sun,
+  Wifi,
+  WifiOff,
   X,
   Users
 } from 'lucide-react';
@@ -1297,6 +1300,12 @@ export const Dashboard: React.FC = () => {
         : realtimeState === 'offline'
           ? 'Offline'
           : 'Connecting';
+  const realtimeStatusClass =
+    realtimeState === 'live'
+      ? 'bg-emerald-500/20 text-emerald-100 ring-emerald-300/30'
+      : realtimeState === 'offline'
+        ? 'bg-red-500/20 text-red-100 ring-red-300/30'
+        : 'bg-amber-500/20 text-amber-100 ring-amber-300/30';
 
   const renderNewCallForm = () => (
     <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
@@ -1802,15 +1811,11 @@ export const Dashboard: React.FC = () => {
 
         <div className="relative flex items-center gap-2">
           <span
-            className={`hidden rounded-full px-3 py-1 text-xs font-bold sm:inline-flex ${
-              realtimeState === 'live'
-                ? 'bg-emerald-500/20 text-emerald-100 ring-1 ring-emerald-300/30'
-                : realtimeState === 'offline'
-                  ? 'bg-red-500/20 text-red-100 ring-1 ring-red-300/30'
-                  : 'bg-amber-500/20 text-amber-100 ring-1 ring-amber-300/30'
-            }`}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-md ring-1 transition ${realtimeStatusClass}`}
+            title={realtimeStatusLabel}
+            aria-label={`Realtime status: ${realtimeStatusLabel}`}
           >
-            {realtimeStatusLabel}
+            {realtimeState === 'offline' ? <WifiOff size={19} /> : <Wifi size={19} />}
           </span>
           <button
             type="button"
@@ -1829,7 +1834,7 @@ export const Dashboard: React.FC = () => {
             <Settings size={19} />
           </button>
           {settingsOpen && (
-            <div className="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-cad-line bg-white py-2 text-cad-ink shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+            <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-lg border border-cad-line bg-white py-2 text-cad-ink shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
               <div className="border-b border-slate-100 px-3 py-2">
                 <p className="truncate text-sm font-semibold">{user?.name}</p>
                 <p className="truncate text-xs text-slate-500">{user?.email}</p>
@@ -1854,6 +1859,16 @@ export const Dashboard: React.FC = () => {
                 >
                   <Users size={16} />
                   User management
+                </Link>
+              )}
+              {hasPermission('manage_system') && (
+                <Link
+                  to="/admin/configuration"
+                  onClick={() => setSettingsOpen(false)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <SlidersHorizontal size={16} />
+                  Admin configuration
                 </Link>
               )}
               <button

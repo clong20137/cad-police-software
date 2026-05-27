@@ -386,6 +386,12 @@ export const OfficerDashboard: React.FC = () => {
         : realtimeState === 'offline'
           ? 'Offline'
           : 'Connecting';
+  const realtimeStatusClass =
+    realtimeState === 'live'
+      ? 'bg-emerald-500/20 text-emerald-100 ring-emerald-300/30'
+      : realtimeState === 'offline'
+        ? 'bg-red-500/20 text-red-100 ring-red-300/30'
+        : 'bg-amber-500/20 text-amber-100 ring-amber-300/30';
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
   const messageThreads = directory.filter((item) => {
     if (item.id === user?.id) return false;
@@ -896,15 +902,11 @@ export const OfficerDashboard: React.FC = () => {
         </div>
         <div className="relative flex items-center gap-2">
           <span
-            className={`hidden rounded-full px-3 py-1 text-xs font-bold sm:inline-flex ${
-              realtimeState === 'live'
-                ? 'bg-emerald-500/20 text-emerald-100 ring-1 ring-emerald-300/30'
-                : realtimeState === 'offline'
-                  ? 'bg-red-500/20 text-red-100 ring-1 ring-red-300/30'
-                  : 'bg-amber-500/20 text-amber-100 ring-1 ring-amber-300/30'
-            }`}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-md ring-1 transition ${realtimeStatusClass}`}
+            title={realtimeStatusLabel}
+            aria-label={`Realtime status: ${realtimeStatusLabel}`}
           >
-            {realtimeStatusLabel}
+            {realtimeState === 'offline' ? <WifiOff size={19} /> : <Wifi size={19} />}
           </span>
           <button
             type="button"
@@ -915,7 +917,7 @@ export const OfficerDashboard: React.FC = () => {
             <Settings size={19} />
           </button>
           {settingsOpen && (
-            <div className="absolute right-0 z-40 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-2 text-slate-950 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+            <div className="absolute right-0 top-full z-40 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-2 text-slate-950 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-white">
               <div className="border-b border-slate-100 px-3 py-2 dark:border-slate-800">
                 <p className="truncate text-sm font-semibold">{user?.name}</p>
                 <p className="truncate text-xs text-slate-500 dark:text-slate-400">{user?.email}</p>
