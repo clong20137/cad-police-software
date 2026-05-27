@@ -183,6 +183,21 @@ const markerPulseClass = {
 const realtimeUrl = runtimeConfig.socketUrl;
 const googleMapsApiKey = runtimeConfig.googleMapsApiKey;
 
+const darkMapStyles = [
+  { elementType: 'geometry', stylers: [{ color: '#1f2937' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#111827' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#d1d5db' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#4b5563' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#243244' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#9ca3af' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#374151' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#111827' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#e5e7eb' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1e3a5f' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#93c5fd' }] }
+];
+
 const isTrackedUnit = (user: User): user is TrackedUnit =>
   typeof user.lat === 'number' && typeof user.lon === 'number';
 
@@ -268,8 +283,10 @@ const addGooglePulseMarker = ({
       container.appendChild(pin);
 
       const text = document.createElement('span');
-      text.textContent = label;
-      container.appendChild(text);
+      if (label) {
+        text.textContent = label;
+        container.appendChild(text);
+      }
 
       if (onClick) {
         container.addEventListener('click', onClick);
@@ -615,7 +632,8 @@ export const Dashboard: React.FC = () => {
         zoomControl: true,
         mapTypeControl: false,
         streetViewControl: false,
-        fullscreenControl: true
+        fullscreenControl: true,
+        styles: theme === 'dark' ? darkMapStyles : []
       });
 
       units.forEach((unit) => {
@@ -626,7 +644,7 @@ export const Dashboard: React.FC = () => {
           map,
           lat: unit.lat,
           lon: unit.lon,
-          label: displayCadUnitNumber(unit),
+          label: unit.id === user?.id ? '' : displayCadUnitNumber(unit),
           tone: markerTone(unit, user?.id),
           onClick: () => {
             setSelectedUnitId(unit.id);
@@ -672,7 +690,7 @@ export const Dashboard: React.FC = () => {
     script.async = true;
     script.onload = initializeMap;
     document.head.appendChild(script);
-  }, [center.lat, center.lon, currentLocation, incidents, units, user?.id]);
+  }, [center.lat, center.lon, currentLocation, incidents, theme, units, user?.id]);
 
   const saveDestination = async () => {
     if (!selectedIsCurrentUser) return;
@@ -979,6 +997,25 @@ export const Dashboard: React.FC = () => {
               ))}
           </div>
           <div className="flex min-w-0 flex-col">
+            <div className="border-b border-cad-line bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+              <label className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-300">
+                Compose To
+              </label>
+              <select
+                value={selectedMessageUserId}
+                onChange={(event) => setSelectedMessageUserId(event.target.value)}
+                className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              >
+                <option value="">Select a user</option>
+                {directory
+                  .filter((item) => item.id !== user?.id)
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} {item.cadUnitNumber ? `(${item.cadUnitNumber})` : ''}
+                    </option>
+                  ))}
+              </select>
+            </div>
             {selectedMessageUser ? (
               <>
                 <div className="border-b border-cad-line px-4 py-3">
@@ -1579,8 +1616,8 @@ export const Dashboard: React.FC = () => {
       )}
 
       {changePasswordOpen && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4">
-          <div className="mb-20 w-full max-w-md origin-bottom animate-[dockModalIn_220ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-md origin-center animate-[dockModalIn_120ms_ease-out] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-cad-line p-4 dark:border-slate-700">
               <h2 className="text-lg font-bold">Change Password</h2>
               <button type="button" onClick={() => setChangePasswordOpen(false)} className="rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
@@ -1620,7 +1657,7 @@ export const Dashboard: React.FC = () => {
 
       {activeQuickModal && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-4">
-          <div className="mb-20 w-full max-w-2xl origin-bottom animate-[dockModalIn_240ms_cubic-bezier(0.2,0.8,0.2,1)] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+          <div className="mb-20 w-full max-w-2xl origin-bottom animate-[dockModalIn_120ms_cubic-bezier(0.2,0.8,0.2,1)] rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-cad-line p-4">
               <h2 className="text-lg font-bold">{quickModalTitle}</h2>
               <button type="button" onClick={() => setActiveQuickModal(null)} className="rounded-md p-2 hover:bg-slate-100">
@@ -1756,7 +1793,7 @@ const FallbackMap: React.FC<{
             className={`h-3 w-3 rounded-full ring-2 ${markerToneClass[markerTone(unit, currentUserId)]}`}
             aria-hidden="true"
           />
-          {displayCadUnitNumber(unit)}
+          {unit.id === currentUserId ? '' : displayCadUnitNumber(unit)}
         </button>
       ))}
 

@@ -24,9 +24,37 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  .dark {
+    color: #f8fafc;
+  }
+
   button,
   input {
     font: inherit;
+  }
+}
+
+@layer utilities {
+  .dark .text-slate-500,
+  .dark .text-slate-600,
+  .dark .text-slate-700,
+  .dark .text-cad-ink {
+    color: #f8fafc;
+  }
+
+  .dark .bg-white {
+    background-color: #0f172a;
+  }
+
+  .dark .bg-slate-50,
+  .dark .bg-slate-100 {
+    background-color: #1e293b;
+  }
+
+  .dark .border-cad-line,
+  .dark .border-slate-100,
+  .dark .border-slate-200 {
+    border-color: #334155;
   }
 }
 
@@ -51,8 +79,8 @@
   @keyframes dockModalIn {
     0% {
       opacity: 0;
-      transform: translateY(28px) scale(0.92);
-      filter: blur(2px);
+      transform: translateY(14px) scale(0.96);
+      filter: blur(1px);
     }
 
     100% {
