@@ -26,6 +26,7 @@ import {
   User,
   UserRole
 } from '../types/auth';
+import { defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
 
 type EditableConfigSection = Exclude<AdminConfigSection, 'security'>;
 type AdminSection = EditableConfigSection | 'users' | 'security';
@@ -46,7 +47,6 @@ type SecurityConfig = {
   websocketHeartbeatSeconds: number;
 };
 
-const unitStatuses: UnitStatus[] = ['Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop'];
 const configSections: EditableConfigSection[] = ['agencies', 'districts', 'units', 'calls', 'statuses'];
 const defaultSecurity: SecurityConfig = {
   idleTimeoutMinutes: 30,
@@ -88,11 +88,25 @@ export const AdminConfigurationPage: React.FC = () => {
   const [items, setItems] = useState<AdminConfigurationItem[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [creatingUser, setCreatingUser] = useState(false);
   const [search, setSearch] = useState('');
   const [resetPassword, setResetPassword] = useState('');
+  const [newUser, setNewUser] = useState({
+    email: '',
+    name: '',
+    password: '',
+    role: UserRole.OFFICER,
+    badge: '',
+    unitNumber: '',
+    cadUnitNumber: '',
+    status: 'Available' as UnitStatus,
+    group: '',
+    district: ''
+  });
   const [security, setSecurity] = useState<SecurityConfig>(defaultSecurity);
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
   const updateTimers = useRef<Record<string, number>>({});
+  const unitStatuses = unitStatusesFromConfig(items);
 
   const addToast = useCallback((title: string, message: string, tone: ToastTone = 'success') => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -237,6 +251,46 @@ export const AdminConfigurationPage: React.FC = () => {
     }
   };
 
+  const createUser = async () => {
+    if (!newUser.email.trim() || !newUser.name.trim() || newUser.password.length < 12) {
+      addToast('User not created', 'Email, name, and a 12 character password are required.', 'error');
+      return;
+    }
+
+    try {
+      const created = await authClient.createUser({
+        email: newUser.email,
+        name: newUser.name,
+        password: newUser.password,
+        role: newUser.role,
+        badge: newUser.badge || undefined,
+        unitNumber: newUser.unitNumber || undefined,
+        cadUnitNumber: newUser.cadUnitNumber || undefined,
+        status: newUser.status,
+        group: newUser.group || undefined,
+        district: newUser.district || undefined
+      });
+      setUsers((current) => [created, ...current]);
+      setSelectedUserId(created.id);
+      setCreatingUser(false);
+      setNewUser({
+        email: '',
+        name: '',
+        password: '',
+        role: UserRole.OFFICER,
+        badge: '',
+        unitNumber: '',
+        cadUnitNumber: '',
+        status: 'Available',
+        group: '',
+        district: ''
+      });
+      addToast('User created', `${created.name} can now sign in.`);
+    } catch {
+      addToast('User not created', 'Unable to create that user.', 'error');
+    }
+  };
+
   const updateSecurity = async (key: keyof SecurityConfig, code: string, value: number | boolean) => {
     setSecurity((current) => ({ ...current, [key]: value }));
     const item = items.find((entry) => entry.section === 'security' && entry.code === code);
@@ -318,6 +372,19 @@ export const AdminConfigurationPage: React.FC = () => {
                 Add
               </button>
             )}
+            {activeSection === 'users' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatingUser(true);
+                  setSelectedUserId('');
+                }}
+                className="inline-flex items-center gap-2 rounded-md border border-cad-line px-3 py-2 text-sm font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              >
+                <Plus size={16} />
+                New User
+              </button>
+            )}
           </div>
 
           {activeSection === 'users' && (
@@ -328,7 +395,7 @@ export const AdminConfigurationPage: React.FC = () => {
                 </div>
                 <div className="max-h-[64vh] overflow-y-auto">
                   {filteredUsers.map((item) => (
-                    <button key={item.id} type="button" onClick={() => setSelectedUserId(item.id)} className={`w-full border-b border-slate-100 px-3 py-3 text-left text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800 ${selectedUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : ''}`}>
+                    <button key={item.id} type="button" onClick={() => { setCreatingUser(false); setSelectedUserId(item.id); }} className={`w-full border-b border-slate-100 px-3 py-3 text-left text-sm hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800 ${selectedUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : ''}`}>
                       <span className="block truncate font-bold">{item.name}</span>
                       <span className="mt-1 block truncate text-xs text-slate-500 dark:text-slate-400">{item.email}</span>
                       <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">{item.role}</span>
@@ -338,7 +405,34 @@ export const AdminConfigurationPage: React.FC = () => {
               </aside>
 
               <div className="rounded-lg border border-cad-line p-4 dark:border-slate-700">
-                {selectedUser ? (
+                {creatingUser ? (
+                  <>
+                    <div className="mb-4 border-b border-cad-line pb-4 dark:border-slate-700">
+                      <h3 className="text-lg font-bold">New User</h3>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Create login and unit metadata.</p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      <input value={newUser.email} onChange={(event) => setNewUser((value) => ({ ...value, email: event.target.value }))} placeholder="Email" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <input value={newUser.name} onChange={(event) => setNewUser((value) => ({ ...value, name: event.target.value }))} placeholder="Name" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <input type="password" value={newUser.password} onChange={(event) => setNewUser((value) => ({ ...value, password: event.target.value }))} placeholder="Temporary password" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <select value={newUser.role} onChange={(event) => setNewUser((value) => ({ ...value, role: event.target.value as UserRole }))} className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                        {Object.values(UserRole).map((role) => <option key={role} value={role}>{role}</option>)}
+                      </select>
+                      <input value={newUser.badge} onChange={(event) => setNewUser((value) => ({ ...value, badge: event.target.value }))} placeholder="Badge" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <input value={newUser.unitNumber} onChange={(event) => setNewUser((value) => ({ ...value, unitNumber: event.target.value }))} placeholder="Unit number" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <input value={newUser.cadUnitNumber} onChange={(event) => setNewUser((value) => ({ ...value, cadUnitNumber: event.target.value }))} placeholder="CAD unit number" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <select value={newUser.status} onChange={(event) => setNewUser((value) => ({ ...value, status: event.target.value as UnitStatus }))} className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                        {Array.from(new Set([...unitStatuses, ...defaultUnitStatuses])).map((status) => <option key={status} value={status}>{status}</option>)}
+                      </select>
+                      <input value={newUser.group} onChange={(event) => setNewUser((value) => ({ ...value, group: event.target.value }))} placeholder="Group" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <input value={newUser.district} onChange={(event) => setNewUser((value) => ({ ...value, district: event.target.value }))} placeholder="District" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                    </div>
+                    <div className="mt-5 flex justify-end gap-2">
+                      <button type="button" onClick={() => setCreatingUser(false)} className="rounded-md border border-cad-line px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancel</button>
+                      <button type="button" onClick={createUser} className="rounded-md bg-cad-blue px-4 py-2 text-sm font-semibold text-white">Create User</button>
+                    </div>
+                  </>
+                ) : selectedUser ? (
                   <>
                     <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-cad-line pb-4 dark:border-slate-700">
                       <div>
@@ -359,7 +453,7 @@ export const AdminConfigurationPage: React.FC = () => {
                       <input value={selectedUser.unitNumber || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { unitNumber: event.target.value })} placeholder="Unit number" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
                       <input value={selectedUser.cadUnitNumber || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { cadUnitNumber: event.target.value })} placeholder="CAD unit number" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
                       <select value={selectedUser.status || 'Available'} onChange={(event) => scheduleUserUpdate(selectedUser.id, { status: event.target.value as UnitStatus })} className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-                        {unitStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                        {Array.from(new Set([...unitStatuses, ...defaultUnitStatuses])).map((status) => <option key={status} value={status}>{status}</option>)}
                       </select>
                       <input value={selectedUser.group || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { group: event.target.value })} placeholder="Group" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
                       <input value={selectedUser.district || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { district: event.target.value })} placeholder="District" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />

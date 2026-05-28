@@ -7,6 +7,15 @@ import { ConfigurationService, UpsertConfigurationItemRequest } from '../service
 const router = Router();
 
 router.get(
+  '/active',
+  authMiddleware,
+  async (_req: Request, res: Response): Promise<void> => {
+    const items = await ConfigurationService.list();
+    res.json(items.filter((item) => item.active));
+  }
+);
+
+router.get(
   '/',
   authMiddleware,
   requirePermission('manage_system'),

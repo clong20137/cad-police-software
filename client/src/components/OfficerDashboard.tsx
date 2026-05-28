@@ -25,11 +25,12 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
-import { ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, User } from '../types/auth';
+import { AdminConfigurationItem, ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, User } from '../types/auth';
 import { ChangePasswordModal } from './common/ChangePasswordModal';
 import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
+import { callTypesFromConfig } from '../utils/adminConfig';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'location' | 'settings' | 'navigation' | 'status';
 type DockSlot = QuickLaunchSlot<DockItem>;
@@ -312,6 +313,7 @@ const addOfficerOverlay = ({
 export const OfficerDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [adminConfig, setAdminConfig] = useState<AdminConfigurationItem[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<'starting' | 'live' | 'blocked' | 'error'>('starting');
   const [realtimeState, setRealtimeState] = useState<'connecting' | 'live' | 'reconnecting' | 'offline'>('connecting');
@@ -379,6 +381,7 @@ export const OfficerDashboard: React.FC = () => {
   );
   const assignmentMapKey = assignedIncidents.map((incident) => incident.id).join(',');
   const selectedIncident = assignedIncidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || null;
+  const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
   const selectedAssignmentWarning = assignmentWarning(selectedIncident, user?.id);
   const realtimeStatusLabel =
@@ -438,6 +441,20 @@ export const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     loadIncidents();
   }, [loadIncidents]);
+
+  useEffect(() => {
+    authClient.getActiveConfiguration().then(setAdminConfig).catch(() => setAdminConfig([]));
+  }, []);
+
+  useEffect(() => {
+    if (!officerEvent.type && configuredCallTypes[0]) {
+      setOfficerEvent((value) => ({
+        ...value,
+        type: configuredCallTypes[0].label,
+        priority: configuredCallTypes[0].priority
+      }));
+    }
+  }, [configuredCallTypes, officerEvent.type]);
 
   useEffect(() => {
     authClient.getDirectory().then(setDirectory).catch(() => setDirectory([]));
@@ -1184,6 +1201,7 @@ export const OfficerDashboard: React.FC = () => {
                 busy={busy}
                 message={message}
                 officerEvent={officerEvent}
+                configuredCallTypes={configuredCallTypes}
                 onSelectIncident={setSelectedIncidentId}
                 onUpdateStatus={updateStatus}
                 onAddNote={addNote}
@@ -1273,6 +1291,7 @@ const DockContent: React.FC<{
   busy: boolean;
   message: string;
   officerEvent: { type: string; priority: IncidentPriority; description: string };
+  configuredCallTypes: Array<{ label: string; priority: IncidentPriority }>;
   onSelectIncident: (id: string) => void;
   onUpdateStatus: (status: IncidentUnitStatus) => void;
   onAddNote: () => void;
@@ -1319,6 +1338,7 @@ const DockContent: React.FC<{
   busy,
   message,
   officerEvent,
+  configuredCallTypes,
   onSelectIncident,
   onUpdateStatus,
   onAddNote,
@@ -1472,11 +1492,18 @@ const DockContent: React.FC<{
         <div className="grid gap-2 sm:grid-cols-2">
           <select
             value={officerEvent.type}
-            onChange={(event) => setOfficerEvent((value) => ({ ...value, type: event.target.value }))}
+            onChange={(event) => {
+              const callType = configuredCallTypes.find((item) => item.label === event.target.value);
+              setOfficerEvent((value) => ({
+                ...value,
+                type: event.target.value,
+                priority: callType?.priority || value.priority
+              }));
+            }}
             className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
           >
-            {['Traffic Stop', 'Assist Agency', 'Patrol Check', 'Tow Request', 'Officer Detail'].map((eventType) => (
-              <option key={eventType} value={eventType}>{eventType}</option>
+            {configuredCallTypes.map((eventType) => (
+              <option key={eventType.label} value={eventType.label}>{eventType.label}</option>
             ))}
           </select>
           <select

@@ -32,6 +32,7 @@ import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
 import {
   ChatMessage,
+  AdminConfigurationItem,
   Incident,
   IncidentPriority,
   IncidentStatus,
@@ -44,6 +45,7 @@ import { ChangePasswordModal } from './common/ChangePasswordModal';
 import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock } from './common/QuickLaunchDock';
+import { callTypesFromConfig, defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
 
 declare global {
   interface Window {
@@ -453,6 +455,7 @@ export const Dashboard: React.FC = () => {
   const [emojiSearch, setEmojiSearch] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<SendMessageAttachment[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [adminConfig, setAdminConfig] = useState<AdminConfigurationItem[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [addressSuggestions, setAddressSuggestions] = useState<GooglePlacePrediction[]>([]);
   const [addressSuggestionsOpen, setAddressSuggestionsOpen] = useState(false);
@@ -504,6 +507,8 @@ export const Dashboard: React.FC = () => {
   const selectedIsCurrentUser = selectedUnit?.id === user?.id;
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || incidents[0] || null;
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
+  const configuredUnitStatuses = useMemo(() => unitStatusesFromConfig(adminConfig), [adminConfig]);
+  const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
 
   const loadUnits = useCallback(async () => {
     try {
@@ -524,14 +529,11 @@ export const Dashboard: React.FC = () => {
 
   const statusCounts = useMemo(
     () =>
-      units.reduce<Record<UnitStatus, number>>(
-        (counts, unit) => ({
-          ...counts,
-          [displayStatus(unit)]: counts[displayStatus(unit)] + 1
-        }),
-        { Available: 0, Dispatched: 0, 'En Route': 0, 'On Scene': 0, Transporting: 0, 'Traffic Stop': 0 }
-      ),
-    [units]
+      units.reduce<Record<UnitStatus, number>>((counts, unit) => {
+        const status = displayStatus(unit);
+        return { ...counts, [status]: (counts[status] || 0) + 1 };
+      }, Object.fromEntries(Array.from(new Set([...defaultUnitStatuses, ...configuredUnitStatuses])).map((status) => [status, 0])) as Record<UnitStatus, number>),
+    [configuredUnitStatuses, units]
   );
   const locationReliabilityCounts = useMemo(
     () =>
@@ -583,6 +585,20 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     loadIncidents();
   }, [loadIncidents]);
+
+  useEffect(() => {
+    authClient.getActiveConfiguration().then(setAdminConfig).catch(() => setAdminConfig([]));
+  }, []);
+
+  useEffect(() => {
+    if (!incidentForm.type && configuredCallTypes[0]) {
+      setIncidentForm((value) => ({
+        ...value,
+        type: configuredCallTypes[0].label,
+        priority: configuredCallTypes[0].priority
+      }));
+    }
+  }, [configuredCallTypes, incidentForm.type]);
 
   const loadMessageThreads = useCallback(async () => {
     try {
@@ -1303,10 +1319,10 @@ export const Dashboard: React.FC = () => {
       setSelectedIncidentId(incident.id);
       setActiveQuickModal(null);
       setIncidentError('');
-      setIncidentForm({
-        type: '911 Call',
-        priority: 'Normal',
-        address: '',
+        setIncidentForm({
+          type: configuredCallTypes[0]?.label || '911 Call',
+          priority: configuredCallTypes[0]?.priority || 'Normal',
+          address: '',
         description: '',
         callerName: '',
         callerPhone: '',
@@ -1397,12 +1413,24 @@ export const Dashboard: React.FC = () => {
 
   const renderNewCallForm = () => (
     <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
-      <input
+      <select
         value={incidentForm.type}
-        onChange={(event) => setIncidentForm((value) => ({ ...value, type: event.target.value }))}
-        placeholder="Call type"
+        onChange={(event) => {
+          const callType = configuredCallTypes.find((item) => item.label === event.target.value);
+          setIncidentForm((value) => ({
+            ...value,
+            type: event.target.value,
+            priority: callType?.priority || value.priority
+          }));
+        }}
         className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-      />
+      >
+        {configuredCallTypes.map((callType) => (
+          <option key={callType.label} value={callType.label}>
+            {callType.label}
+          </option>
+        ))}
+      </select>
       <select
         value={incidentForm.priority}
         onChange={(event) =>

@@ -247,6 +247,41 @@ router.get(
   }
 );
 
+router.post(
+  '/users',
+  sensitiveRateLimiter,
+  authMiddleware,
+  requirePermission('manage_users'),
+  requireRequestSignature,
+  async (req: Request<{}, {}, RegisterRequest>, res: Response): Promise<void> => {
+    try {
+      const user = await AuthService.createUser(
+        req.body.email,
+        req.body.name,
+        req.body.role || UserRole.VIEWER,
+        req.body.password,
+        req.body.badge,
+        req.body.unitNumber,
+        req.body.cadUnitNumber,
+        req.body.status,
+        req.body.group,
+        req.body.district
+      );
+
+      await AuditLogService.fromRequest(req, {
+        action: 'user_created',
+        resource: 'user',
+        resourceId: user.id,
+        metadata: { email: user.email, role: user.role }
+      });
+      await broadcastPresence();
+      res.status(201).json(user);
+    } catch (error) {
+      res.status(400).json({ error: getErrorMessage(error, 'Unable to create user') });
+    }
+  }
+);
+
 router.patch(
   '/users/:id',
   sensitiveRateLimiter,

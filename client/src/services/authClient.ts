@@ -28,6 +28,7 @@ import { runtimeConfig } from '../config/runtimeConfig';
 const API_URL = runtimeConfig.apiUrl;
 const SIGNED_REQUESTS = [
   { method: 'POST', pathPattern: /^\/api\/auth\/change-password$/ },
+  { method: 'POST', pathPattern: /^\/api\/auth\/users$/ },
   { method: 'PATCH', pathPattern: /^\/api\/auth\/users\/[^/]+$/ },
   { method: 'POST', pathPattern: /^\/api\/auth\/users\/[^/]+\/reset-password$/ },
   { method: 'POST', pathPattern: /^\/api\/configuration$/ },
@@ -118,6 +119,11 @@ class AuthClient {
     return response.data;
   }
 
+  async createUser(input: RegisterRequest): Promise<User> {
+    const response = await this.api.post<User>('/auth/users', input);
+    return response.data;
+  }
+
   async updateUser(userId: string, input: UpdateUserRequest): Promise<User> {
     const response = await this.api.patch<User>(`/auth/users/${userId}`, input);
     if (this.auth && response.data.id === this.auth.user.id) {
@@ -134,6 +140,11 @@ class AuthClient {
 
   async getAdminConfiguration(): Promise<AdminConfigurationItem[]> {
     const response = await this.api.get<AdminConfigurationItem[]>('/configuration');
+    return response.data;
+  }
+
+  async getActiveConfiguration(): Promise<AdminConfigurationItem[]> {
+    const response = await this.api.get<AdminConfigurationItem[]>('/configuration/active');
     return response.data;
   }
 
