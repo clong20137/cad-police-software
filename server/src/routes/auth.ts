@@ -349,7 +349,8 @@ router.get(
   async (req: Request<{ userId: string }>, res: Response): Promise<void> => {
     const readMessageIds = await MessageService.markRead(req.user?.id || '', req.params.userId);
     broadcastMessageRead(req.user?.id || '', req.params.userId, readMessageIds);
-    const messages = await MessageService.getConversation(req.user?.id || '', req.params.userId);
+    const query = typeof req.query.q === 'string' ? req.query.q : '';
+    const messages = await MessageService.searchConversation(req.user?.id || '', req.params.userId, query);
     res.json(messages);
   }
 );

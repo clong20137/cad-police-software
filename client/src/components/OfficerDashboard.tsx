@@ -27,6 +27,7 @@ import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
 import { ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, User } from '../types/auth';
 import { ChangePasswordModal } from './common/ChangePasswordModal';
+import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
 
@@ -412,7 +413,10 @@ export const OfficerDashboard: React.FC = () => {
     return new Date(secondThread?.updatedAt || 0).getTime() - new Date(firstThread?.updatedAt || 0).getTime();
   });
   const searchedMessages = messages.filter(
-    (message) => !messageTextSearch.trim() || message.body.toLowerCase().includes(messageTextSearch.toLowerCase())
+    (message) =>
+      !messageTextSearch.trim() ||
+      message.body.toLowerCase().includes(messageTextSearch.toLowerCase()) ||
+      message.attachments.some((attachment) => attachment.fileName.toLowerCase().includes(messageTextSearch.toLowerCase()))
   );
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
 
@@ -453,13 +457,13 @@ export const OfficerDashboard: React.FC = () => {
       setMessages([]);
       return;
     }
-    authClient.getMessages(selectedMessageUserId)
+    authClient.getMessages(selectedMessageUserId, messageTextSearch)
       .then((conversation) => {
         setMessages(conversation);
         loadMessageThreads();
       })
       .catch(() => setMessages([]));
-  }, [loadMessageThreads, selectedMessageUserId]);
+  }, [loadMessageThreads, messageTextSearch, selectedMessageUserId]);
 
   useEffect(() => {
     localStorage.setItem('cad_officer_quick_slots', JSON.stringify(dockSlots));
@@ -911,13 +915,38 @@ export const OfficerDashboard: React.FC = () => {
 
   const sendMessage = async () => {
     if (!selectedMessageUserId || (!messageBody.trim() && pendingAttachments.length === 0)) return;
-    const sent = await authClient.sendMessage(selectedMessageUserId, messageBody, pendingAttachments);
-    setMessages((current) => (current.some((message) => message.id === sent.id) ? current : [...current, sent]));
+    const tempId = `pending-${Date.now()}`;
+    const draftBody = messageBody;
+    const draftAttachments = pendingAttachments;
+    const optimisticMessage: ChatMessage = {
+      id: tempId,
+      senderId: user?.id || '',
+      recipientId: selectedMessageUserId,
+      body: draftBody,
+      encrypted: true,
+      attachments: draftAttachments.map((attachment, index) => ({
+        id: `${tempId}-${index}`,
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        size: 0,
+        dataUrl: attachment.dataUrl
+      })),
+      createdAt: new Date(),
+      deliveryStatus: 'sending'
+    };
+    setMessages((current) => [...current, optimisticMessage]);
     setMessageBody('');
     setPendingAttachments([]);
     setEmojiOpen(false);
-    loadMessageThreads();
-    setEmojiButton(emojiCatalog[Math.floor(Math.random() * emojiCatalog.length)] || '😀');
+    try {
+      const sent = await authClient.sendMessage(selectedMessageUserId, draftBody, draftAttachments);
+      setMessages((current) => current.map((message) => (message.id === tempId ? { ...sent, deliveryStatus: 'sent' } : message)));
+      loadMessageThreads();
+      setEmojiButton(emojiCatalog[Math.floor(Math.random() * emojiCatalog.length)] || '😀');
+    } catch {
+      setMessages((current) => current.map((message) => (message.id === tempId ? { ...message, deliveryStatus: 'failed' } : message)));
+      setMessage('Unable to send message. Try again.');
+    }
   };
 
   const handleAttachment = (file: File) => {
@@ -1671,19 +1700,19 @@ const OfficerMessages: React.FC<{
               <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${mine ? 'bg-cad-blue text-white' : 'bg-slate-100 text-slate-950 dark:bg-slate-800 dark:text-white'}`}>
                 {message.body && <p>{message.body}</p>}
                 {message.attachments?.map((attachment) => (
-                  <a
-                    key={attachment.id}
-                    href={attachment.dataUrl}
-                    download={attachment.fileName}
-                    className={`mt-2 flex items-center gap-2 rounded-md px-2 py-1 text-xs font-semibold ${mine ? 'bg-white/15 text-white' : 'bg-white text-cad-blue'}`}
-                  >
-                    <Paperclip size={13} />
-                    <span className="truncate">{attachment.fileName}</span>
-                  </a>
+                  <MessageAttachmentPreview key={attachment.id} attachment={attachment} mine={mine} />
                 ))}
                 <p className={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
                   <Lock size={10} />
-                  {mine && message.readAt ? 'Read' : 'Encrypted'}
+                  {mine && message.deliveryStatus === 'sending'
+                    ? 'Sending'
+                    : mine && message.deliveryStatus === 'failed'
+                      ? 'Failed'
+                      : mine && message.readAt
+                        ? 'Read'
+                        : mine
+                          ? 'Sent'
+                          : 'Encrypted'}
                 </p>
               </div>
             </div>

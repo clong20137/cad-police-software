@@ -96,6 +96,7 @@ export interface ChatMessage {
   attachments: MessageAttachment[];
   readAt?: Date;
   createdAt: Date;
+  deliveryStatus?: 'sending' | 'sent' | 'failed' | 'read';
 }
 
 export interface MessageThread {

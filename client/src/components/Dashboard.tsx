@@ -41,6 +41,7 @@ import {
   User
 } from '../types/auth';
 import { ChangePasswordModal } from './common/ChangePasswordModal';
+import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock } from './common/QuickLaunchDock';
 
@@ -442,6 +443,7 @@ export const Dashboard: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageThreadSummaries, setMessageThreadSummaries] = useState<MessageThread[]>([]);
   const [messageSearch, setMessageSearch] = useState('');
+  const [messageTextSearch, setMessageTextSearch] = useState('');
   const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [callBadgeCount, setCallBadgeCount] = useState(0);
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
@@ -924,13 +926,13 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    authClient.getMessages(selectedMessageUserId)
+    authClient.getMessages(selectedMessageUserId, messageTextSearch)
       .then((conversation) => {
         setMessages(conversation);
         loadMessageThreads();
       })
       .catch(() => setMessages([]));
-  }, [loadMessageThreads, selectedMessageUserId]);
+  }, [loadMessageThreads, messageTextSearch, selectedMessageUserId]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -1148,12 +1150,37 @@ export const Dashboard: React.FC = () => {
 
   const sendChatMessage = async () => {
     if (!selectedMessageUserId || (!messageBody.trim() && pendingAttachments.length === 0)) return;
-    const sent = await authClient.sendMessage(selectedMessageUserId, messageBody, pendingAttachments);
-    setMessages((current) => [...current.filter((item) => item.id !== sent.id), sent]);
+    const tempId = `pending-${Date.now()}`;
+    const draftBody = messageBody;
+    const draftAttachments = pendingAttachments;
+    const optimisticMessage: ChatMessage = {
+      id: tempId,
+      senderId: user?.id || '',
+      recipientId: selectedMessageUserId,
+      body: draftBody,
+      encrypted: true,
+      attachments: draftAttachments.map((attachment, index) => ({
+        id: `${tempId}-${index}`,
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        size: 0,
+        dataUrl: attachment.dataUrl
+      })),
+      createdAt: new Date(),
+      deliveryStatus: 'sending'
+    };
+    setMessages((current) => [...current, optimisticMessage]);
     setMessageBody('');
     setPendingAttachments([]);
     setEmojiOpen(false);
-    loadMessageThreads();
+    try {
+      const sent = await authClient.sendMessage(selectedMessageUserId, draftBody, draftAttachments);
+      setMessages((current) => current.map((item) => (item.id === tempId ? { ...sent, deliveryStatus: 'sent' } : item)));
+      loadMessageThreads();
+    } catch {
+      setMessages((current) => current.map((item) => (item.id === tempId ? { ...item, deliveryStatus: 'failed' } : item)));
+      pushToast({ title: 'Message failed', message: 'Unable to send message. Try again.', tone: 'warning' });
+    }
   };
 
   const openEmojiPicker = () => {
@@ -1645,6 +1672,12 @@ export const Dashboard: React.FC = () => {
                       Encrypted
                     </span>
                   </div>
+                  <input
+                    value={messageTextSearch}
+                    onChange={(event) => setMessageTextSearch(event.target.value)}
+                    placeholder="Search messages"
+                    className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                  />
                 </div>
                 <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-white p-4 dark:bg-slate-950">
                   {searchedMessages.map((message) => {
@@ -1658,27 +1691,15 @@ export const Dashboard: React.FC = () => {
                         >
                           {message.body && <p>{message.body}</p>}
                           {message.attachments?.map((attachment) => (
-                            <a
-                              key={attachment.id}
-                              href={attachment.dataUrl}
-                              download={attachment.fileName}
-                              className={`mt-2 flex items-center gap-2 rounded-md px-2 py-1 text-xs font-semibold ${
-                                mine ? 'bg-white/15 text-white' : 'bg-white text-cad-blue'
-                              }`}
-                            >
-                              <Paperclip size={13} />
-                              <span className="truncate">{attachment.fileName}</span>
-                            </a>
+                            <MessageAttachmentPreview key={attachment.id} attachment={attachment} mine={mine} />
                           ))}
                           <p className={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
                             <Lock size={10} />
                             {formatDateTime(message.createdAt)}
-                            {mine && message.readAt && (
-                              <>
-                                <CheckCheck size={12} />
-                                Read
-                              </>
-                            )}
+                            {mine && message.deliveryStatus === 'sending' && <span>Sending</span>}
+                            {mine && message.deliveryStatus === 'failed' && <span>Failed</span>}
+                            {mine && !message.readAt && message.deliveryStatus !== 'sending' && message.deliveryStatus !== 'failed' && <span>Sent</span>}
+                            {mine && message.readAt && <><CheckCheck size={12} />Read</>}
                           </p>
                         </div>
                       </div>

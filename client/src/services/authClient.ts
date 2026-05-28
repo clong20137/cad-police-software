@@ -154,8 +154,10 @@ class AuthClient {
     await this.api.delete(`/configuration/${itemId}`);
   }
 
-  async getMessages(userId: string): Promise<ChatMessage[]> {
-    const response = await this.api.get<ChatMessage[]>(`/auth/messages/${userId}`);
+  async getMessages(userId: string, search = ''): Promise<ChatMessage[]> {
+    const response = await this.api.get<ChatMessage[]>(`/auth/messages/${userId}`, {
+      params: search.trim() ? { q: search.trim() } : undefined
+    });
     return response.data;
   }
 

@@ -204,6 +204,21 @@ export class MessageService {
     return rows.map((row) => toMessage(row, attachments[row.id] || []));
   }
 
+  static async searchConversation(userId: string, otherUserId: string, query: string): Promise<ChatMessage[]> {
+    const normalized = query.trim().toLowerCase();
+    const conversation = await this.getConversation(userId, otherUserId);
+    if (!normalized) {
+      return conversation;
+    }
+
+    return conversation.filter((message) => {
+      const attachmentMatch = message.attachments.some((attachment) =>
+        attachment.fileName.toLowerCase().includes(normalized)
+      );
+      return message.body.toLowerCase().includes(normalized) || attachmentMatch;
+    });
+  }
+
   static async getThreads(userId: string): Promise<MessageThread[]> {
     const [threadRows] = await pool.execute<(RowDataPacket & {
       other_user_id: string;
