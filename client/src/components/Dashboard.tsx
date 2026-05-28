@@ -36,6 +36,7 @@ import {
   Incident,
   IncidentPriority,
   IncidentStatus,
+  IncidentUnitStatus,
   MessageThread,
   SendMessageAttachment,
   UnitStatus,
@@ -292,6 +293,7 @@ const displayStatus = (unit: User): UnitStatus => unit.status || 'Available';
 const displayUnitNumber = (unit: User): string => unit.unitNumber || unit.badge || 'Unassigned';
 const displayCadUnitNumber = (unit: User): string =>
   unit.cadUnitNumber || (unit.unitNumber ? `CAD-${unit.unitNumber}` : unit.name);
+const dispatchUnitStatuses: IncidentUnitStatus[] = ['Assigned', 'Acknowledged', 'En Route', 'On Scene', 'Staged', 'Transporting', 'Cleared'];
 const escapeHtml = (value: string): string =>
   value
     .replace(/&/g, '&amp;')
@@ -331,6 +333,13 @@ const etaText = (unit: TrackedUnit): string => {
   if (!unit.speedMph || unit.speedMph <= 1) return `${miles.toFixed(1)} mi, ETA pending speed`;
   const minutes = Math.max(1, Math.round((miles / unit.speedMph) * 60));
   return `${miles.toFixed(1)} mi, ${minutes} min ETA`;
+};
+
+const incidentDistanceLabel = (unit: TrackedUnit, incident: Incident): string => {
+  if (incident.lat === undefined || incident.lon === undefined) {
+    return 'Distance unavailable';
+  }
+  return `${distanceMiles(unit.lat, unit.lon, incident.lat, incident.lon).toFixed(1)} mi`;
 };
 
 const formatDateTime = (value?: Date | string): string => {
@@ -546,6 +555,29 @@ export const Dashboard: React.FC = () => {
       ),
     [locationClock, units]
   );
+  const recommendedUnits = useMemo(() => {
+    if (!selectedIncident) {
+      return [];
+    }
+    const assignedIds = new Set(selectedIncident.units.map((unit) => unit.userId));
+    return units
+      .filter((unit) => !assignedIds.has(unit.id))
+      .map((unit) => {
+        const distance =
+          selectedIncident.lat !== undefined && selectedIncident.lon !== undefined
+            ? distanceMiles(unit.lat, unit.lon, selectedIncident.lat, selectedIncident.lon)
+            : Number.POSITIVE_INFINITY;
+        const status = displayStatus(unit);
+        const statusScore = status === 'Available' ? 0 : status === 'Dispatched' ? 20 : status === 'En Route' ? 35 : 50;
+        const districtScore =
+          selectedIncident.address && unit.district && selectedIncident.address.toLowerCase().includes(unit.district.toLowerCase())
+            ? -5
+            : 0;
+        return { unit, distance, score: statusScore + districtScore + (Number.isFinite(distance) ? distance : 25) };
+      })
+      .sort((first, second) => first.score - second.score)
+      .slice(0, 5);
+  }, [selectedIncident, units]);
 
   useEffect(() => {
     if (!selectedUnit) {
@@ -1353,6 +1385,19 @@ export const Dashboard: React.FC = () => {
     if (!selectedIncident || !assignmentUnitId) return;
     const incident = await authClient.assignIncidentUnit(selectedIncident.id, assignmentUnitId, 'Assigned');
     setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+    setAssignmentUnitId('');
+  };
+
+  const assignRecommendedUnit = async (unitId: string) => {
+    if (!selectedIncident) return;
+    const incident = await authClient.assignIncidentUnit(selectedIncident.id, unitId, 'Assigned');
+    setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+  };
+
+  const updateAssignedUnitStatus = async (userId: string, status: IncidentUnitStatus) => {
+    if (!selectedIncident) return;
+    const incident = await authClient.assignIncidentUnit(selectedIncident.id, userId, status);
+    setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
   };
 
   const addIncidentNote = async () => {
@@ -1571,17 +1616,60 @@ export const Dashboard: React.FC = () => {
               <div className="mt-2 space-y-2">
                 {selectedIncident.units.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No units assigned.</p>}
                 {selectedIncident.units.map((assignedUnit) => (
-                  <div key={assignedUnit.userId} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950">
-                    <span className="font-semibold">{assignedUnit.cadUnitNumber || assignedUnit.name}</span>
-                    <span>{assignedUnit.status}</span>
+                  <div key={assignedUnit.userId} className="rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">{assignedUnit.cadUnitNumber || assignedUnit.name}</span>
+                      <span>{assignedUnit.status}</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {dispatchUnitStatuses.map((status) => (
+                        <button
+                          key={`${assignedUnit.userId}-${status}`}
+                          type="button"
+                          onClick={() => updateAssignedUnitStatus(assignedUnit.userId, status)}
+                          className={`rounded border px-2 py-1 text-[11px] font-semibold ${
+                            assignedUnit.status === status
+                              ? 'border-cad-blue bg-blue-50 text-cad-blue dark:bg-blue-950 dark:text-blue-200'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
+            {recommendedUnits.length > 0 && (
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Recommended Units</h3>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  {recommendedUnits.map(({ unit }) => (
+                    <button
+                      key={unit.id}
+                      type="button"
+                      onClick={() => assignRecommendedUnit(unit.id)}
+                      className="rounded-md border border-slate-200 px-3 py-2 text-left text-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800"
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="font-bold">{displayCadUnitNumber(unit)}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ring-1 ${statusStyles[displayStatus(unit)]}`}>
+                          {displayStatus(unit)}
+                        </span>
+                      </span>
+                      <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                        {incidentDistanceLabel(unit, selectedIncident)} · {unit.district || 'No district'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-[1fr_auto] gap-2">
               <select value={assignmentUnitId} onChange={(event) => setAssignmentUnitId(event.target.value)} className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
                 <option value="">Select unit</option>
-                {units.map((unit) => (
+                {[...recommendedUnits.map((item) => item.unit), ...units.filter((unit) => !recommendedUnits.some((item) => item.unit.id === unit.id))].map((unit) => (
                   <option key={unit.id} value={unit.id}>{displayCadUnitNumber(unit)} · {unit.name}</option>
                 ))}
               </select>
@@ -2183,13 +2271,56 @@ export const Dashboard: React.FC = () => {
                   <div className="mt-2 space-y-2">
                     {selectedIncident.units.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No units assigned.</p>}
                     {selectedIncident.units.map((assignedUnit) => (
-                      <div key={assignedUnit.userId} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950">
-                        <span className="font-semibold">{assignedUnit.cadUnitNumber || assignedUnit.name}</span>
-                        <span>{assignedUnit.status}</span>
+                      <div key={assignedUnit.userId} className="rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold">{assignedUnit.cadUnitNumber || assignedUnit.name}</span>
+                          <span>{assignedUnit.status}</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {dispatchUnitStatuses.map((status) => (
+                            <button
+                              key={`${assignedUnit.userId}-${status}`}
+                              type="button"
+                              onClick={() => updateAssignedUnitStatus(assignedUnit.userId, status)}
+                              className={`rounded border px-2 py-1 text-[11px] font-semibold ${
+                                assignedUnit.status === status
+                                  ? 'border-cad-blue bg-blue-50 text-cad-blue dark:bg-blue-950 dark:text-blue-200'
+                                  : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              {status}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
+                {recommendedUnits.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">Recommended Units</h3>
+                    <div className="mt-2 grid gap-2">
+                      {recommendedUnits.slice(0, 3).map(({ unit }) => (
+                        <button
+                          key={unit.id}
+                          type="button"
+                          onClick={() => assignRecommendedUnit(unit.id)}
+                          className="rounded-md border border-slate-200 px-3 py-2 text-left text-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800"
+                        >
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="font-bold">{displayCadUnitNumber(unit)}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ring-1 ${statusStyles[displayStatus(unit)]}`}>
+                              {displayStatus(unit)}
+                            </span>
+                          </span>
+                          <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                            {incidentDistanceLabel(unit, selectedIncident)} · {unit.district || 'No district'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-[1fr_auto] gap-2">
                   <select
                     value={assignmentUnitId}
@@ -2197,7 +2328,7 @@ export const Dashboard: React.FC = () => {
                     className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                   >
                     <option value="">Select unit</option>
-                    {units.map((unit) => (
+                    {[...recommendedUnits.map((item) => item.unit), ...units.filter((unit) => !recommendedUnits.some((item) => item.unit.id === unit.id))].map((unit) => (
                       <option key={unit.id} value={unit.id}>
                         {displayCadUnitNumber(unit)} · {unit.name}
                       </option>
