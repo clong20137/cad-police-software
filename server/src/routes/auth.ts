@@ -325,6 +325,25 @@ router.get(
 );
 
 router.get(
+  '/messages/threads',
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    const threads = await MessageService.getThreads(req.user?.id || '');
+    res.json(threads);
+  }
+);
+
+router.post(
+  '/messages/:userId/read',
+  authMiddleware,
+  async (req: Request<{ userId: string }>, res: Response): Promise<void> => {
+    const readMessageIds = await MessageService.markRead(req.user?.id || '', req.params.userId);
+    broadcastMessageRead(req.user?.id || '', req.params.userId, readMessageIds);
+    res.json({ messageIds: readMessageIds });
+  }
+);
+
+router.get(
   '/messages/:userId',
   authMiddleware,
   async (req: Request<{ userId: string }>, res: Response): Promise<void> => {

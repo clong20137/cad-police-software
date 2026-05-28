@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { RowDataPacket } from 'mysql2';
 import { pool } from '../db/mysql';
-import { ChatMessage, MessageAttachment, SendMessageRequest } from '../types/auth';
+import { ChatMessage, MessageAttachment, MessageThread, SendMessageRequest } from '../types/auth';
 
 type MessageRow = RowDataPacket & {
   id: string;
@@ -202,6 +202,52 @@ export class MessageService {
     );
     const attachments = await this.getAttachments(rows.map((row) => row.id));
     return rows.map((row) => toMessage(row, attachments[row.id] || []));
+  }
+
+  static async getThreads(userId: string): Promise<MessageThread[]> {
+    const [threadRows] = await pool.execute<(RowDataPacket & {
+      other_user_id: string;
+      last_message_id: string;
+      updated_at: Date;
+      unread_count: number;
+    })[]>(
+      `
+        SELECT
+          CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END AS other_user_id,
+          SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY created_at DESC), ',', 1) AS last_message_id,
+          MAX(created_at) AS updated_at,
+          SUM(CASE WHEN recipient_id = ? AND read_at IS NULL THEN 1 ELSE 0 END) AS unread_count
+        FROM messages
+        WHERE sender_id = ? OR recipient_id = ?
+        GROUP BY other_user_id
+        ORDER BY updated_at DESC
+        LIMIT 200
+      `,
+      [userId, userId, userId, userId]
+    );
+
+    const messageIds = threadRows.map((row) => row.last_message_id).filter(Boolean);
+    if (messageIds.length === 0) {
+      return [];
+    }
+
+    const placeholders = messageIds.map(() => '?').join(',');
+    const [messageRows] = await pool.execute<MessageRow[]>(
+      `SELECT * FROM messages WHERE id IN (${placeholders})`,
+      messageIds
+    );
+    const attachments = await this.getAttachments(messageIds);
+    const messagesById = messageRows.reduce<Record<string, ChatMessage>>((messages, row) => {
+      messages[row.id] = toMessage(row, attachments[row.id] || []);
+      return messages;
+    }, {});
+
+    return threadRows.map((row) => ({
+      userId: row.other_user_id,
+      lastMessage: messagesById[row.last_message_id],
+      unreadCount: Number(row.unread_count || 0),
+      updatedAt: row.updated_at
+    }));
   }
 
   static async markRead(userId: string, otherUserId: string): Promise<string[]> {

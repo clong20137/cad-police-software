@@ -25,7 +25,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
-import { ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, SendMessageAttachment, User } from '../types/auth';
+import { ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, User } from '../types/auth';
 import { ChangePasswordModal } from './common/ChangePasswordModal';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
@@ -348,6 +348,7 @@ export const OfficerDashboard: React.FC = () => {
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [selectedMessageUserId, setSelectedMessageUserId] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messageThreadSummaries, setMessageThreadSummaries] = useState<MessageThread[]>([]);
   const [messageBody, setMessageBody] = useState('');
   const [messageSearch, setMessageSearch] = useState('');
   const [messageTextSearch, setMessageTextSearch] = useState('');
@@ -369,6 +370,7 @@ export const OfficerDashboard: React.FC = () => {
   const hasFitCallBoundsRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
+  const activeQuickModalRef = useRef<DockItem | null>(null);
 
   const assignedIncidents = useMemo(
     () => incidents.filter((incident) => incident.units.some((unit) => unit.userId === user?.id && unit.status !== 'Cleared')),
@@ -393,9 +395,21 @@ export const OfficerDashboard: React.FC = () => {
         ? 'bg-red-500/20 text-red-100 ring-red-300/30'
         : 'bg-amber-500/20 text-amber-100 ring-amber-300/30';
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
+  const messageThreadByUser = useMemo(
+    () =>
+      messageThreadSummaries.reduce<Record<string, MessageThread>>((threads, thread) => {
+        threads[thread.userId] = thread;
+        return threads;
+      }, {}),
+    [messageThreadSummaries]
+  );
   const messageThreads = directory.filter((item) => {
     if (item.id === user?.id) return false;
     return !messageSearch.trim() || `${item.name} ${item.email} ${item.cadUnitNumber || ''}`.toLowerCase().includes(messageSearch.toLowerCase());
+  }).sort((first, second) => {
+    const firstThread = messageThreadByUser[first.id];
+    const secondThread = messageThreadByUser[second.id];
+    return new Date(secondThread?.updatedAt || 0).getTime() - new Date(firstThread?.updatedAt || 0).getTime();
   });
   const searchedMessages = messages.filter(
     (message) => !messageTextSearch.trim() || message.body.toLowerCase().includes(messageTextSearch.toLowerCase())
@@ -407,25 +421,45 @@ export const OfficerDashboard: React.FC = () => {
     setIncidents(activeIncidents);
   }, []);
 
+  const loadMessageThreads = useCallback(async () => {
+    try {
+      const threads = await authClient.getMessageThreads();
+      setMessageThreadSummaries(threads);
+      setMessageBadgeCount(threads.reduce((count, thread) => count + thread.unreadCount, 0));
+    } catch {
+      setMessageThreadSummaries([]);
+    }
+  }, []);
+
   useEffect(() => {
     loadIncidents();
   }, [loadIncidents]);
 
   useEffect(() => {
     authClient.getDirectory().then(setDirectory).catch(() => setDirectory([]));
-  }, []);
+    loadMessageThreads();
+  }, [loadMessageThreads]);
 
   useEffect(() => {
     selectedMessageUserIdRef.current = selectedMessageUserId;
   }, [selectedMessageUserId]);
 
   useEffect(() => {
+    activeQuickModalRef.current = activeDockItem;
+  }, [activeDockItem]);
+
+  useEffect(() => {
     if (!selectedMessageUserId) {
       setMessages([]);
       return;
     }
-    authClient.getMessages(selectedMessageUserId).then(setMessages).catch(() => setMessages([]));
-  }, [selectedMessageUserId]);
+    authClient.getMessages(selectedMessageUserId)
+      .then((conversation) => {
+        setMessages(conversation);
+        loadMessageThreads();
+      })
+      .catch(() => setMessages([]));
+  }, [loadMessageThreads, selectedMessageUserId]);
 
   useEffect(() => {
     localStorage.setItem('cad_officer_quick_slots', JSON.stringify(dockSlots));
@@ -504,13 +538,35 @@ export const OfficerDashboard: React.FC = () => {
       if (!belongsToMe) return;
 
       const otherUserId = message.senderId === user?.id ? message.recipientId : message.senderId;
-      if (otherUserId === selectedMessageUserIdRef.current) {
+      const conversationOpen = activeQuickModalRef.current === 'messages' && otherUserId === selectedMessageUserIdRef.current;
+      if (conversationOpen) {
         setMessages((current) => (current.some((item) => item.id === message.id) ? current : [...current, message]));
+        if (message.recipientId === user?.id) {
+          authClient.markMessagesRead(otherUserId).catch(() => undefined);
+        }
       } else if (message.recipientId === user?.id) {
         setMessageBadgeCount((count) => count + 1);
       }
+      setMessageThreadSummaries((current) => {
+        const existing = current.find((thread) => thread.userId === otherUserId);
+        const nextThread: MessageThread = {
+          userId: otherUserId,
+          lastMessage: conversationOpen && message.recipientId === user?.id ? { ...message, readAt: new Date() } : message,
+          unreadCount: message.recipientId === user?.id && !conversationOpen ? (existing?.unreadCount || 0) + 1 : existing?.unreadCount || 0,
+          updatedAt: message.createdAt
+        };
+        return [nextThread, ...current.filter((thread) => thread.userId !== otherUserId)];
+      });
     });
     socket.on('message:read', (receipt: { readerId: string; senderId: string; messageIds: string[] }) => {
+      setMessageThreadSummaries((current) =>
+        current.map((thread) =>
+          receipt.readerId === user?.id && thread.userId === receipt.senderId ? { ...thread, unreadCount: 0 } : thread
+        )
+      );
+      if (receipt.readerId === user?.id) {
+        loadMessageThreads();
+      }
       if (receipt.senderId !== user?.id) return;
       setMessages((current) =>
         current.map((message) =>
@@ -523,7 +579,7 @@ export const OfficerDashboard: React.FC = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [user?.id]);
+  }, [loadMessageThreads, user?.id]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -860,6 +916,7 @@ export const OfficerDashboard: React.FC = () => {
     setMessageBody('');
     setPendingAttachments([]);
     setEmojiOpen(false);
+    loadMessageThreads();
     setEmojiButton(emojiCatalog[Math.floor(Math.random() * emojiCatalog.length)] || '😀');
   };
 
@@ -1105,6 +1162,7 @@ export const OfficerDashboard: React.FC = () => {
                 setOfficerEvent={setOfficerEvent}
                 onCreateOfficerEvent={createOfficerEvent}
                 directory={messageThreads}
+                messageThreadByUser={messageThreadByUser}
                 onlineUserIds={onlineUserIds}
                 selectedMessageUser={selectedMessageUser}
                 selectedMessageUserId={selectedMessageUserId}
@@ -1193,6 +1251,7 @@ const DockContent: React.FC<{
   setOfficerEvent: React.Dispatch<React.SetStateAction<{ type: string; priority: IncidentPriority; description: string }>>;
   onCreateOfficerEvent: () => void;
   directory: User[];
+  messageThreadByUser: Record<string, MessageThread>;
   onlineUserIds: string[];
   selectedMessageUser: User | null;
   selectedMessageUserId: string;
@@ -1238,6 +1297,7 @@ const DockContent: React.FC<{
   setOfficerEvent,
   onCreateOfficerEvent,
   directory,
+  messageThreadByUser,
   onlineUserIds,
   selectedMessageUser,
   selectedMessageUserId,
@@ -1419,6 +1479,7 @@ const DockContent: React.FC<{
     return (
       <OfficerMessages
         directory={directory}
+        messageThreadByUser={messageThreadByUser}
         onlineUserIds={onlineUserIds}
         selectedMessageUser={selectedMessageUser}
         selectedMessageUserId={selectedMessageUserId}
@@ -1468,6 +1529,7 @@ const StatusButton: React.FC<{
 
 const OfficerMessages: React.FC<{
   directory: User[];
+  messageThreadByUser: Record<string, MessageThread>;
   onlineUserIds: string[];
   selectedMessageUser: User | null;
   selectedMessageUserId: string;
@@ -1492,6 +1554,7 @@ const OfficerMessages: React.FC<{
   onAttachment: (file: File) => void;
 }> = ({
   directory,
+  messageThreadByUser,
   onlineUserIds,
   selectedMessageUser,
   selectedMessageUserId,
@@ -1526,24 +1589,35 @@ const OfficerMessages: React.FC<{
         />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-14">
-        {directory.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setSelectedMessageUserId(item.id)}
-            className={`w-full border-b border-slate-200 px-3 py-3 text-left text-sm dark:border-slate-800 ${
-              selectedMessageUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : 'hover:bg-white dark:hover:bg-slate-900'
-            }`}
-          >
-            <span className="flex items-center gap-2 font-semibold">
-              <span className={`h-2.5 w-2.5 rounded-full ${onlineUserIds.includes(item.id) ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-              <span className="truncate">{item.name}</span>
-            </span>
-            <span className="mt-1 block truncate text-xs text-slate-500">
-              {item.cadUnitNumber || item.badge || item.email}
-            </span>
-          </button>
-        ))}
+        {directory.map((item) => {
+          const thread = messageThreadByUser[item.id];
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setSelectedMessageUserId(item.id)}
+              className={`w-full border-b border-slate-200 px-3 py-3 text-left text-sm dark:border-slate-800 ${
+                selectedMessageUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : 'hover:bg-white dark:hover:bg-slate-900'
+              }`}
+            >
+              <span className="flex items-center gap-2 font-semibold">
+                <span className={`h-2.5 w-2.5 rounded-full ${onlineUserIds.includes(item.id) ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                {thread?.unreadCount ? (
+                  <span className="rounded-full bg-cad-blue px-2 py-0.5 text-[11px] font-black text-white">
+                    {thread.unreadCount}
+                  </span>
+                ) : null}
+              </span>
+              <span className="mt-1 block truncate text-xs text-slate-500">
+                {thread?.lastMessage?.body ||
+                  (thread?.lastMessage?.attachments?.length
+                    ? `${thread.lastMessage.attachments.length} attachment(s)`
+                    : item.cadUnitNumber || item.badge || item.email)}
+              </span>
+            </button>
+          );
+        })}
       </div>
       <button
         type="button"

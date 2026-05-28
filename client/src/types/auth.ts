@@ -86,6 +86,13 @@ export interface ChatMessage {
   createdAt: Date;
 }
 
+export interface MessageThread {
+  userId: string;
+  lastMessage?: ChatMessage;
+  unreadCount: number;
+  updatedAt?: Date;
+}
+
 export interface MessageAttachment {
   id: string;
   fileName: string;

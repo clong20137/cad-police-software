@@ -15,6 +15,7 @@ import {
   ROLE_PERMISSIONS,
   ResetUserPasswordRequest,
   SendMessageAttachment,
+  MessageThread,
   OfficerEventRequest,
   TokenPair,
   UpdateIncidentStatusRequest,
@@ -156,6 +157,16 @@ class AuthClient {
   async getMessages(userId: string): Promise<ChatMessage[]> {
     const response = await this.api.get<ChatMessage[]>(`/auth/messages/${userId}`);
     return response.data;
+  }
+
+  async getMessageThreads(): Promise<MessageThread[]> {
+    const response = await this.api.get<MessageThread[]>('/auth/messages/threads');
+    return response.data;
+  }
+
+  async markMessagesRead(userId: string): Promise<string[]> {
+    const response = await this.api.post<{ messageIds: string[] }>(`/auth/messages/${userId}/read`);
+    return response.data.messageIds;
   }
 
   async sendMessage(

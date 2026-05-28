@@ -35,6 +35,7 @@ import {
   Incident,
   IncidentPriority,
   IncidentStatus,
+  MessageThread,
   SendMessageAttachment,
   UnitStatus,
   User
@@ -439,6 +440,7 @@ export const Dashboard: React.FC = () => {
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [selectedMessageUserId, setSelectedMessageUserId] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messageThreadSummaries, setMessageThreadSummaries] = useState<MessageThread[]>([]);
   const [messageSearch, setMessageSearch] = useState('');
   const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [callBadgeCount, setCallBadgeCount] = useState(0);
@@ -489,6 +491,7 @@ export const Dashboard: React.FC = () => {
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
+  const activeQuickModalRef = useRef<QuickLaunchId | null>(null);
   const directoryRef = useRef<User[]>([]);
   const latestPositionRef = useRef<GeolocationPosition | null>(null);
   const locationPublishInFlightRef = useRef(false);
@@ -579,11 +582,22 @@ export const Dashboard: React.FC = () => {
     loadIncidents();
   }, [loadIncidents]);
 
+  const loadMessageThreads = useCallback(async () => {
+    try {
+      const threads = await authClient.getMessageThreads();
+      setMessageThreadSummaries(threads);
+      setMessageBadgeCount(threads.reduce((count, thread) => count + thread.unreadCount, 0));
+    } catch {
+      setMessageThreadSummaries([]);
+    }
+  }, []);
+
   const loadDirectory = useCallback(async () => {
     const users = await authClient.getDirectory();
     setDirectory(users);
     setSelectedMessageUserId((current) => current || users.find((item) => item.id !== user?.id)?.id || '');
-  }, [user?.id]);
+    loadMessageThreads();
+  }, [loadMessageThreads, user?.id]);
 
   useEffect(() => {
     loadDirectory();
@@ -606,6 +620,10 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     selectedMessageUserIdRef.current = selectedMessageUserId;
   }, [selectedMessageUserId]);
+
+  useEffect(() => {
+    activeQuickModalRef.current = activeQuickModal;
+  }, [activeQuickModal]);
 
   useEffect(() => {
     directoryRef.current = directory;
@@ -830,9 +848,16 @@ export const Dashboard: React.FC = () => {
     });
     socket.on('message:new', (message: ChatMessage) => {
       const incomingForMe = message.recipientId === user?.id && message.senderId !== user?.id;
+      const otherUserId = message.senderId === user?.id ? message.recipientId : message.senderId;
+      const conversationOpen =
+        activeQuickModalRef.current === 'messages' && selectedMessageUserIdRef.current === otherUserId;
       if (incomingForMe) {
-        setMessageBadgeCount((count) => count + 1);
-        playAlert('message');
+        if (conversationOpen) {
+          authClient.markMessagesRead(otherUserId).catch(() => undefined);
+        } else {
+          setMessageBadgeCount((count) => count + 1);
+          playAlert('message');
+        }
         const sender = directoryRef.current.find((item) => item.id === message.senderId);
         pushToast({
           title: 'New message',
@@ -840,6 +865,16 @@ export const Dashboard: React.FC = () => {
           tone: 'info'
         });
       }
+      setMessageThreadSummaries((current) => {
+        const existing = current.find((thread) => thread.userId === otherUserId);
+        const nextThread: MessageThread = {
+          userId: otherUserId,
+          lastMessage: conversationOpen && incomingForMe ? { ...message, readAt: new Date() } : message,
+          unreadCount: incomingForMe && !conversationOpen ? (existing?.unreadCount || 0) + 1 : existing?.unreadCount || 0,
+          updatedAt: message.createdAt
+        };
+        return [nextThread, ...current.filter((thread) => thread.userId !== otherUserId)];
+      });
       setMessages((current) => {
         const belongsToSelected =
           message.senderId === selectedMessageUserIdRef.current ||
@@ -853,6 +888,14 @@ export const Dashboard: React.FC = () => {
       });
     });
     socket.on('message:read', (receipt: { readerId: string; senderId: string; messageIds: string[] }) => {
+      setMessageThreadSummaries((current) =>
+        current.map((thread) =>
+          receipt.readerId === user?.id && thread.userId === receipt.senderId ? { ...thread, unreadCount: 0 } : thread
+        )
+      );
+      if (receipt.readerId === user?.id) {
+        loadMessageThreads();
+      }
       setMessages((current) =>
         current.map((message) =>
           receipt.messageIds.includes(message.id) ? { ...message, readAt: new Date() } : message
@@ -864,7 +907,7 @@ export const Dashboard: React.FC = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [playAlert, pushToast, user?.id]);
+  }, [loadMessageThreads, playAlert, pushToast, user?.id]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -881,8 +924,13 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    authClient.getMessages(selectedMessageUserId).then(setMessages).catch(() => setMessages([]));
-  }, [selectedMessageUserId]);
+    authClient.getMessages(selectedMessageUserId)
+      .then((conversation) => {
+        setMessages(conversation);
+        loadMessageThreads();
+      })
+      .catch(() => setMessages([]));
+  }, [loadMessageThreads, selectedMessageUserId]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -1070,6 +1118,14 @@ export const Dashboard: React.FC = () => {
   };
 
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
+  const messageThreadByUser = useMemo(
+    () =>
+      messageThreadSummaries.reduce<Record<string, MessageThread>>((threads, thread) => {
+        threads[thread.userId] = thread;
+        return threads;
+      }, {}),
+    [messageThreadSummaries]
+  );
   const messageThreads = directory.filter((item) => {
     if (item.id === user?.id) return false;
     const query = messageSearch.trim().toLowerCase();
@@ -1077,6 +1133,10 @@ export const Dashboard: React.FC = () => {
     return [item.name, item.cadUnitNumber, item.unitNumber]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
+  }).sort((first, second) => {
+    const firstThread = messageThreadByUser[first.id];
+    const secondThread = messageThreadByUser[second.id];
+    return new Date(secondThread?.updatedAt || 0).getTime() - new Date(firstThread?.updatedAt || 0).getTime();
   });
   const visibleMessages = messages.filter(
     (message) =>
@@ -1093,6 +1153,7 @@ export const Dashboard: React.FC = () => {
     setMessageBody('');
     setPendingAttachments([]);
     setEmojiOpen(false);
+    loadMessageThreads();
   };
 
   const openEmojiPicker = () => {
@@ -1521,26 +1582,41 @@ export const Dashboard: React.FC = () => {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto pb-16">
               {messageThreads.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setSelectedMessageUserId(item.id)}
-                  className={`w-full border-b border-slate-200 px-3 py-3 text-left text-sm dark:border-slate-800 ${
-                    selectedMessageUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : 'hover:bg-white dark:hover:bg-slate-900'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 font-semibold">
-                    <span
-                      className={`h-2.5 w-2.5 rounded-full ${
-                        onlineUserIds.includes(item.id) ? 'bg-emerald-500' : 'bg-slate-300'
+                (() => {
+                  const thread = messageThreadByUser[item.id];
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setSelectedMessageUserId(item.id)}
+                      className={`w-full border-b border-slate-200 px-3 py-3 text-left text-sm dark:border-slate-800 ${
+                        selectedMessageUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : 'hover:bg-white dark:hover:bg-slate-900'
                       }`}
-                    />
-                    <span className="truncate">{item.name}</span>
-                  </span>
-                  <span className="mt-1 block truncate text-xs text-slate-500">
-                    {onlineUserIds.includes(item.id) ? 'Active now' : `Last seen ${formatDateTime(item.lastSeenAt)}`}
-                  </span>
-                </button>
+                    >
+                      <span className="flex items-center gap-2 font-semibold">
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full ${
+                            onlineUserIds.includes(item.id) ? 'bg-emerald-500' : 'bg-slate-300'
+                          }`}
+                        />
+                        <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                        {thread?.unreadCount ? (
+                          <span className="rounded-full bg-cad-blue px-2 py-0.5 text-[11px] font-black text-white">
+                            {thread.unreadCount}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="mt-1 block truncate text-xs text-slate-500">
+                        {thread?.lastMessage?.body ||
+                          (thread?.lastMessage?.attachments?.length
+                            ? `${thread.lastMessage.attachments.length} attachment(s)`
+                            : onlineUserIds.includes(item.id)
+                              ? 'Active now'
+                              : `Last seen ${formatDateTime(item.lastSeenAt)}`)}
+                      </span>
+                    </button>
+                  );
+                })()
               ))}
             </div>
             <button
