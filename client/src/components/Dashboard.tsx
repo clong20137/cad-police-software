@@ -2717,8 +2717,8 @@ export const Dashboard: React.FC = () => {
             </div>
           ) : (
             <div className="min-h-0 overflow-auto">
-                <div className="min-w-[720px] text-sm">
-                  <div className="grid grid-cols-[120px_92px_1fr_120px_130px_140px] gap-2 border-b border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:border-gray-800 dark:bg-slate-900 dark:text-slate-400">
+                <div className="min-w-[640px] text-sm">
+                  <div className="grid grid-cols-[108px_78px_1fr_104px_110px_118px] gap-2 border-b border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:border-gray-800 dark:bg-slate-900 dark:text-slate-400">
                     <SortHeader label="Status" active={unitBoardSort.key === 'status'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('status')} />
                     <SortHeader label="Unit" active={unitBoardSort.key === 'unit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('unit')} />
                     <SortHeader label="First & Last Name" active={unitBoardSort.key === 'name'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('name')} />
@@ -2739,7 +2739,7 @@ export const Dashboard: React.FC = () => {
                           key={unit.id}
                           type="button"
                           onClick={() => setSelectedUnitId(unit.id)}
-                          className={`grid w-full grid-cols-[120px_92px_1fr_120px_130px_140px] gap-2 border-l-4 bg-white px-4 py-3 text-left transition hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 ${
+                          className={`grid w-full grid-cols-[108px_78px_1fr_104px_110px_118px] gap-2 border-l-4 bg-white px-4 py-3 text-left transition hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 ${
                             selectedUnitBoardUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/35' : ''
                           } ${colors.row}`}
                         >
@@ -3212,8 +3212,8 @@ export const Dashboard: React.FC = () => {
           zIndex={modalZOrder[modalId] || 50}
           active={activeQuickModal === modalId}
           placement="center"
-          maxWidthClass={modalId === 'units' ? 'max-w-none w-[min(92vw,54rem)]' : modalId === 'messages' || modalId === 'calls' || modalId === 'call-detail' ? 'max-w-5xl' : 'max-w-2xl'}
-          contentClassName={modalId === 'units' ? 'p-3 overflow-hidden h-[min(70vh,680px)]' : 'p-4 overflow-hidden'}
+          maxWidthClass={modalId === 'units' ? 'max-w-3xl' : modalId === 'messages' || modalId === 'calls' || modalId === 'call-detail' ? 'max-w-5xl' : 'max-w-2xl'}
+          contentClassName={modalId === 'units' ? 'p-3 overflow-hidden h-[min(68vh,620px)]' : 'p-4 overflow-hidden'}
         >
           {renderQuickModalContent(modalId)}
         </ModalShell>
