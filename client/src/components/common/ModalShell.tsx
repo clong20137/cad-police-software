@@ -23,6 +23,8 @@ export const ModalShell: React.FC<{
   placement?: ModalPlacement;
   contentClassName?: string;
   resizable?: boolean;
+  zIndex?: number;
+  onFocus?: () => void;
 }> = ({
   title,
   open,
@@ -31,7 +33,9 @@ export const ModalShell: React.FC<{
   maxWidthClass = 'max-w-2xl',
   placement = 'center',
   contentClassName = 'p-4',
-  resizable = false
+  resizable = true,
+  zIndex = 50,
+  onFocus
 }) => {
   const windowRef = useRef<HTMLDivElement | null>(null);
   const dragOffsetRef = useRef<ModalPosition>({ x: 0, y: 0 });
@@ -91,6 +95,7 @@ export const ModalShell: React.FC<{
   const startDragging = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0 || isMobileLayout || placement === 'bottom') return;
     if ((event.target as HTMLElement).closest(dragIgnoreSelector)) return;
+    onFocus?.();
     const rect = windowRef.current?.getBoundingClientRect();
     if (!rect) return;
     dragOffsetRef.current = {
@@ -112,19 +117,17 @@ export const ModalShell: React.FC<{
         : 'items-end';
 
   return (
-    <div
-      className={`fixed inset-0 z-50 flex justify-center bg-slate-950/45 p-4 ${shellPositionClass}`}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
+    <div className={`pointer-events-none fixed inset-0 flex justify-center p-4 ${shellPositionClass}`} style={{ zIndex }}>
       <div
         ref={windowRef}
-        className={`flex max-h-[calc(100vh-7rem)] w-full origin-bottom animate-[dockModalIn_160ms_ease-out] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${
+        className={`pointer-events-auto flex max-h-[calc(100vh-7rem)] w-full origin-bottom animate-[dockModalIn_160ms_ease-out] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${
           placement === 'center' && !isMobileLayout ? `fixed ${isDragging ? 'cursor-grabbing' : ''}` : ''
         } ${resizable && placement === 'center' && !isMobileLayout ? 'resize min-h-[28rem] min-w-[36rem]' : ''} ${maxWidthClass}`}
         style={floatingStyle}
-        onMouseDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => {
+          event.stopPropagation();
+          onFocus?.();
+        }}
       >
         <div
           className={`flex shrink-0 items-center justify-between border-b border-cad-line p-4 dark:border-slate-700 ${

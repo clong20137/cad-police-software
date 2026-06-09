@@ -563,6 +563,7 @@ export const Dashboard: React.FC = () => {
     }
   });
   const [activeQuickModal, setActiveQuickModal] = useState<QuickLaunchId | null>(null);
+  const [openQuickModals, setOpenQuickModals] = useState<QuickLaunchId[]>([]);
   const [customizingSlot, setCustomizingSlot] = useState<number | null>(null);
   const [draggedSlotIndex, setDraggedSlotIndex] = useState<number | null>(null);
   const [unitBoardSearch, setUnitBoardSearch] = useState('');
@@ -572,6 +573,8 @@ export const Dashboard: React.FC = () => {
     key: 'status',
     direction: 'asc'
   });
+  const [modalZOrder, setModalZOrder] = useState<Record<QuickLaunchId, number>>({} as Record<QuickLaunchId, number>);
+  const modalZCounterRef = useRef(60);
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
   const mapOverlaysRef = useRef<GoogleOverlayViewInstance[]>([]);
@@ -806,6 +809,28 @@ export const Dashboard: React.FC = () => {
   }, [activeQuickModal]);
 
   useEffect(() => {
+    if (!activeQuickModal) return;
+    setOpenQuickModals((current) => (current.includes(activeQuickModal) ? current : [...current, activeQuickModal]));
+    modalZCounterRef.current += 1;
+    setModalZOrder((current) => ({ ...current, [activeQuickModal]: modalZCounterRef.current }));
+  }, [activeQuickModal]);
+
+  const focusQuickModal = useCallback((modalId: QuickLaunchId) => {
+    modalZCounterRef.current += 1;
+    setActiveQuickModal(modalId);
+    setModalZOrder((current) => ({ ...current, [modalId]: modalZCounterRef.current }));
+  }, []);
+
+  const closeQuickModal = useCallback((modalId: QuickLaunchId) => {
+    setOpenQuickModals((current) => current.filter((item) => item !== modalId));
+    setActiveQuickModal((current) => {
+      if (current !== modalId) return current;
+      const remaining = openQuickModals.filter((item) => item !== modalId);
+      return remaining[remaining.length - 1] || null;
+    });
+  }, [openQuickModals]);
+
+  useEffect(() => {
     directoryRef.current = directory;
   }, [directory]);
 
@@ -830,7 +855,7 @@ export const Dashboard: React.FC = () => {
         return;
       }
       if (activeQuickModal) {
-        setActiveQuickModal(null);
+        closeQuickModal(activeQuickModal);
         return;
       }
       if (settingsOpen) {
@@ -840,7 +865,7 @@ export const Dashboard: React.FC = () => {
 
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [activeQuickModal, addressSuggestionsOpen, changePasswordOpen, customizingSlot, emojiOpen, settingsOpen]);
+  }, [activeQuickModal, addressSuggestionsOpen, changePasswordOpen, closeQuickModal, customizingSlot, emojiOpen, settingsOpen]);
 
   const playAlert = useCallback((kind: 'message' | 'call') => {
     try {
@@ -1161,7 +1186,7 @@ export const Dashboard: React.FC = () => {
           zoomControl: true,
           mapTypeControl: false,
           streetViewControl: false,
-          fullscreenControl: true,
+          fullscreenControl: false,
           styles: theme === 'dark' ? darkMapStyles : []
         });
       }
@@ -1487,7 +1512,7 @@ export const Dashboard: React.FC = () => {
       });
       setIncidents((current) => [incident, ...current.filter((item) => item.id !== incident.id)]);
       setSelectedIncidentId(incident.id);
-      setActiveQuickModal(null);
+      closeQuickModal('new-call');
       setIncidentError('');
         setIncidentForm({
           type: configuredCallTypes[0]?.label || '911 Call',
@@ -1523,7 +1548,7 @@ export const Dashboard: React.FC = () => {
       });
       setIncidents((current) => [incident, ...current.filter((item) => item.id !== incident.id)]);
       setSelectedIncidentId(incident.id);
-      setActiveQuickModal('call-detail');
+      focusQuickModal('call-detail');
       setIncidentError('');
     } catch (error) {
       const apiMessage =
@@ -1599,7 +1624,7 @@ export const Dashboard: React.FC = () => {
     if (item === 'settings') {
       setSettingsOpen(false);
     }
-    setActiveQuickModal(item);
+    focusQuickModal(item);
   };
   const setUnitBoardSortKey = (key: UnitBoardSortKey) => {
     setUnitBoardSort((current) =>
@@ -1609,9 +1634,8 @@ export const Dashboard: React.FC = () => {
     );
   };
 
-  const quickModalTitle = activeQuickModal
-    ? quickLaunchOptions.find((item) => item.id === activeQuickModal)?.label || 'Quick Launch'
-    : '';
+  const quickModalTitle = (modalId: QuickLaunchId) =>
+    quickLaunchOptions.find((item) => item.id === modalId)?.label || 'Quick Launch';
   const realtimeStatusLabel =
     realtimeState === 'live'
       ? `Live${lastRealtimeSync ? ` - synced ${lastRealtimeSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`
@@ -1720,7 +1744,7 @@ export const Dashboard: React.FC = () => {
       <div className="flex justify-end gap-2 sm:col-span-2">
         <button
           type="button"
-          onClick={() => setActiveQuickModal(null)}
+          onClick={() => closeQuickModal('new-call')}
           className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"
         >
           Cancel
@@ -1881,8 +1905,8 @@ export const Dashboard: React.FC = () => {
     </div>
   );
 
-  const renderQuickModalContent = () => {
-    if (activeQuickModal === 'messages') {
+  const renderQuickModalContent = (modalId: QuickLaunchId) => {
+    if (modalId === 'messages') {
       return (
         <div className="grid h-[min(70vh,680px)] min-h-[520px] overflow-hidden rounded-md border border-cad-line sm:grid-cols-[220px_1fr]">
           <div className="relative flex h-full min-h-0 flex-col border-r border-cad-line bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
@@ -2118,15 +2142,15 @@ export const Dashboard: React.FC = () => {
       );
     }
 
-    if (activeQuickModal === 'new-call') {
+    if (modalId === 'new-call') {
       return renderNewCallForm();
     }
 
-    if (activeQuickModal === 'calls') {
+    if (modalId === 'calls') {
       return renderCallManagement(true);
     }
 
-    if ((activeQuickModal as string) === 'calls') {
+    if ((modalId as string) === 'calls') {
       return (
         <div className="max-h-[70vh] space-y-2 overflow-y-auto">
           {incidents.map((incident) => (
@@ -2135,7 +2159,7 @@ export const Dashboard: React.FC = () => {
               type="button"
               onClick={() => {
                 setSelectedIncidentId(incident.id);
-                setActiveQuickModal('call-detail');
+                focusQuickModal('call-detail');
               }}
               className="w-full rounded-md border border-slate-200 bg-white p-3 text-left hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800"
             >
@@ -2148,7 +2172,7 @@ export const Dashboard: React.FC = () => {
       );
     }
 
-    if (activeQuickModal === 'inquiries') {
+    if (modalId === 'inquiries') {
       return (
         <InquiryPanel
           officers={directory.filter((item) => item.role === UserRole.OFFICER || item.role === UserRole.ADMIN)}
@@ -2159,7 +2183,7 @@ export const Dashboard: React.FC = () => {
       );
     }
 
-    if (activeQuickModal === 'units') {
+    if (modalId === 'units') {
       return (
         <div className="grid h-full min-h-[520px] gap-3 overflow-hidden">
           <div className="grid shrink-0 gap-2 md:grid-cols-[1fr_9.5rem_9.5rem_auto]">
@@ -2260,7 +2284,7 @@ export const Dashboard: React.FC = () => {
       );
     }
 
-    if (activeQuickModal === 'unit-detail') {
+    if (modalId === 'unit-detail') {
       return selectedUnit ? (
         <dl className="grid gap-3 text-sm">
           <Detail label="Unit" value={displayCadUnitNumber(selectedUnit)} />
@@ -2274,11 +2298,11 @@ export const Dashboard: React.FC = () => {
       );
     }
 
-    if (activeQuickModal === 'call-detail') {
+    if (modalId === 'call-detail') {
       return renderCallManagement(false);
     }
 
-    if ((activeQuickModal as string) === 'call-detail') {
+    if ((modalId as string) === 'call-detail') {
       return selectedIncident ? (
         <dl className="grid gap-3 text-sm">
           <Detail label="Call" value={selectedIncident.callNumber} />
@@ -2687,17 +2711,21 @@ export const Dashboard: React.FC = () => {
         onSubmit={changePassword}
       />
 
-      <ModalShell
-        title={quickModalTitle}
-        open={Boolean(activeQuickModal)}
-        onClose={() => setActiveQuickModal(null)}
-        placement={activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' || activeQuickModal === 'units' ? 'center' : 'bottom'}
-        maxWidthClass={activeQuickModal === 'units' ? 'max-w-none w-[min(92vw,54rem)]' : activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'max-w-5xl' : 'mb-20 max-w-2xl'}
-        contentClassName={activeQuickModal === 'units' ? 'p-3 overflow-hidden h-[min(70vh,680px)]' : 'p-4 overflow-hidden'}
-        resizable={activeQuickModal === 'units'}
-      >
-        {activeQuickModal ? renderQuickModalContent() : null}
-      </ModalShell>
+      {openQuickModals.map((modalId) => (
+        <ModalShell
+          key={modalId}
+          title={quickModalTitle(modalId)}
+          open
+          onClose={() => closeQuickModal(modalId)}
+          onFocus={() => focusQuickModal(modalId)}
+          zIndex={modalZOrder[modalId] || 50}
+          placement="center"
+          maxWidthClass={modalId === 'units' ? 'max-w-none w-[min(92vw,54rem)]' : modalId === 'messages' || modalId === 'calls' || modalId === 'call-detail' ? 'max-w-5xl' : 'max-w-2xl'}
+          contentClassName={modalId === 'units' ? 'p-3 overflow-hidden h-[min(70vh,680px)]' : 'p-4 overflow-hidden'}
+        >
+          {renderQuickModalContent(modalId)}
+        </ModalShell>
+      ))}
       </div>
     </div>
   );

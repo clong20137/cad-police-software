@@ -350,6 +350,8 @@ export const OfficerDashboard: React.FC = () => {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [activeDockItem, setActiveDockItem] = useState<DockItem | null>(null);
+  const [openDockItems, setOpenDockItems] = useState<DockItem[]>([]);
+  const [dockZOrder, setDockZOrder] = useState<Record<DockItem, number>>({} as Record<DockItem, number>);
   const [dockSlots, setDockSlots] = useState<DockSlot[]>(() => {
     const stored = localStorage.getItem('cad_officer_quick_slots');
     if (!stored) return defaultDockSlots;
@@ -406,6 +408,7 @@ export const OfficerDashboard: React.FC = () => {
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
   const activeQuickModalRef = useRef<DockItem | null>(null);
+  const dockZCounterRef = useRef(60);
 
   const assignedIncidents = useMemo(
     () => incidents.filter((incident) => incident.units.some((unit) => unit.userId === user?.id && unit.status !== 'Cleared')),
@@ -529,6 +532,28 @@ export const OfficerDashboard: React.FC = () => {
   }, [activeDockItem]);
 
   useEffect(() => {
+    if (!activeDockItem) return;
+    setOpenDockItems((current) => (current.includes(activeDockItem) ? current : [...current, activeDockItem]));
+    dockZCounterRef.current += 1;
+    setDockZOrder((current) => ({ ...current, [activeDockItem]: dockZCounterRef.current }));
+  }, [activeDockItem]);
+
+  const focusDockItem = useCallback((item: DockItem) => {
+    dockZCounterRef.current += 1;
+    focusDockItem(item);
+    setDockZOrder((current) => ({ ...current, [item]: dockZCounterRef.current }));
+  }, []);
+
+  const closeDockItem = useCallback((item: DockItem) => {
+    setOpenDockItems((current) => current.filter((dockItem) => dockItem !== item));
+    setActiveDockItem((current) => {
+      if (current !== item) return current;
+      const remaining = openDockItems.filter((dockItem) => dockItem !== item);
+      return remaining[remaining.length - 1] || null;
+    });
+  }, [openDockItems]);
+
+  useEffect(() => {
     if (!selectedMessageUserId) {
       setMessages([]);
       return;
@@ -552,7 +577,10 @@ export const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setActiveDockItem(null);
+        if (activeDockItem) {
+          closeDockItem(activeDockItem);
+          return;
+        }
         setCustomizingSlot(null);
         setChangePasswordOpen(false);
         setSettingsOpen(false);
@@ -560,7 +588,7 @@ export const OfficerDashboard: React.FC = () => {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [activeDockItem, closeDockItem]);
 
   useEffect(() => {
     const token = authClient.getAccessToken();
@@ -1285,17 +1313,20 @@ export const OfficerDashboard: React.FC = () => {
         onDrop={swapDockSlots}
       />
 
-      <ModalShell
-        title={activeDockItem ? dockItems.find((item) => item.id === activeDockItem)?.label || 'Quick Launch' : ''}
-        open={Boolean(activeDockItem)}
-        onClose={() => setActiveDockItem(null)}
-        maxWidthClass="max-w-3xl"
-        placement="center"
-        contentClassName="max-h-[70vh] overflow-auto p-4"
-      >
-        {activeDockItem ? (
+      {openDockItems.map((dockItem) => (
+        <ModalShell
+          key={dockItem}
+          title={dockItems.find((item) => item.id === dockItem)?.label || 'Quick Launch'}
+          open
+          onClose={() => closeDockItem(dockItem)}
+          onFocus={() => focusDockItem(dockItem)}
+          zIndex={dockZOrder[dockItem] || 50}
+          maxWidthClass="max-w-3xl"
+          placement="center"
+          contentClassName="max-h-[70vh] overflow-auto p-4"
+        >
               <DockContent
-                activeItem={activeDockItem}
+                activeItem={dockItem}
                 incidents={assignedIncidents}
                 selectedIncident={selectedIncident}
                 selectedStatus={selectedStatus}
@@ -1346,8 +1377,8 @@ export const OfficerDashboard: React.FC = () => {
                 onSendMessage={sendMessage}
                 onAttachment={handleAttachment}
               />
-        ) : null}
-      </ModalShell>
+        </ModalShell>
+      ))}
 
       <ChangePasswordModal
         open={changePasswordOpen}
