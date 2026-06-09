@@ -1093,14 +1093,9 @@ export const OfficerDashboard: React.FC = () => {
         )}
       </div>
 
-      <header className="absolute left-0 right-0 top-0 z-30 flex min-h-16 items-center justify-between border-b border-slate-800 bg-cad-navy px-4 text-white shadow-xl">
-        <div>
-          <h1 className="text-xl font-semibold">Officer CAD</h1>
-          <p className="text-xs text-slate-300">{user?.cadUnitNumber || user?.unitNumber || user?.badge || user?.name}</p>
-        </div>
-        <div className="relative flex items-center gap-2">
+      <div className="pointer-events-auto fixed right-3 top-3 z-40 flex select-none items-center gap-1.5 rounded-2xl border border-cad-line bg-white/90 p-2 text-cad-ink shadow-[0_16px_45px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950/85 dark:text-white sm:right-5 sm:top-4 sm:gap-2">
           <span
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-md ring-1 transition ${realtimeStatusClass}`}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white shadow-sm ring-1 transition dark:border-slate-700 dark:bg-slate-800 ${realtimeStatusClass}`}
             title={realtimeStatusLabel}
             aria-label={`Realtime status: ${realtimeStatusLabel}`}
           >
@@ -1109,7 +1104,7 @@ export const OfficerDashboard: React.FC = () => {
           <button
             type="button"
             onClick={() => setActiveDockItem('inquiries')}
-            className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20"
+            className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
             aria-label="Open inquiries"
             title="Inquiries"
           >
@@ -1118,13 +1113,13 @@ export const OfficerDashboard: React.FC = () => {
           <button
             type="button"
             onClick={() => setSettingsOpen((value) => !value)}
-            className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20"
+            className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
             aria-label="Settings"
           >
             <Settings size={19} />
           </button>
           {settingsOpen && (
-            <div className="absolute right-0 top-full z-40 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-2 text-slate-950 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+            <div className="absolute right-0 top-12 z-40 w-[calc(100vw-6.5rem)] max-w-64 origin-top-right rounded border border-slate-200 bg-white py-1 text-slate-950 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-white sm:w-64">
               <div className="border-b border-slate-100 px-3 py-2 dark:border-slate-800">
                 <p className="truncate text-sm font-semibold">{user?.name}</p>
                 <p className="truncate text-xs text-slate-500 dark:text-slate-400">{user?.email}</p>
@@ -1161,8 +1156,7 @@ export const OfficerDashboard: React.FC = () => {
               </button>
             </div>
           )}
-        </div>
-      </header>
+      </div>
 
       <button
         type="button"

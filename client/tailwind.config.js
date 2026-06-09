@@ -9,10 +9,10 @@ module.exports = {
           ink: '#172033',
           panel: '#f8fafc',
           line: '#d8dee9',
-          blue: '#1d4ed8',
+          blue: '#1a365d',
           navy: '#0f172a',
           signal: '#0f766e',
-          alert: '#b42318'
+          alert: '#c0392b'
         }
       },
       boxShadow: {
