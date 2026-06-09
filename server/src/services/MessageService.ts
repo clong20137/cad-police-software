@@ -14,6 +14,10 @@ type MessageRow = RowDataPacket & {
   encrypted: number | boolean;
   read_at: Date | null;
   created_at: Date;
+  sender_reaction: string | null;
+  recipient_reaction: string | null;
+  sender_deleted_at: Date | null;
+  recipient_deleted_at: Date | null;
 };
 
 type AttachmentRow = RowDataPacket & {
@@ -109,7 +113,9 @@ const toMessage = (row: MessageRow, attachments: MessageAttachment[] = []): Chat
   encrypted: Boolean(row.encrypted),
   attachments,
   readAt: row.read_at || undefined,
-  createdAt: row.created_at
+  createdAt: row.created_at,
+  senderReaction: row.sender_reaction || null,
+  recipientReaction: row.recipient_reaction || null
 });
 
 export class MessageService {
@@ -193,12 +199,18 @@ export class MessageService {
       `
         SELECT *
         FROM messages
-        WHERE (sender_id = ? AND recipient_id = ?)
-           OR (sender_id = ? AND recipient_id = ?)
+        WHERE (
+            (sender_id = ? AND recipient_id = ?)
+            OR (sender_id = ? AND recipient_id = ?)
+          )
+          AND NOT (
+            (sender_id = ? AND sender_deleted_at IS NOT NULL)
+            OR (recipient_id = ? AND recipient_deleted_at IS NOT NULL)
+          )
         ORDER BY created_at ASC
         LIMIT 200
       `,
-      [userId, otherUserId, otherUserId, userId]
+      [userId, otherUserId, otherUserId, userId, userId, userId]
     );
     const attachments = await this.getAttachments(rows.map((row) => row.id));
     return rows.map((row) => toMessage(row, attachments[row.id] || []));
@@ -233,12 +245,16 @@ export class MessageService {
           MAX(created_at) AS updated_at,
           SUM(CASE WHEN recipient_id = ? AND read_at IS NULL THEN 1 ELSE 0 END) AS unread_count
         FROM messages
-        WHERE sender_id = ? OR recipient_id = ?
+        WHERE (sender_id = ? OR recipient_id = ?)
+          AND NOT (
+            (sender_id = ? AND sender_deleted_at IS NOT NULL)
+            OR (recipient_id = ? AND recipient_deleted_at IS NOT NULL)
+          )
         GROUP BY other_user_id
         ORDER BY updated_at DESC
         LIMIT 200
       `,
-      [userId, userId, userId, userId]
+      [userId, userId, userId, userId, userId, userId]
     );
 
     const messageIds = threadRows.map((row) => row.last_message_id).filter(Boolean);
@@ -285,6 +301,61 @@ export class MessageService {
     );
 
     return rows.map((row) => row.id);
+  }
+
+  static async react(messageId: string, userId: string, reaction: string | null): Promise<ChatMessage> {
+    const message = await this.getMessage(messageId);
+    if (!message || (message.senderId !== userId && message.recipientId !== userId)) {
+      throw new Error('Message not found.');
+    }
+
+    const column = message.senderId === userId ? 'sender_reaction' : 'recipient_reaction';
+    await pool.execute(
+      `UPDATE messages SET ${column} = ? WHERE id = ?`,
+      [reaction?.slice(0, 32) || null, messageId]
+    );
+
+    const updated = await this.getMessage(messageId);
+    if (!updated) {
+      throw new Error('Message not found.');
+    }
+    return updated;
+  }
+
+  static async deleteMessage(messageId: string, userId: string): Promise<ChatMessage | null> {
+    const message = await this.getMessage(messageId);
+    if (!message || (message.senderId !== userId && message.recipientId !== userId)) {
+      return null;
+    }
+
+    const column = message.senderId === userId ? 'sender_deleted_at' : 'recipient_deleted_at';
+    await pool.execute(
+      `UPDATE messages SET ${column} = UTC_TIMESTAMP() WHERE id = ?`,
+      [messageId]
+    );
+    return message;
+  }
+
+  static async deleteConversation(userId: string, otherUserId: string): Promise<string[]> {
+    const conversation = await this.getConversation(userId, otherUserId);
+    const messageIds = conversation.map((message) => message.id);
+    if (messageIds.length === 0) {
+      return [];
+    }
+
+    await pool.execute(
+      `
+        UPDATE messages
+        SET
+          sender_deleted_at = CASE WHEN sender_id = ? THEN UTC_TIMESTAMP() ELSE sender_deleted_at END,
+          recipient_deleted_at = CASE WHEN recipient_id = ? THEN UTC_TIMESTAMP() ELSE recipient_deleted_at END
+        WHERE (sender_id = ? AND recipient_id = ?)
+           OR (sender_id = ? AND recipient_id = ?)
+      `,
+      [userId, userId, userId, otherUserId, otherUserId, userId]
+    );
+
+    return messageIds;
   }
 
   private static async getAttachments(messageIds: string[]): Promise<Record<string, MessageAttachment[]>> {

@@ -84,6 +84,8 @@ export interface ChatMessage {
   attachments: MessageAttachment[];
   readAt?: Date;
   createdAt: Date;
+  senderReaction?: string | null;
+  recipientReaction?: string | null;
   deliveryStatus?: 'sending' | 'sent' | 'failed' | 'read';
 }
 

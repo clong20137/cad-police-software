@@ -250,7 +250,11 @@ export const initializeMessagingTables = async (): Promise<void> => {
   const columns = [
     "ADD COLUMN body_iv VARCHAR(32) NULL",
     "ADD COLUMN body_tag VARCHAR(32) NULL",
-    "ADD COLUMN encrypted BOOLEAN NOT NULL DEFAULT FALSE"
+    "ADD COLUMN encrypted BOOLEAN NOT NULL DEFAULT FALSE",
+    "ADD COLUMN sender_reaction VARCHAR(32) NULL",
+    "ADD COLUMN recipient_reaction VARCHAR(32) NULL",
+    "ADD COLUMN sender_deleted_at DATETIME NULL",
+    "ADD COLUMN recipient_deleted_at DATETIME NULL"
   ];
 
   for (const column of columns) {

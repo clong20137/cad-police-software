@@ -4,7 +4,15 @@ import { AuditLogService } from '../services/AuditLogService';
 import { MessageService } from '../services/MessageService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
 import { requireRequestSignature, sensitiveRateLimiter } from '../middleware/security';
-import { broadcastMessage, broadcastMessageRead, broadcastPresence, broadcastTrackedUnits } from '../realtime/socket';
+import {
+  broadcastMessage,
+  broadcastMessageDeleted,
+  broadcastMessageRead,
+  broadcastMessageTyping,
+  broadcastMessageUpdated,
+  broadcastPresence,
+  broadcastTrackedUnits
+} from '../realtime/socket';
 import {
   DestinationUpdateRequest,
   ChangePasswordRequest,
@@ -378,6 +386,17 @@ router.post(
   }
 );
 
+router.post(
+  '/messages/:userId/typing',
+  authMiddleware,
+  async (req: Request<{ userId: string }, {}, { isTyping?: boolean }>, res: Response): Promise<void> => {
+    const actorId = req.user?.id || '';
+    const actor = await AuthService.getUser(actorId);
+    broadcastMessageTyping(actorId, req.params.userId, req.body.isTyping === true, actor?.name || 'Someone');
+    res.json({ success: true });
+  }
+);
+
 router.get(
   '/messages/:userId',
   authMiddleware,
@@ -387,6 +406,45 @@ router.get(
     const query = typeof req.query.q === 'string' ? req.query.q : '';
     const messages = await MessageService.searchConversation(req.user?.id || '', req.params.userId, query);
     res.json(messages);
+  }
+);
+
+router.patch(
+  '/messages/:messageId/reaction',
+  authMiddleware,
+  async (req: Request<{ messageId: string }, {}, { reaction?: string | null }>, res: Response): Promise<void> => {
+    try {
+      const updated = await MessageService.react(req.params.messageId, req.user?.id || '', req.body.reaction || null);
+      broadcastMessageUpdated(updated);
+      res.json(updated);
+    } catch {
+      res.status(404).json({ error: 'Message not found' });
+    }
+  }
+);
+
+router.delete(
+  '/messages/thread/:userId',
+  authMiddleware,
+  async (req: Request<{ userId: string }>, res: Response): Promise<void> => {
+    const deletedMessageIds = await MessageService.deleteConversation(req.user?.id || '', req.params.userId);
+    broadcastMessageDeleted(req.user?.id || '', req.params.userId, deletedMessageIds);
+    res.json({ messageIds: deletedMessageIds });
+  }
+);
+
+router.delete(
+  '/messages/:messageId',
+  authMiddleware,
+  async (req: Request<{ messageId: string }>, res: Response): Promise<void> => {
+    const deleted = await MessageService.deleteMessage(req.params.messageId, req.user?.id || '');
+    if (!deleted) {
+      res.status(404).json({ error: 'Message not found' });
+      return;
+    }
+    const otherUserId = deleted.senderId === req.user?.id ? deleted.recipientId : deleted.senderId;
+    broadcastMessageDeleted(req.user?.id || '', otherUserId, [deleted.id]);
+    res.json({ messageIds: [deleted.id] });
   }
 );
 

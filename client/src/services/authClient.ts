@@ -191,6 +191,25 @@ class AuthClient {
     return response.data;
   }
 
+  async sendMessageTyping(recipientId: string, isTyping: boolean): Promise<void> {
+    await this.api.post(`/auth/messages/${recipientId}/typing`, { isTyping });
+  }
+
+  async reactToMessage(messageId: string, reaction: string | null): Promise<ChatMessage> {
+    const response = await this.api.patch<ChatMessage>(`/auth/messages/${messageId}/reaction`, { reaction });
+    return response.data;
+  }
+
+  async deleteMessage(messageId: string): Promise<string[]> {
+    const response = await this.api.delete<{ messageIds: string[] }>(`/auth/messages/${messageId}`);
+    return response.data.messageIds;
+  }
+
+  async deleteMessageThread(userId: string): Promise<string[]> {
+    const response = await this.api.delete<{ messageIds: string[] }>(`/auth/messages/thread/${userId}`);
+    return response.data.messageIds;
+  }
+
   async changePassword(input: ChangePasswordRequest): Promise<void> {
     await this.api.post('/auth/change-password', input);
   }

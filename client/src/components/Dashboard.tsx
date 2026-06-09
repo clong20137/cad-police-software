@@ -21,8 +21,12 @@ import {
   Shield,
   SlidersHorizontal,
   CheckCheck,
+  Check,
   Moon,
+  Plus,
+  SmilePlus,
   Sun,
+  Trash2,
   Wifi,
   WifiOff,
   X,
@@ -416,6 +420,36 @@ const formatMessageTime = (value?: Date | string): string => {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
+const messageReactionOptions = [
+  { key: 'thumbsUp', label: 'Thumbs up', icon: '👍' },
+  { key: 'check', label: 'Check', icon: '✅' },
+  { key: 'laugh', label: 'Laugh', icon: '😂' },
+  { key: 'heart', label: 'Heart', icon: '❤️' },
+  { key: 'eyes', label: 'Eyes', icon: '👀' }
+] as const;
+
+const getInitials = (name: string): string => {
+  const parts = name.trim().split(/\s+/u).filter(Boolean);
+  if (parts.length === 0) return 'U';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+};
+
+const getMessageReactionForUser = (message: ChatMessage, userId?: string): string | null => {
+  if (!userId) return null;
+  return message.senderId === userId ? message.senderReaction || null : message.recipientReaction || null;
+};
+
+const getMessageReactionForOtherUser = (message: ChatMessage, userId?: string): string | null => {
+  if (!userId) return null;
+  return message.senderId === userId ? message.recipientReaction || null : message.senderReaction || null;
+};
+
+const getReactionIcon = (reaction?: string | null): string =>
+  messageReactionOptions.find((option) => option.key === reaction)?.icon || '';
+
+const deliveryLabel = (message: ChatMessage): string => (message.readAt ? 'Read' : 'Delivered');
+
 const addGooglePulseMarker = ({
   map,
   lat,
@@ -536,6 +570,9 @@ export const Dashboard: React.FC = () => {
   const [emojiButton, setEmojiButton] = useState(() => emojiCatalog[Math.floor(Math.random() * emojiCatalog.length)] || '😀');
   const [emojiSearch, setEmojiSearch] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<SendMessageAttachment[]>([]);
+  const [typingByThread, setTypingByThread] = useState<Record<string, { name: string; expiresAt: number }>>({});
+  const [messagePendingDelete, setMessagePendingDelete] = useState<ChatMessage | null>(null);
+  const [threadPendingDeleteUserId, setThreadPendingDeleteUserId] = useState<string | null>(null);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [adminConfig, setAdminConfig] = useState<AdminConfigurationItem[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
@@ -587,6 +624,8 @@ export const Dashboard: React.FC = () => {
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
+  const typingStopTimerRef = useRef<number | null>(null);
+  const lastTypingSentRef = useRef(0);
   const activeQuickModalRef = useRef<QuickLaunchId | null>(null);
   const directoryRef = useRef<User[]>([]);
   const latestPositionRef = useRef<GeolocationPosition | null>(null);
@@ -808,6 +847,17 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     selectedMessageUserIdRef.current = selectedMessageUserId;
   }, [selectedMessageUserId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setTypingByThread((current) => {
+        const entries = Object.entries(current).filter(([, value]) => value.expiresAt > now);
+        return entries.length === Object.keys(current).length ? current : Object.fromEntries(entries);
+      });
+    }, 1200);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     activeQuickModalRef.current = activeQuickModal;
@@ -1117,6 +1167,30 @@ export const Dashboard: React.FC = () => {
         )
       );
     });
+    socket.on('message:update', (message: ChatMessage) => {
+      setMessages((current) => current.map((item) => (item.id === message.id ? message : item)));
+      setMessageThreadSummaries((current) =>
+        current.map((thread) => thread.lastMessage?.id === message.id ? { ...thread, lastMessage: message } : thread)
+      );
+    });
+    socket.on('message:deleted', (payload: { actorId: string; otherUserId: string; messageIds: string[] }) => {
+      if (payload.actorId !== user?.id) return;
+      setMessages((current) => current.filter((message) => !payload.messageIds.includes(message.id)));
+      loadMessageThreads();
+    });
+    socket.on('message:typing', (payload: { actorId: string; typingThreadId?: string; name?: string; isTyping?: boolean }) => {
+      if (!payload.actorId || payload.actorId === user?.id) return;
+      const threadId = payload.typingThreadId || payload.actorId;
+      setTypingByThread((current) => {
+        const next = { ...current };
+        if (payload.isTyping === false) {
+          delete next[threadId];
+        } else {
+          next[threadId] = { name: payload.name || 'Someone', expiresAt: Date.now() + 3500 };
+        }
+        return next;
+      });
+    });
 
     return () => {
       socket.disconnect();
@@ -1340,6 +1414,7 @@ export const Dashboard: React.FC = () => {
       (message.senderId === selectedMessageUserId && message.recipientId === user?.id)
   );
   const searchedMessages = visibleMessages;
+  const selectedTyping = selectedMessageUserId ? typingByThread[selectedMessageUserId] : null;
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
   const sidebarItems: ShieldSidebarItem[] = [
     { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveQuickModal('inquiries') },
@@ -1356,6 +1431,55 @@ export const Dashboard: React.FC = () => {
     setPinnedMessageThreadIds((current) =>
       current.includes(threadId) ? current.filter((id) => id !== threadId) : [threadId, ...current]
     );
+  };
+
+  const updateMessageBody = (value: string) => {
+    setMessageBody(value);
+    if (!selectedMessageUserId) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current > 1600) {
+      lastTypingSentRef.current = now;
+      authClient.sendMessageTyping(selectedMessageUserId, true).catch(() => undefined);
+    }
+    if (typingStopTimerRef.current) window.clearTimeout(typingStopTimerRef.current);
+    typingStopTimerRef.current = window.setTimeout(() => {
+      authClient.sendMessageTyping(selectedMessageUserId, false).catch(() => undefined);
+    }, 1800);
+  };
+
+  const reactToMessage = async (message: ChatMessage, reaction: string) => {
+    const currentReaction = getMessageReactionForUser(message, user?.id);
+    const nextReaction = currentReaction === reaction ? null : reaction;
+    try {
+      const updated = await authClient.reactToMessage(message.id, nextReaction);
+      setMessages((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch {
+      pushToast({ title: 'Reaction failed', message: 'Unable to update message reaction.', tone: 'warning' });
+    }
+  };
+
+  const deleteChatMessage = async (message: ChatMessage) => {
+    try {
+      const messageIds = await authClient.deleteMessage(message.id);
+      setMessages((current) => current.filter((item) => !messageIds.includes(item.id)));
+      setMessagePendingDelete(null);
+      loadMessageThreads();
+    } catch {
+      pushToast({ title: 'Delete failed', message: 'Unable to delete message.', tone: 'warning' });
+    }
+  };
+
+  const deleteMessageThread = async (threadUserId: string) => {
+    try {
+      const messageIds = await authClient.deleteMessageThread(threadUserId);
+      setMessages((current) => current.filter((item) => !messageIds.includes(item.id)));
+      setThreadPendingDeleteUserId(null);
+      if (selectedMessageUserId === threadUserId) setSelectedMessageUserId('');
+      setPinnedMessageThreadIds((current) => current.filter((id) => id !== threadUserId));
+      loadMessageThreads();
+    } catch {
+      pushToast({ title: 'Delete failed', message: 'Unable to delete conversation.', tone: 'warning' });
+    }
   };
 
   const sendChatMessage = async () => {
@@ -1383,6 +1507,7 @@ export const Dashboard: React.FC = () => {
     setMessageBody('');
     setPendingAttachments([]);
     setEmojiOpen(false);
+    authClient.sendMessageTyping(selectedMessageUserId, false).catch(() => undefined);
     try {
       const sent = await authClient.sendMessage(selectedMessageUserId, draftBody, draftAttachments);
       setMessages((current) => current.map((item) => (item.id === tempId ? { ...sent, deliveryStatus: 'sent' } : item)));
@@ -2023,6 +2148,9 @@ export const Dashboard: React.FC = () => {
                       }`}
                     >
                       <span className="flex items-center gap-2 font-semibold">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cad-blue/10 text-xs font-black text-cad-blue">
+                          {getInitials(item.name)}
+                        </span>
                         <span
                           className={`h-2.5 w-2.5 rounded-full ${
                             onlineUserIds.includes(item.id) ? 'bg-emerald-500' : 'bg-slate-300'
@@ -2050,6 +2178,19 @@ export const Dashboard: React.FC = () => {
                         >
                           {pinnedMessageThreadIds.includes(item.id) ? <PinOff size={13} /> : <Pin size={13} />}
                         </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setThreadPendingDeleteUserId(item.id);
+                          }}
+                          disabled={!thread?.lastMessage}
+                          className="rounded-full bg-red-600 p-1 text-white hover:bg-red-700 disabled:opacity-40"
+                          aria-label="Delete conversation"
+                          title="Delete conversation"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </span>
                       <span className="mt-1 block truncate text-xs text-slate-500">
                         {thread?.lastMessage?.body ||
@@ -2075,7 +2216,7 @@ export const Dashboard: React.FC = () => {
               aria-label="New message"
               title="New message"
             >
-              <Send size={18} />
+              <Plus size={18} />
             </button>
           </div>
           <div className="flex min-h-0 min-w-0 flex-col">
@@ -2116,29 +2257,83 @@ export const Dashboard: React.FC = () => {
                         )}
                         <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                           <div
-                            className={`max-w-[85%] rounded-[1.35rem] px-4 py-2.5 text-sm shadow-sm ${
+                            className={`group flex max-w-[85%] flex-col ${mine ? 'items-end text-right' : 'items-start text-left'}`}
+                          >
+                            <div
+                              className={`w-fit max-w-full rounded-[1.35rem] px-4 py-2.5 text-sm shadow-sm ${
                               mine
                                 ? 'rounded-br-md bg-cad-blue text-white'
                                 : 'rounded-bl-md border border-slate-200 bg-white text-cad-ink dark:border-slate-800 dark:bg-slate-900 dark:text-white'
-                            }`}
-                          >
-                            {message.body && <p className="whitespace-pre-wrap text-left leading-6">{message.body}</p>}
-                            {message.attachments?.map((attachment) => (
-                              <MessageAttachmentPreview key={attachment.id} attachment={attachment} mine={mine} />
-                            ))}
-                            <p className={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
-                              <Lock size={10} />
-                              {formatMessageTime(message.createdAt)}
+                              }`}
+                            >
+                              {message.body && <p className="whitespace-pre-wrap text-left leading-6">{message.body}</p>}
+                              {message.attachments?.map((attachment) => (
+                                <MessageAttachmentPreview key={attachment.id} attachment={attachment} mine={mine} />
+                              ))}
+                            </div>
+                            {(getMessageReactionForOtherUser(message, user?.id) || getMessageReactionForUser(message, user?.id)) && (
+                              <div className={`mt-1 flex gap-1 ${mine ? 'justify-end' : 'justify-start'}`}>
+                                {getMessageReactionForOtherUser(message, user?.id) && (
+                                  <span className="rounded-full bg-white px-2 py-0.5 text-xs shadow dark:bg-slate-900">
+                                    {getReactionIcon(getMessageReactionForOtherUser(message, user?.id))}
+                                  </span>
+                                )}
+                                {getMessageReactionForUser(message, user?.id) && (
+                                  <span className="rounded-full bg-cad-blue/10 px-2 py-0.5 text-xs text-cad-blue shadow">
+                                    {getReactionIcon(getMessageReactionForUser(message, user?.id))}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            <div className={`mt-1 flex flex-wrap items-center gap-1.5 px-1 text-[11px] font-semibold ${mine ? 'justify-end text-blue-100' : 'justify-start text-slate-400'}`}>
+                              <span>{formatMessageTime(message.createdAt)}</span>
                               {mine && message.deliveryStatus === 'sending' && <span>Sending</span>}
                               {mine && message.deliveryStatus === 'failed' && <span>Failed</span>}
-                              {mine && !message.readAt && message.deliveryStatus !== 'sending' && message.deliveryStatus !== 'failed' && <span>Sent</span>}
-                              {mine && message.readAt && <><CheckCheck size={12} />Read</>}
-                            </p>
+                              {mine && message.deliveryStatus !== 'sending' && message.deliveryStatus !== 'failed' && (
+                                <span className="inline-flex items-center gap-1">
+                                  {message.readAt ? <CheckCheck size={12} /> : <Check size={12} />}
+                                  {deliveryLabel(message)}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setMessagePendingDelete(message)}
+                                className="ml-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white opacity-100 shadow-sm hover:bg-red-700 sm:opacity-0 sm:group-hover:opacity-100"
+                                aria-label="Delete message"
+                                title="Delete message"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                              <span className="inline-flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                                <SmilePlus size={12} />
+                                {messageReactionOptions.map((reaction) => (
+                                  <button
+                                    key={reaction.key}
+                                    type="button"
+                                    onClick={() => reactToMessage(message, reaction.key)}
+                                    className={`rounded-full px-1.5 py-0.5 hover:bg-cad-blue/10 ${
+                                      getMessageReactionForUser(message, user?.id) === reaction.key ? 'bg-cad-blue/10 text-cad-blue' : ''
+                                    }`}
+                                    aria-label={reaction.label}
+                                    title={reaction.label}
+                                  >
+                                    {reaction.icon}
+                                  </button>
+                                ))}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
                     );
                   })}
+                  {selectedTyping && (
+                    <div className="flex justify-start">
+                      <div className="rounded-[1.35rem] rounded-bl-md border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        {selectedTyping.name} is typing...
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="relative shrink-0 border-t border-cad-line p-3 dark:border-slate-700">
                   {emojiOpen && (
@@ -2204,7 +2399,7 @@ export const Dashboard: React.FC = () => {
                     </button>
                     <input
                       value={messageBody}
-                      onChange={(event) => setMessageBody(event.target.value)}
+                      onChange={(event) => updateMessageBody(event.target.value)}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter') {
                           sendChatMessage();
@@ -2229,6 +2424,42 @@ export const Dashboard: React.FC = () => {
               </div>
             )}
           </div>
+          {threadPendingDeleteUserId && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4">
+              <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-2xl dark:bg-slate-900">
+                <h3 className="text-lg font-black">Delete Conversation</h3>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                  Delete the conversation with {directory.find((item) => item.id === threadPendingDeleteUserId)?.name || 'this user'}?
+                </p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setThreadPendingDeleteUserId(null)} className="rounded-md border border-cad-line px-3 py-2 text-sm font-bold">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={() => deleteMessageThread(threadPendingDeleteUserId)} className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-sm font-bold text-white hover:bg-red-700">
+                    <Trash2 size={15} />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {messagePendingDelete && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4">
+              <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-2xl dark:bg-slate-900">
+                <h3 className="text-lg font-black">Delete Message</h3>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Delete this message from your mailbox?</p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setMessagePendingDelete(null)} className="rounded-md border border-cad-line px-3 py-2 text-sm font-bold">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={() => deleteChatMessage(messagePendingDelete)} className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-sm font-bold text-white hover:bg-red-700">
+                    <Trash2 size={15} />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     }

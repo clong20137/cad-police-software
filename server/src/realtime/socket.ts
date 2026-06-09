@@ -111,6 +111,36 @@ export const broadcastMessageRead = (readerId: string, senderId: string, message
   io.to(`user:${senderId}`).emit('message:read', { readerId, senderId, messageIds });
 };
 
+export const broadcastMessageUpdated = (message: ChatMessage): void => {
+  if (!io) {
+    return;
+  }
+
+  io.to(`user:${message.senderId}`).emit('message:update', message);
+  io.to(`user:${message.recipientId}`).emit('message:update', message);
+};
+
+export const broadcastMessageDeleted = (actorId: string, otherUserId: string, messageIds: string[]): void => {
+  if (!io || messageIds.length === 0) {
+    return;
+  }
+
+  io.to(`user:${actorId}`).emit('message:deleted', { actorId, otherUserId, messageIds });
+};
+
+export const broadcastMessageTyping = (actorId: string, recipientId: string, isTyping: boolean, name: string): void => {
+  if (!io) {
+    return;
+  }
+
+  io.to(`user:${recipientId}`).emit('message:typing', {
+    actorId,
+    typingThreadId: actorId,
+    name,
+    isTyping
+  });
+};
+
 export const broadcastPresence = async (): Promise<void> => {
   if (!io) {
     return;
