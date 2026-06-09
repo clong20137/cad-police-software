@@ -104,7 +104,7 @@ export const QuickLaunchDock = <T extends string>({
   return (
     <>
       <section className={`pointer-events-none fixed bottom-3 right-3 z-40 hidden select-none transition-all duration-200 md:block ${sidebarCollapsed ? 'left-24' : 'left-[19.5rem]'}`}>
-        <div className="pointer-events-auto mx-auto w-fit max-w-full rounded-2xl border border-cad-line bg-white/90 p-2 text-cad-ink shadow-[0_16px_45px_rgba(15,23,42,0.22)] backdrop-blur dark:border-slate-700 dark:bg-slate-950/90 dark:text-white">
+        <div className="pointer-events-auto mx-auto w-fit max-w-full rounded-2xl border border-cad-line bg-white/90 p-2 text-cad-ink shadow-[0_16px_45px_rgba(15,23,42,0.22)] dark:border-slate-700 dark:bg-slate-950/90 dark:text-white">
           <div className="flex max-w-full flex-wrap items-center justify-center gap-2">
             {slots.map((slot, index) => {
               const option = typeof slot === 'string' ? options.find((item) => item.id === slot) || null : null;
@@ -236,7 +236,7 @@ export const QuickLaunchDock = <T extends string>({
       </section>
 
       <section className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-3 md:hidden">
-        <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-xl border border-cad-line bg-white/95 p-2 text-cad-ink shadow-2xl backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 dark:text-white">
+        <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-xl border border-cad-line bg-white/95 p-2 text-cad-ink shadow-2xl dark:border-slate-700 dark:bg-slate-950/95 dark:text-white">
           {slots.slice(0, 8).map((slot, index) => {
             const option = typeof slot === 'string' ? options.find((item) => item.id === slot) || null : null;
             const external = isExternalSlot(slot) ? slot : null;

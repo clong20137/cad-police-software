@@ -1231,22 +1231,22 @@ export const Dashboard: React.FC = () => {
   const searchedMessages = visibleMessages;
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
   const sidebarItems: ShieldSidebarItem[] = [
-    { id: 'dashboard', label: 'Dispatch', icon: Shield, active: true, onClick: () => setActiveQuickModal(null) },
-    { id: 'calls', label: 'Calls', icon: ClipboardList, badge: callBadgeCount, onClick: () => setActiveQuickModal('calls') },
-    { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, onClick: () => openQuickLaunch('messages') },
-    { id: 'inquiries', label: 'Inquiries', icon: Search, onClick: () => setActiveQuickModal('inquiries') },
-    { id: 'units', label: 'Units', icon: Users, onClick: () => setActiveQuickModal('units') },
-    { id: 'map', label: 'Map', icon: MapPin, onClick: () => setActiveQuickModal('map') }
+    { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveQuickModal('inquiries') },
+    { id: 'map', label: 'MAP', icon: MapPin, iconClassName: 'text-sky-600', onClick: () => setActiveQuickModal('map') },
+    { id: 'unit-status', label: 'UNIT STATUS', icon: Users, iconClassName: 'text-indigo-700', onClick: () => setActiveQuickModal('units') },
+    { id: 'calls', label: 'CALLS', icon: ClipboardList, badge: callBadgeCount, iconClassName: 'text-amber-700', onClick: () => setActiveQuickModal('calls') },
+    { id: 'messages', label: 'MESSAGES', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openQuickLaunch('messages') },
+    { id: 'protect', label: 'PROTECT ORD', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveQuickModal('inquiries') }
   ];
   const sidebarFooterItems: ShieldSidebarItem[] = [
     ...(user?.role === UserRole.ADMIN
-      ? [{ id: 'officer-side', label: 'Officer Side', icon: Radio, onClick: () => { window.location.href = '/officer'; } }]
+      ? [{ id: 'officer-side', label: 'OFFICER SIDE', icon: Radio, iconClassName: 'text-blue-700', onClick: () => { window.location.href = '/officer'; } }]
       : []),
     ...(hasPermission('manage_system')
-      ? [{ id: 'admin', label: 'Admin', icon: SlidersHorizontal, onClick: () => { window.location.href = '/admin/configuration'; } }]
+      ? [{ id: 'admin', label: 'ADMIN', icon: SlidersHorizontal, iconClassName: 'text-zinc-700', onClick: () => { window.location.href = '/admin/configuration'; } }]
       : []),
-    { id: 'settings', label: 'Settings', icon: Settings, onClick: () => setSettingsOpen((value) => !value) },
-    { id: 'sign-out', label: 'Sign out', icon: LogOut, onClick: logout }
+    { id: 'settings', label: 'SETTINGS', icon: Settings, iconClassName: 'text-zinc-700', onClick: () => setSettingsOpen((value) => !value) },
+    { id: 'sign-out', label: '10-42', icon: LogOut, iconClassName: 'text-red-700', onClick: logout }
   ];
 
   useEffect(() => {
@@ -2148,7 +2148,7 @@ export const Dashboard: React.FC = () => {
     <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-gray-100' : 'bg-gray-50 text-cad-ink'}`}>
       <ShieldSidebar
         title="CAD"
-        subtitle="Dispatch Console"
+        subtitle="Dispatch"
         user={user}
         collapsed={appSidebarCollapsed}
         onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}
@@ -2280,7 +2280,7 @@ export const Dashboard: React.FC = () => {
         <button
           type="button"
           onClick={recenterToCurrentLocation}
-          className="absolute bottom-4 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-line bg-white/95 text-cad-blue shadow-xl backdrop-blur transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
+          className="absolute bottom-4 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-line bg-white/95 text-cad-blue shadow-xl transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
           aria-label="Return to my location"
           title="My location"
         >
@@ -2290,7 +2290,7 @@ export const Dashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setSidebarOpen((value) => !value)}
-          className="absolute top-1/2 z-20 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-cad-line bg-white/95 text-cad-blue shadow-xl backdrop-blur transition-all duration-300 ease-out hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
+          className="absolute top-1/2 z-20 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-cad-line bg-white/95 text-cad-blue shadow-xl transition-all duration-300 ease-out hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
           style={{ left: sidebarOpen ? 'calc(min(22rem, calc(100vw - 2rem)) + 1rem)' : '0' }}
           aria-label={sidebarOpen ? 'Collapse units' : 'Open units'}
         >
@@ -2298,7 +2298,7 @@ export const Dashboard: React.FC = () => {
         </button>
 
         <div
-          className={`absolute bottom-24 left-4 top-20 z-10 flex w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
+          className={`absolute bottom-24 left-4 top-20 z-10 flex w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-cad-line bg-white/95 shadow-2xl transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
             sidebarOpen ? 'translate-x-0 opacity-100' : '-translate-x-[calc(100%+2rem)] opacity-0'
           }`}
         >
@@ -2619,7 +2619,7 @@ export const Dashboard: React.FC = () => {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto rounded-lg border p-3 shadow-2xl backdrop-blur animate-[dockModalIn_120ms_ease-out] ${
+            className={`pointer-events-auto rounded-lg border p-3 shadow-2xl animate-[dockModalIn_120ms_ease-out] ${
               toast.tone === 'warning'
                 ? 'border-red-200 bg-red-50/95 text-red-950 dark:border-red-800 dark:bg-red-950/95 dark:text-white'
                 : toast.tone === 'success'
@@ -2674,7 +2674,7 @@ const MetricCard: React.FC<{ icon: React.ReactNode; label: string; value: number
   label,
   value
 }) => (
-  <div className="flex min-h-12 min-w-36 items-center justify-between rounded-md border border-cad-line bg-white/95 px-3 py-2 shadow-control backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+  <div className="flex min-h-12 min-w-36 items-center justify-between rounded-md border border-cad-line bg-white/95 px-3 py-2 shadow-control dark:border-slate-700 dark:bg-slate-900/95">
     <div className="flex min-w-0 items-center gap-2">
       <span className="text-cad-blue">{icon}</span>
       <p className="truncate text-xs font-semibold text-slate-600 dark:text-slate-300">{label}</p>
@@ -2691,7 +2691,7 @@ const OverlayPanel: React.FC<{
   className?: string;
   children: React.ReactNode;
 }> = ({ title, subtitle, open, onToggle, className = '', children }) => (
-  <div className={`overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl backdrop-blur transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${className}`}>
+  <div className={`overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${className}`}>
     <div className="flex items-center justify-between gap-3 border-b border-cad-line px-3 py-2 dark:border-slate-700">
       <div className="min-w-0">
         <h2 className="truncate text-sm font-bold">{title}</h2>

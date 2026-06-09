@@ -458,19 +458,19 @@ export const OfficerDashboard: React.FC = () => {
   );
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
   const sidebarItems: ShieldSidebarItem[] = [
-    { id: 'officer', label: 'Officer', icon: Shield, active: true, onClick: () => setActiveDockItem(null) },
-    { id: 'calls', label: 'Calls', icon: ClipboardList, onClick: () => setActiveDockItem('calls') },
-    { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, onClick: () => openDockItem('messages') },
-    { id: 'inquiries', label: 'Inquiries', icon: Search, onClick: () => setActiveDockItem('inquiries') },
-    { id: 'location', label: 'Location', icon: MapPin, onClick: () => setActiveDockItem('location') },
-    { id: 'status', label: 'Status', icon: Radio, onClick: () => setActiveDockItem('status') }
+    { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveDockItem('inquiries') },
+    { id: 'map', label: 'MAP', icon: MapPin, iconClassName: 'text-sky-600', onClick: () => setActiveDockItem('location') },
+    { id: 'unit-status', label: 'UNIT STATUS', icon: Radio, iconClassName: 'text-indigo-700', onClick: () => setActiveDockItem('status') },
+    { id: 'calls', label: 'MY CASE', icon: ClipboardList, iconClassName: 'text-amber-700', onClick: () => setActiveDockItem('calls') },
+    { id: 'messages', label: 'MESSAGES', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openDockItem('messages') },
+    { id: 'protect', label: 'PROTECT ORD', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveDockItem('inquiries') }
   ];
   const sidebarFooterItems: ShieldSidebarItem[] = [
     ...(user?.role === UserRole.ADMIN
-      ? [{ id: 'dispatch-side', label: 'Dispatch Side', icon: ClipboardList, onClick: () => { window.location.href = '/dashboard'; } }]
+      ? [{ id: 'dispatch-side', label: 'DISPATCH SIDE', icon: ClipboardList, iconClassName: 'text-blue-700', onClick: () => { window.location.href = '/dashboard'; } }]
       : []),
-    { id: 'settings', label: 'Settings', icon: Settings, onClick: () => setSettingsOpen((value) => !value) },
-    { id: 'sign-out', label: 'Sign out', icon: LogOut, onClick: logout }
+    { id: 'settings', label: 'SETTINGS', icon: Settings, iconClassName: 'text-zinc-700', onClick: () => setSettingsOpen((value) => !value) },
+    { id: 'sign-out', label: '10-42', icon: LogOut, iconClassName: 'text-red-700', onClick: logout }
   ];
 
   useEffect(() => {
@@ -1072,7 +1072,7 @@ export const OfficerDashboard: React.FC = () => {
     <main className="flex h-screen overflow-hidden bg-gray-50 text-slate-950 dark:bg-gray-950 dark:text-white">
       <ShieldSidebar
         title="CAD"
-        subtitle="Officer Console"
+        subtitle="Officer"
         user={user}
         collapsed={appSidebarCollapsed}
         onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}
@@ -1168,7 +1168,7 @@ export const OfficerDashboard: React.FC = () => {
       <button
         type="button"
         onClick={recenterMap}
-        className="absolute bottom-4 left-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-cad-blue shadow-xl backdrop-blur hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200"
+        className="absolute bottom-4 left-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-cad-blue shadow-xl hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200"
         title="My location"
       >
         <MapPin size={19} />
@@ -1185,7 +1185,7 @@ export const OfficerDashboard: React.FC = () => {
       </button>
 
       <aside
-        className={`absolute bottom-24 left-4 top-20 z-20 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
+        className={`absolute bottom-24 left-4 top-20 z-20 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
           leftOpen ? 'translate-x-0 opacity-100' : '-translate-x-[calc(100%+2rem)] opacity-0'
         }`}
       >
@@ -1243,7 +1243,7 @@ export const OfficerDashboard: React.FC = () => {
       </button>
 
       <aside
-        className={`absolute right-4 top-32 z-20 w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
+        className={`absolute right-4 top-32 z-20 w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
           rightOpen ? 'translate-y-0 opacity-100' : '-translate-y-4 pointer-events-none opacity-0'
         }`}
       >
