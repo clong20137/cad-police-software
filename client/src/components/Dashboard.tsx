@@ -141,6 +141,8 @@ type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail'
 type QuickLaunchSlot = DockSlotValue<QuickLaunchId>;
 type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
+type UnitBoardSortKey = 'status' | 'unit' | 'name' | 'cadUnit' | 'district';
+type SortDirection = 'asc' | 'desc';
 
 const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.ReactNode }> = [
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
@@ -234,6 +236,12 @@ const unitBoardStatusStyles = (status: UnitStatus): { row: string; pill: string;
     pill: 'bg-red-600 text-white ring-red-700/20',
     dot: 'bg-red-600'
   };
+};
+
+const unitBoardStatusRank = (status: UnitStatus): number => {
+  if (status === 'Available') return 0;
+  if (status === 'En Route') return 1;
+  return 2;
 };
 
 const incidentStatusStyles: Record<IncidentStatus, string> = {
@@ -560,6 +568,13 @@ export const Dashboard: React.FC = () => {
   const [activeQuickModal, setActiveQuickModal] = useState<QuickLaunchId | null>(null);
   const [customizingSlot, setCustomizingSlot] = useState<number | null>(null);
   const [draggedSlotIndex, setDraggedSlotIndex] = useState<number | null>(null);
+  const [unitBoardSearch, setUnitBoardSearch] = useState('');
+  const [unitBoardStatusFilter, setUnitBoardStatusFilter] = useState<UnitStatus | 'all'>('all');
+  const [unitBoardDistrictFilter, setUnitBoardDistrictFilter] = useState('all');
+  const [unitBoardSort, setUnitBoardSort] = useState<{ key: UnitBoardSortKey; direction: SortDirection }>({
+    key: 'status',
+    direction: 'asc'
+  });
   const [destinationLat, setDestinationLat] = useState('');
   const [destinationLon, setDestinationLon] = useState('');
   const [destinationLabel, setDestinationLabel] = useState('');
@@ -619,6 +634,63 @@ export const Dashboard: React.FC = () => {
         { live: 0, stale: 0, offline: 0 }
       ),
     [locationClock, units]
+  );
+  const unitBoardUnits = useMemo(() => units.filter((unit) => unit.id !== user?.id), [units, user?.id]);
+  const unitBoardStatuses = useMemo(
+    () => Array.from(new Set(unitBoardUnits.map((unit) => displayStatus(unit)))).sort((first, second) => first.localeCompare(second)),
+    [unitBoardUnits]
+  );
+  const unitBoardDistricts = useMemo(
+    () =>
+      Array.from(new Set(unitBoardUnits.map((unit) => unit.district || 'Unassigned'))).sort((first, second) =>
+        first.localeCompare(second)
+      ),
+    [unitBoardUnits]
+  );
+  const unitBoardRows = useMemo(() => {
+    const query = unitBoardSearch.trim().toLowerCase();
+    const filtered = unitBoardUnits.filter((unit) => {
+      const status = displayStatus(unit);
+      const district = unit.district || 'Unassigned';
+      const name = splitName(unit.name);
+      const searchText = [
+        status,
+        displayUnitNumber(unit),
+        displayCadUnitNumber(unit),
+        unit.name,
+        name.firstName,
+        name.lastName,
+        district,
+        unit.group
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return (
+        (unitBoardStatusFilter === 'all' || status === unitBoardStatusFilter) &&
+        (unitBoardDistrictFilter === 'all' || district === unitBoardDistrictFilter) &&
+        (!query || searchText.includes(query))
+      );
+    });
+
+    return [...filtered].sort((first, second) => {
+      const firstStatus = displayStatus(first);
+      const secondStatus = displayStatus(second);
+      const value = (() => {
+        if (unitBoardSort.key === 'status') {
+          return unitBoardStatusRank(firstStatus) - unitBoardStatusRank(secondStatus) || firstStatus.localeCompare(secondStatus);
+        }
+        if (unitBoardSort.key === 'unit') return displayUnitNumber(first).localeCompare(displayUnitNumber(second));
+        if (unitBoardSort.key === 'name') return first.name.localeCompare(second.name);
+        if (unitBoardSort.key === 'cadUnit') return displayCadUnitNumber(first).localeCompare(displayCadUnitNumber(second));
+        return (first.district || 'Unassigned').localeCompare(second.district || 'Unassigned');
+      })();
+      return unitBoardSort.direction === 'asc' ? value : -value;
+    });
+  }, [unitBoardDistrictFilter, unitBoardSearch, unitBoardSort.direction, unitBoardSort.key, unitBoardStatusFilter, unitBoardUnits]);
+  const selectedUnitBoardUnit = useMemo(
+    () => unitBoardRows.find((unit) => unit.id === selectedUnitId) || unitBoardRows[0] || null,
+    [selectedUnitId, unitBoardRows]
   );
   const recommendedUnits = useMemo(() => {
     if (!selectedIncident) {
@@ -1558,6 +1630,13 @@ export const Dashboard: React.FC = () => {
     }
     setActiveQuickModal(item);
   };
+  const setUnitBoardSortKey = (key: UnitBoardSortKey) => {
+    setUnitBoardSort((current) =>
+      current.key === key
+        ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: 'asc' }
+    );
+  };
 
   const quickModalTitle = activeQuickModal
     ? quickLaunchOptions.find((item) => item.id === activeQuickModal)?.label || 'Quick Launch'
@@ -2111,52 +2190,99 @@ export const Dashboard: React.FC = () => {
 
     if (activeQuickModal === 'units') {
       return (
-        <div className="max-h-[70vh] overflow-auto">
+        <div className="grid h-full min-h-[520px] gap-3 overflow-hidden">
+          <div className="grid shrink-0 gap-2 md:grid-cols-[1fr_180px_180px_auto]">
+            <input
+              value={unitBoardSearch}
+              onChange={(event) => setUnitBoardSearch(event.target.value)}
+              placeholder="Search units, names, CAD units, districts"
+              className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+            />
+            <select
+              value={unitBoardStatusFilter}
+              onChange={(event) => setUnitBoardStatusFilter(event.target.value as UnitStatus | 'all')}
+              className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+            >
+              <option value="all">All Statuses</option>
+              {unitBoardStatuses.map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+            <select
+              value={unitBoardDistrictFilter}
+              onChange={(event) => setUnitBoardDistrictFilter(event.target.value)}
+              className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+            >
+              <option value="all">All Districts</option>
+              {unitBoardDistricts.map((district) => (
+                <option key={district} value={district}>{district}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                setUnitBoardSearch('');
+                setUnitBoardStatusFilter('all');
+                setUnitBoardDistrictFilter('all');
+              }}
+              className="rounded-md border border-cad-line px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              Clear
+            </button>
+          </div>
+
           {unitLoadError && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{unitLoadError}</p>}
-          {units.length === 0 ? (
+          {unitBoardUnits.length === 0 ? (
             <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
               No logged-in users are sharing live unit data yet.
             </p>
           ) : (
-            <div className="min-w-[760px] overflow-hidden rounded-md border border-cad-line bg-white text-sm shadow-sm dark:border-slate-700 dark:bg-slate-950">
-              <div className="grid grid-cols-[150px_120px_1fr_150px_150px] gap-3 border-b border-cad-line bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-                <span>Status</span>
-                <span>Unit</span>
-                <span>First & Last Name</span>
-                <span>CAD Unit</span>
-                <span>District</span>
+            <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
+              <div className="min-h-0 overflow-auto rounded-md border border-cad-line bg-white text-sm shadow-sm dark:border-slate-700 dark:bg-slate-950">
+                <div className="min-w-[760px]">
+                  <div className="grid grid-cols-[150px_120px_1fr_150px_150px] gap-3 border-b border-cad-line bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                    <SortHeader label="Status" active={unitBoardSort.key === 'status'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('status')} />
+                    <SortHeader label="Unit" active={unitBoardSort.key === 'unit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('unit')} />
+                    <SortHeader label="First & Last Name" active={unitBoardSort.key === 'name'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('name')} />
+                    <SortHeader label="CAD Unit" active={unitBoardSort.key === 'cadUnit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('cadUnit')} />
+                    <SortHeader label="District" active={unitBoardSort.key === 'district'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('district')} />
+                  </div>
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {unitBoardRows.length === 0 && (
+                      <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No units match the current filters.</p>
+                    )}
+                    {unitBoardRows.map((unit) => {
+                      const status = displayStatus(unit);
+                      const colors = unitBoardStatusStyles(status);
+                      const name = splitName(unit.name);
+                      return (
+                        <button
+                          key={unit.id}
+                          type="button"
+                          onClick={() => setSelectedUnitId(unit.id)}
+                          className={`grid w-full grid-cols-[150px_120px_1fr_150px_150px] gap-3 border-l-4 px-4 py-3 text-left transition hover:brightness-[0.98] dark:hover:brightness-125 ${
+                            selectedUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/40' : ''
+                          } ${colors.row}`}
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.dot}`} />
+                            <span className={`truncate rounded-full px-2 py-1 text-[11px] font-black uppercase ring-1 ${colors.pill}`}>
+                              {status}
+                            </span>
+                          </span>
+                          <span className="truncate font-bold text-slate-900 dark:text-white">{displayUnitNumber(unit)}</span>
+                          <span className="truncate font-semibold text-slate-700 dark:text-slate-200">
+                            {[name.firstName, name.lastName].filter(Boolean).join(' ') || unit.name || 'N/A'}
+                          </span>
+                          <span className="truncate font-bold text-cad-blue dark:text-blue-100">{displayCadUnitNumber(unit)}</span>
+                          <span className="truncate text-slate-600 dark:text-slate-300">{unit.district || 'Unassigned'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {units.map((unit) => {
-                  const status = displayStatus(unit);
-                  const colors = unitBoardStatusStyles(status);
-                  const name = splitName(unit.name);
-                  return (
-                    <button
-                      key={unit.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedUnitId(unit.id);
-                        setActiveQuickModal('unit-detail');
-                      }}
-                      className={`grid w-full grid-cols-[150px_120px_1fr_150px_150px] gap-3 border-l-4 px-4 py-3 text-left transition hover:brightness-[0.98] dark:hover:brightness-125 ${colors.row}`}
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.dot}`} />
-                        <span className={`truncate rounded-full px-2 py-1 text-[11px] font-black uppercase ring-1 ${colors.pill}`}>
-                          {status}
-                        </span>
-                      </span>
-                      <span className="truncate font-bold text-slate-900 dark:text-white">{displayUnitNumber(unit)}</span>
-                      <span className="truncate font-semibold text-slate-700 dark:text-slate-200">
-                        {[name.firstName, name.lastName].filter(Boolean).join(' ') || unit.name || 'N/A'}
-                      </span>
-                      <span className="truncate font-bold text-cad-blue dark:text-blue-100">{displayCadUnitNumber(unit)}</span>
-                      <span className="truncate text-slate-600 dark:text-slate-300">{unit.district || 'Unassigned'}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <UnitProfileCard unit={selectedUnitBoardUnit} locationClock={locationClock} />
             </div>
           )}
         </div>
@@ -2711,8 +2837,9 @@ export const Dashboard: React.FC = () => {
         open={Boolean(activeQuickModal)}
         onClose={() => setActiveQuickModal(null)}
         placement={activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' || activeQuickModal === 'units' ? 'center' : 'bottom'}
-        maxWidthClass={activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' || activeQuickModal === 'units' ? 'max-w-5xl' : 'mb-20 max-w-2xl'}
-        contentClassName="p-4 overflow-hidden"
+        maxWidthClass={activeQuickModal === 'units' ? 'max-w-none w-[min(96vw,72rem)]' : activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'max-w-5xl' : 'mb-20 max-w-2xl'}
+        contentClassName={activeQuickModal === 'units' ? 'p-4 overflow-hidden h-[min(74vh,760px)]' : 'p-4 overflow-hidden'}
+        resizable={activeQuickModal === 'units'}
       >
         {activeQuickModal ? renderQuickModalContent() : null}
       </ModalShell>
@@ -2734,6 +2861,69 @@ const MetricCard: React.FC<{ icon: React.ReactNode; label: string; value: number
     <p className="text-lg font-bold">{value}</p>
   </div>
 );
+
+const SortHeader: React.FC<{
+  label: string;
+  active: boolean;
+  direction: SortDirection;
+  onClick: () => void;
+}> = ({ label, active, direction, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`flex min-w-0 items-center gap-1 text-left transition hover:text-cad-blue ${active ? 'text-cad-blue' : ''}`}
+  >
+    <span className="truncate">{label}</span>
+    {active ? (direction === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : null}
+  </button>
+);
+
+const UnitProfileCard: React.FC<{ unit: TrackedUnit | null; locationClock: number }> = ({ unit, locationClock }) => {
+  if (!unit) {
+    return (
+      <aside className="flex min-h-0 items-center justify-center rounded-md border border-cad-line bg-white p-4 text-center text-sm font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-950">
+        Select a unit to view profile and location.
+      </aside>
+    );
+  }
+
+  const status = displayStatus(unit);
+  const colors = unitBoardStatusStyles(status);
+  const name = splitName(unit.name);
+
+  return (
+    <aside className="min-h-0 overflow-y-auto rounded-md border border-cad-line bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
+      <div className="flex items-start gap-3">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-cad-blue text-base font-black text-white shadow">
+          {displayCadUnitNumber(unit).slice(0, 2).toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-base font-black text-slate-950 dark:text-white">{displayCadUnitNumber(unit)}</p>
+          <p className="truncate text-sm font-semibold text-slate-600 dark:text-slate-300">
+            {[name.firstName, name.lastName].filter(Boolean).join(' ') || unit.name}
+          </p>
+          <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-black uppercase ring-1 ${colors.pill}`}>
+            {status}
+          </span>
+        </div>
+      </div>
+
+      <dl className="mt-4 grid gap-3 text-sm">
+        <Detail label="Unit" value={displayUnitNumber(unit)} />
+        <Detail label="First Name" value={name.firstName || 'N/A'} />
+        <Detail label="Last Name" value={name.lastName || 'N/A'} />
+        <Detail label="CAD Unit" value={displayCadUnitNumber(unit)} />
+        <Detail label="District" value={unit.district || 'Unassigned'} />
+        <Detail label="Group" value={unit.group || 'Unassigned'} />
+        <Detail label="Tracking" value={locationReliabilityText(unit, locationClock)} />
+        <Detail label="Latitude" value={unit.lat.toFixed(6)} />
+        <Detail label="Longitude" value={unit.lon.toFixed(6)} />
+        <Detail label="Speed" value={`${(unit.speedMph || 0).toFixed(1)} mph`} />
+        <Detail label="ETA" value={etaText(unit)} />
+      </dl>
+    </aside>
+  );
+};
 
 const OverlayPanel: React.FC<{
   title: string;

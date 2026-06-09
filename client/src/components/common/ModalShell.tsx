@@ -22,6 +22,7 @@ export const ModalShell: React.FC<{
   maxWidthClass?: string;
   placement?: ModalPlacement;
   contentClassName?: string;
+  resizable?: boolean;
 }> = ({
   title,
   open,
@@ -29,7 +30,8 @@ export const ModalShell: React.FC<{
   children,
   maxWidthClass = 'max-w-2xl',
   placement = 'center',
-  contentClassName = 'p-4'
+  contentClassName = 'p-4',
+  resizable = false
 }) => {
   const windowRef = useRef<HTMLDivElement | null>(null);
   const dragOffsetRef = useRef<ModalPosition>({ x: 0, y: 0 });
@@ -120,7 +122,7 @@ export const ModalShell: React.FC<{
         ref={windowRef}
         className={`flex max-h-[calc(100vh-7rem)] w-full origin-bottom animate-[dockModalIn_160ms_ease-out] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${
           placement === 'center' && !isMobileLayout ? `fixed ${isDragging ? 'cursor-grabbing' : ''}` : ''
-        } ${maxWidthClass}`}
+        } ${resizable && placement === 'center' && !isMobileLayout ? 'resize min-h-[28rem] min-w-[48rem]' : ''} ${maxWidthClass}`}
         style={floatingStyle}
         onMouseDown={(event) => event.stopPropagation()}
       >
