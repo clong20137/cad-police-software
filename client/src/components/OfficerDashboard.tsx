@@ -459,7 +459,6 @@ export const OfficerDashboard: React.FC = () => {
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
   const sidebarItems: ShieldSidebarItem[] = [
     { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveDockItem('inquiries') },
-    { id: 'map', label: 'MAP', icon: MapPin, iconClassName: 'text-sky-600', onClick: () => setActiveDockItem('location') },
     { id: 'unit-status', label: 'UNIT STATUS', icon: Radio, iconClassName: 'text-indigo-700', onClick: () => setActiveDockItem('status') },
     { id: 'calls', label: 'MY CASE', icon: ClipboardList, iconClassName: 'text-amber-700', onClick: () => setActiveDockItem('calls') },
     { id: 'messages', label: 'MESSAGES', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openDockItem('messages') },

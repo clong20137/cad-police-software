@@ -137,7 +137,7 @@ interface GoogleAutocompleteService {
 }
 
 type TrackedUnit = User & { lat: number; lon: number };
-type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'inquiries' | 'map' | 'settings';
+type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'inquiries' | 'settings';
 type QuickLaunchSlot = DockSlotValue<QuickLaunchId>;
 type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
@@ -150,7 +150,6 @@ const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.
   { id: 'unit-detail', label: 'Unit', icon: <Radio size={18} /> },
   { id: 'call-detail', label: 'Call', icon: <Shield size={18} /> },
   { id: 'inquiries', label: 'Inquiries', icon: <Search size={18} /> },
-  { id: 'map', label: 'Map', icon: <MapPin size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
 ];
 
@@ -162,8 +161,20 @@ const defaultQuickLaunchSlots: QuickLaunchSlot[] = [
   'unit-detail',
   'call-detail',
   'inquiries',
-  'map'
+  'settings'
 ];
+
+const normalizeQuickLaunchSlots = (slots: Array<DockSlotValue<string>>): QuickLaunchSlot[] =>
+  Array.from({ length: 8 }, (_, index) => {
+    const slot = slots[index];
+    if (typeof slot === 'string') {
+      return quickLaunchOptions.some((option) => option.id === slot) ? (slot as QuickLaunchId) : null;
+    }
+    if (slot && typeof slot === 'object' && slot.type === 'external') {
+      return slot;
+    }
+    return null;
+  });
 
 const liveLocationHeartbeatMs = 5000;
 const locationFreshMs = 15000;
@@ -518,8 +529,8 @@ export const Dashboard: React.FC = () => {
     const stored = localStorage.getItem('cad_quick_launch_slots');
     if (!stored) return defaultQuickLaunchSlots;
     try {
-      const parsed = JSON.parse(stored) as QuickLaunchSlot[];
-      return Array.from({ length: 8 }, (_, index) => parsed[index] || null);
+      const parsed = JSON.parse(stored) as Array<DockSlotValue<string>>;
+      return normalizeQuickLaunchSlots(parsed);
     } catch {
       return defaultQuickLaunchSlots;
     }
@@ -1232,7 +1243,6 @@ export const Dashboard: React.FC = () => {
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
   const sidebarItems: ShieldSidebarItem[] = [
     { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveQuickModal('inquiries') },
-    { id: 'map', label: 'MAP', icon: MapPin, iconClassName: 'text-sky-600', onClick: () => setActiveQuickModal('map') },
     { id: 'unit-status', label: 'UNIT STATUS', icon: Users, iconClassName: 'text-indigo-700', onClick: () => setActiveQuickModal('units') },
     { id: 'calls', label: 'CALLS', icon: ClipboardList, badge: callBadgeCount, iconClassName: 'text-amber-700', onClick: () => setActiveQuickModal('calls') },
     { id: 'messages', label: 'MESSAGES', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openQuickLaunch('messages') },
@@ -2127,10 +2137,6 @@ export const Dashboard: React.FC = () => {
       ) : (
         <p className="text-sm text-slate-600">No call selected.</p>
       );
-    }
-
-    if (activeQuickModal === 'map') {
-      return <p className="text-sm text-slate-600">The live map is centered on the dashboard.</p>;
     }
 
     return (
