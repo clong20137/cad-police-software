@@ -35,6 +35,7 @@ import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
+import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { callTypesFromConfig } from '../utils/adminConfig';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'location' | 'settings' | 'navigation' | 'status';
@@ -335,6 +336,7 @@ const addOfficerOverlay = ({
 
 export const OfficerDashboard: React.FC = () => {
   const { user, logout } = useAuth();
+  const [appSidebarCollapsed, setAppSidebarCollapsed] = useState(false);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [adminConfig, setAdminConfig] = useState<AdminConfigurationItem[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
@@ -455,6 +457,21 @@ export const OfficerDashboard: React.FC = () => {
       message.attachments.some((attachment) => attachment.fileName.toLowerCase().includes(messageTextSearch.toLowerCase()))
   );
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
+  const sidebarItems: ShieldSidebarItem[] = [
+    { id: 'officer', label: 'Officer', icon: Shield, active: true, onClick: () => setActiveDockItem(null) },
+    { id: 'calls', label: 'Calls', icon: ClipboardList, onClick: () => setActiveDockItem('calls') },
+    { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, onClick: () => openDockItem('messages') },
+    { id: 'inquiries', label: 'Inquiries', icon: Search, onClick: () => setActiveDockItem('inquiries') },
+    { id: 'location', label: 'Location', icon: MapPin, onClick: () => setActiveDockItem('location') },
+    { id: 'status', label: 'Status', icon: Radio, onClick: () => setActiveDockItem('status') }
+  ];
+  const sidebarFooterItems: ShieldSidebarItem[] = [
+    ...(user?.role === UserRole.ADMIN
+      ? [{ id: 'dispatch-side', label: 'Dispatch Side', icon: ClipboardList, onClick: () => { window.location.href = '/dashboard'; } }]
+      : []),
+    { id: 'settings', label: 'Settings', icon: Settings, onClick: () => setSettingsOpen((value) => !value) },
+    { id: 'sign-out', label: 'Sign out', icon: LogOut, onClick: logout }
+  ];
 
   useEffect(() => {
     localStorage.setItem('cad_officer_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
@@ -1052,7 +1069,18 @@ export const OfficerDashboard: React.FC = () => {
   };
 
   return (
-    <main className="relative h-screen overflow-hidden bg-slate-950 text-slate-950 dark:text-white">
+    <main className="flex h-screen overflow-hidden bg-gray-50 text-slate-950 dark:bg-gray-950 dark:text-white">
+      <ShieldSidebar
+        title="CAD"
+        subtitle="Officer Console"
+        user={user}
+        collapsed={appSidebarCollapsed}
+        onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}
+        items={sidebarItems}
+        footerItems={sidebarFooterItems}
+        onProfile={() => setSettingsOpen(true)}
+      />
+      <div className="relative min-w-0 flex-1 overflow-hidden bg-slate-950">
       <div className="absolute inset-0">
         {runtimeConfig.googleMapsApiKey ? (
           <div ref={mapElementRef} className="h-full w-full" />
@@ -1255,6 +1283,7 @@ export const OfficerDashboard: React.FC = () => {
         options={dockItems}
         activeItem={activeDockItem}
         customizingSlot={customizingSlot}
+        sidebarCollapsed={appSidebarCollapsed}
         badges={{ messages: messageBadgeCount }}
         onOpen={openDockItem}
         onCustomize={setCustomizingSlot}
@@ -1335,6 +1364,7 @@ export const OfficerDashboard: React.FC = () => {
         onChange={setPasswordForm}
         onSubmit={changePassword}
       />
+      </div>
     </main>
   );
 };

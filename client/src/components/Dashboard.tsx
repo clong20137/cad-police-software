@@ -51,6 +51,7 @@ import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot as DockSlotValue } from './common/QuickLaunchDock';
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
+import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { callTypesFromConfig, defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
 
 declare global {
@@ -452,6 +453,7 @@ const addGooglePulseMarker = ({
 
 export const Dashboard: React.FC = () => {
   const { user, logout, hasPermission } = useAuth();
+  const [appSidebarCollapsed, setAppSidebarCollapsed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [locationClock, setLocationClock] = useState(() => Date.now());
@@ -1228,6 +1230,24 @@ export const Dashboard: React.FC = () => {
   );
   const searchedMessages = visibleMessages;
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
+  const sidebarItems: ShieldSidebarItem[] = [
+    { id: 'dashboard', label: 'Dispatch', icon: Shield, active: true, onClick: () => setActiveQuickModal(null) },
+    { id: 'calls', label: 'Calls', icon: ClipboardList, badge: callBadgeCount, onClick: () => setActiveQuickModal('calls') },
+    { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, onClick: () => openQuickLaunch('messages') },
+    { id: 'inquiries', label: 'Inquiries', icon: Search, onClick: () => setActiveQuickModal('inquiries') },
+    { id: 'units', label: 'Units', icon: Users, onClick: () => setActiveQuickModal('units') },
+    { id: 'map', label: 'Map', icon: MapPin, onClick: () => setActiveQuickModal('map') }
+  ];
+  const sidebarFooterItems: ShieldSidebarItem[] = [
+    ...(user?.role === UserRole.ADMIN
+      ? [{ id: 'officer-side', label: 'Officer Side', icon: Radio, onClick: () => { window.location.href = '/officer'; } }]
+      : []),
+    ...(hasPermission('manage_system')
+      ? [{ id: 'admin', label: 'Admin', icon: SlidersHorizontal, onClick: () => { window.location.href = '/admin/configuration'; } }]
+      : []),
+    { id: 'settings', label: 'Settings', icon: Settings, onClick: () => setSettingsOpen((value) => !value) },
+    { id: 'sign-out', label: 'Sign out', icon: LogOut, onClick: logout }
+  ];
 
   useEffect(() => {
     localStorage.setItem('cad_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
@@ -2125,7 +2145,18 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className={`flex h-screen flex-col ${theme === 'dark' ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-100 text-cad-ink'}`}>
+    <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-gray-100' : 'bg-gray-50 text-cad-ink'}`}>
+      <ShieldSidebar
+        title="CAD"
+        subtitle="Dispatch Console"
+        user={user}
+        collapsed={appSidebarCollapsed}
+        onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}
+        items={sidebarItems}
+        footerItems={sidebarFooterItems}
+        onProfile={() => setSettingsOpen(true)}
+      />
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
       <header className="flex min-h-16 items-center justify-between border-b border-slate-800 bg-cad-navy px-4 text-white">
         <div className="flex min-w-0 items-center gap-3">
           <div>
@@ -2571,6 +2602,7 @@ export const Dashboard: React.FC = () => {
         options={quickLaunchOptions}
         activeItem={activeQuickModal}
         customizingSlot={customizingSlot}
+        sidebarCollapsed={appSidebarCollapsed}
         badges={{
           messages: messageBadgeCount,
           calls: callBadgeCount,
@@ -2626,12 +2658,13 @@ export const Dashboard: React.FC = () => {
         title={quickModalTitle}
         open={Boolean(activeQuickModal)}
         onClose={() => setActiveQuickModal(null)}
-        placement={activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'center' : 'bottom'}
-        maxWidthClass={activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'max-w-5xl' : 'mb-20 max-w-2xl'}
+        placement={activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'center' : 'bottom'}
+        maxWidthClass={activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'max-w-5xl' : 'mb-20 max-w-2xl'}
         contentClassName="p-4 overflow-hidden"
       >
         {activeQuickModal ? renderQuickModalContent() : null}
       </ModalShell>
+      </div>
     </div>
   );
 };

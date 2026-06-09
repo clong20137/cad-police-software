@@ -27,6 +27,7 @@ export const QuickLaunchDock = <T extends string>({
   activeItem,
   customizingSlot,
   badges = {},
+  sidebarCollapsed = false,
   onOpen,
   onCustomize,
   onAssignSlot,
@@ -38,6 +39,7 @@ export const QuickLaunchDock = <T extends string>({
   activeItem: T | null;
   customizingSlot: number | null;
   badges?: Partial<Record<T, number>>;
+  sidebarCollapsed?: boolean;
   onOpen: (item: T) => void;
   onCustomize: (index: number | null) => void;
   onAssignSlot: (index: number, value: QuickLaunchSlot<T>) => void;
@@ -101,7 +103,7 @@ export const QuickLaunchDock = <T extends string>({
 
   return (
     <>
-      <section className="pointer-events-none fixed inset-x-3 bottom-3 z-40 hidden select-none md:block">
+      <section className={`pointer-events-none fixed bottom-3 right-3 z-40 hidden select-none transition-all duration-200 md:block ${sidebarCollapsed ? 'left-24' : 'left-[19.5rem]'}`}>
         <div className="pointer-events-auto mx-auto w-fit max-w-full rounded-2xl border border-cad-line bg-white/90 p-2 text-cad-ink shadow-[0_16px_45px_rgba(15,23,42,0.22)] backdrop-blur dark:border-slate-700 dark:bg-slate-950/90 dark:text-white">
           <div className="flex max-w-full flex-wrap items-center justify-center gap-2">
             {slots.map((slot, index) => {
