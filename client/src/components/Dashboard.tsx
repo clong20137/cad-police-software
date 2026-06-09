@@ -2650,71 +2650,83 @@ export const Dashboard: React.FC = () => {
       }).length;
       const liveTrackingCount = unitBoardUnits.filter((unit) => locationReliability(unit, locationClock) === 'live').length;
       return (
-        <div className="grid h-full min-h-[520px] gap-3 overflow-hidden">
-          <div className="grid shrink-0 gap-2 sm:grid-cols-5">
-            <UnitStatusMetric label="On Duty" value={onDutyCount} tone="blue" />
-            <UnitStatusMetric label="Available" value={availableCount} tone="green" />
-            <UnitStatusMetric label="En Route" value={enRouteCount} tone="yellow" />
-            <UnitStatusMetric label="Busy" value={busyCount} tone="red" />
-            <UnitStatusMetric label="Live GPS" value={liveTrackingCount} tone="slate" />
-          </div>
-          <div className="grid shrink-0 gap-2 md:grid-cols-[1fr_9.5rem_9.5rem_auto]">
-            <input
-              value={unitBoardSearch}
-              onChange={(event) => setUnitBoardSearch(event.target.value)}
-              placeholder="Search units, names, CAD units, districts"
-              className="unit-board-control rounded-md border border-cad-line bg-white text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-            />
-            <select
-              value={unitBoardStatusFilter}
-              onChange={(event) => setUnitBoardStatusFilter(event.target.value as UnitStatus | 'all')}
-              className="unit-board-control rounded-md border border-cad-line bg-white text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-            >
-              <option value="all">All Statuses</option>
-              {unitBoardStatuses.map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
-            <select
-              value={unitBoardDistrictFilter}
-              onChange={(event) => setUnitBoardDistrictFilter(event.target.value)}
-              className="unit-board-control rounded-md border border-cad-line bg-white text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-            >
-              <option value="all">All Districts</option>
-              {unitBoardDistricts.map((district) => (
-                <option key={district} value={district}>{district}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => {
-                setUnitBoardSearch('');
-                setUnitBoardStatusFilter('all');
-                setUnitBoardDistrictFilter('all');
-              }}
-              className="unit-board-control rounded-md border border-cad-line px-3 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Clear
-            </button>
+        <div className="grid h-full min-h-[520px] grid-rows-[auto_1fr_auto] overflow-hidden rounded-lg border border-cad-line bg-white dark:border-slate-700 dark:bg-slate-900">
+          <div className="border-b border-cad-line bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-base font-black text-slate-950 dark:text-white">On Duty Officers</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {onDutyCount} on duty / {availableCount} available / {enRouteCount} en route / {busyCount} busy / {liveTrackingCount} live GPS
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5 text-[11px] font-black uppercase">
+                <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800">Available {availableCount}</span>
+                <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800">En Route {enRouteCount}</span>
+                <span className="rounded-full bg-red-50 px-2 py-1 text-red-700 ring-1 ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-800">Busy {busyCount}</span>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-[1fr_9.5rem_9.5rem_auto]">
+              <input
+                value={unitBoardSearch}
+                onChange={(event) => setUnitBoardSearch(event.target.value)}
+                placeholder="Search units, officers, CAD units, districts"
+                className="h-10 rounded border border-gray-300 bg-white px-3 text-sm outline-none transition focus:border-cad-blue focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+              />
+              <select
+                value={unitBoardStatusFilter}
+                onChange={(event) => setUnitBoardStatusFilter(event.target.value as UnitStatus | 'all')}
+                className="h-10 rounded border border-gray-300 bg-white px-3 text-sm outline-none transition focus:border-cad-blue focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+              >
+                <option value="all">All Statuses</option>
+                {unitBoardStatuses.map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+              <select
+                value={unitBoardDistrictFilter}
+                onChange={(event) => setUnitBoardDistrictFilter(event.target.value)}
+                className="h-10 rounded border border-gray-300 bg-white px-3 text-sm outline-none transition focus:border-cad-blue focus:ring-2 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+              >
+                <option value="all">All Districts</option>
+                {unitBoardDistricts.map((district) => (
+                  <option key={district} value={district}>{district}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setUnitBoardSearch('');
+                  setUnitBoardStatusFilter('all');
+                  setUnitBoardDistrictFilter('all');
+                }}
+                className="h-10 rounded border border-gray-300 px-3 text-sm font-bold text-slate-700 hover:bg-white dark:border-gray-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Clear
+              </button>
+            </div>
           </div>
 
           {unitLoadError && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{unitLoadError}</p>}
           {unitBoardUnits.length === 0 ? (
-            <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
-              No officers are currently on duty.
-            </p>
+            <div className="flex min-h-0 items-center justify-center p-6">
+              <div className="max-w-sm rounded-lg border border-dashed border-gray-300 bg-slate-50 p-6 text-center dark:border-gray-700 dark:bg-slate-950">
+                <Radio className="mx-auto text-slate-400" size={28} />
+                <p className="mt-3 text-sm font-bold text-slate-700 dark:text-slate-200">No officers are currently on duty.</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Officers appear here when they are online and signed in.</p>
+              </div>
+            </div>
           ) : (
-            <div className="grid min-h-0 gap-3">
-              <div className="min-h-0 overflow-auto rounded-md border border-cad-line bg-white text-sm shadow-sm dark:border-slate-700 dark:bg-slate-950">
-                <div className="min-w-[620px]">
-                  <div className="grid grid-cols-[112px_84px_1fr_112px_112px] gap-2 border-b border-cad-line bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+            <div className="min-h-0 overflow-auto">
+                <div className="min-w-[720px] text-sm">
+                  <div className="grid grid-cols-[120px_92px_1fr_120px_130px_140px] gap-2 border-b border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:border-gray-800 dark:bg-slate-900 dark:text-slate-400">
                     <SortHeader label="Status" active={unitBoardSort.key === 'status'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('status')} />
                     <SortHeader label="Unit" active={unitBoardSort.key === 'unit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('unit')} />
                     <SortHeader label="First & Last Name" active={unitBoardSort.key === 'name'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('name')} />
                     <SortHeader label="CAD Unit" active={unitBoardSort.key === 'cadUnit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('cadUnit')} />
                     <SortHeader label="District" active={unitBoardSort.key === 'district'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('district')} />
+                    <span>Location</span>
                   </div>
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
                     {unitBoardRows.length === 0 && (
                       <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No units match the current filters.</p>
                     )}
@@ -2727,8 +2739,8 @@ export const Dashboard: React.FC = () => {
                           key={unit.id}
                           type="button"
                           onClick={() => setSelectedUnitId(unit.id)}
-                          className={`grid w-full grid-cols-[112px_84px_1fr_112px_112px] gap-2 border-l-4 px-3 py-2.5 text-left transition hover:brightness-[0.98] dark:hover:brightness-125 ${
-                            selectedUnitBoardUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/40' : ''
+                          className={`grid w-full grid-cols-[120px_92px_1fr_120px_130px_140px] gap-2 border-l-4 bg-white px-4 py-3 text-left transition hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 ${
+                            selectedUnitBoardUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/35' : ''
                           } ${colors.row}`}
                         >
                           <span className="flex min-w-0 items-center gap-2">
@@ -2743,15 +2755,19 @@ export const Dashboard: React.FC = () => {
                           </span>
                           <span className="truncate font-bold text-cad-blue dark:text-blue-100">{displayCadUnitNumber(unit)}</span>
                           <span className="truncate text-slate-600 dark:text-slate-300">{unit.district || 'Unassigned'}</span>
+                          <span className="truncate text-slate-500 dark:text-slate-400">{locationReliabilityText(unit, locationClock)}</span>
                         </button>
                       );
                     })}
                   </div>
                 </div>
-              </div>
             </div>
           )}
-          {unitBoardUnits.length > 0 && <UnitProfileCard unit={selectedUnitBoardUnit} locationClock={locationClock} />}
+          {unitBoardUnits.length > 0 && (
+            <div className="border-t border-gray-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-slate-950">
+              <UnitProfileCard unit={selectedUnitBoardUnit} locationClock={locationClock} />
+            </div>
+          )}
         </div>
       );
     }
@@ -3282,27 +3298,6 @@ const UnitProfileCard: React.FC<{ unit: UnitBoardUser | null; locationClock: num
         <Detail label="ETA" value={typeof unit.lat === 'number' && typeof unit.lon === 'number' ? etaText(unit as TrackedUnit) : 'Unavailable'} />
       </dl>
     </aside>
-  );
-};
-
-const UnitStatusMetric: React.FC<{ label: string; value: number; tone: 'blue' | 'green' | 'yellow' | 'red' | 'slate' }> = ({
-  label,
-  value,
-  tone
-}) => {
-  const toneClass = {
-    blue: 'text-cad-blue dark:text-blue-100',
-    green: 'text-emerald-700 dark:text-emerald-200',
-    yellow: 'text-amber-700 dark:text-amber-200',
-    red: 'text-red-700 dark:text-red-200',
-    slate: 'text-slate-700 dark:text-slate-200'
-  }[tone];
-
-  return (
-    <div className="rounded-md border border-cad-line bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{label}</p>
-      <p className={`mt-1 text-xl font-black ${toneClass}`}>{value}</p>
-    </div>
   );
 };
 
