@@ -214,6 +214,28 @@ const statusStyles: Record<UnitStatus, string> = {
   'Traffic Stop': 'bg-red-50 text-red-700 ring-red-200'
 };
 
+const unitBoardStatusStyles = (status: UnitStatus): { row: string; pill: string; dot: string } => {
+  if (status === 'Available') {
+    return {
+      row: 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/70 dark:bg-emerald-950/30',
+      pill: 'bg-emerald-600 text-white ring-emerald-700/20',
+      dot: 'bg-emerald-500'
+    };
+  }
+  if (status === 'En Route') {
+    return {
+      row: 'border-amber-200 bg-amber-50/75 dark:border-amber-900/70 dark:bg-amber-950/30',
+      pill: 'bg-amber-400 text-slate-950 ring-amber-500/25',
+      dot: 'bg-amber-400'
+    };
+  }
+  return {
+    row: 'border-red-200 bg-red-50/75 dark:border-red-900/70 dark:bg-red-950/30',
+    pill: 'bg-red-600 text-white ring-red-700/20',
+    dot: 'bg-red-600'
+  };
+};
+
 const incidentStatusStyles: Record<IncidentStatus, string> = {
   Pending: 'bg-slate-50 text-slate-700 ring-slate-200',
   Dispatched: 'bg-amber-50 text-amber-700 ring-amber-200',
@@ -2089,21 +2111,54 @@ export const Dashboard: React.FC = () => {
 
     if (activeQuickModal === 'units') {
       return (
-        <div className="max-h-[70vh] space-y-2 overflow-y-auto">
-          {units.map((unit) => (
-            <button
-              key={unit.id}
-              type="button"
-              onClick={() => {
-                setSelectedUnitId(unit.id);
-                setActiveQuickModal('unit-detail');
-              }}
-              className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-white p-3 text-left hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800"
-            >
-              <span className="text-sm font-bold">{displayCadUnitNumber(unit)}</span>
-              <span className="text-xs text-slate-600 dark:text-slate-300">{displayStatus(unit)}</span>
-            </button>
-          ))}
+        <div className="max-h-[70vh] overflow-auto">
+          {unitLoadError && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{unitLoadError}</p>}
+          {units.length === 0 ? (
+            <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
+              No logged-in users are sharing live unit data yet.
+            </p>
+          ) : (
+            <div className="min-w-[760px] overflow-hidden rounded-md border border-cad-line bg-white text-sm shadow-sm dark:border-slate-700 dark:bg-slate-950">
+              <div className="grid grid-cols-[150px_120px_1fr_150px_150px] gap-3 border-b border-cad-line bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                <span>Status</span>
+                <span>Unit</span>
+                <span>First & Last Name</span>
+                <span>CAD Unit</span>
+                <span>District</span>
+              </div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {units.map((unit) => {
+                  const status = displayStatus(unit);
+                  const colors = unitBoardStatusStyles(status);
+                  const name = splitName(unit.name);
+                  return (
+                    <button
+                      key={unit.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedUnitId(unit.id);
+                        setActiveQuickModal('unit-detail');
+                      }}
+                      className={`grid w-full grid-cols-[150px_120px_1fr_150px_150px] gap-3 border-l-4 px-4 py-3 text-left transition hover:brightness-[0.98] dark:hover:brightness-125 ${colors.row}`}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.dot}`} />
+                        <span className={`truncate rounded-full px-2 py-1 text-[11px] font-black uppercase ring-1 ${colors.pill}`}>
+                          {status}
+                        </span>
+                      </span>
+                      <span className="truncate font-bold text-slate-900 dark:text-white">{displayUnitNumber(unit)}</span>
+                      <span className="truncate font-semibold text-slate-700 dark:text-slate-200">
+                        {[name.firstName, name.lastName].filter(Boolean).join(' ') || unit.name || 'N/A'}
+                      </span>
+                      <span className="truncate font-bold text-cad-blue dark:text-blue-100">{displayCadUnitNumber(unit)}</span>
+                      <span className="truncate text-slate-600 dark:text-slate-300">{unit.district || 'Unassigned'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -2655,8 +2710,8 @@ export const Dashboard: React.FC = () => {
         title={quickModalTitle}
         open={Boolean(activeQuickModal)}
         onClose={() => setActiveQuickModal(null)}
-        placement={activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'center' : 'bottom'}
-        maxWidthClass={activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'max-w-5xl' : 'mb-20 max-w-2xl'}
+        placement={activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' || activeQuickModal === 'units' ? 'center' : 'bottom'}
+        maxWidthClass={activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' || activeQuickModal === 'units' ? 'max-w-5xl' : 'mb-20 max-w-2xl'}
         contentClassName="p-4 overflow-hidden"
       >
         {activeQuickModal ? renderQuickModalContent() : null}
