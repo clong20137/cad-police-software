@@ -12,6 +12,7 @@ import {
   LogOut,
   MapPin,
   MessageCircle,
+  Moon,
   Navigation,
   Paperclip,
   Pin,
@@ -22,6 +23,7 @@ import {
   Settings,
   Shield,
   Siren,
+  Sun,
   Wifi,
   WifiOff,
   X
@@ -41,6 +43,7 @@ import { callTypesFromConfig } from '../utils/adminConfig';
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'location' | 'settings' | 'navigation' | 'status';
 type DockSlot = QuickLaunchSlot<DockItem>;
 type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
+type PendingCallFeedRow = { incident: Incident; exiting: boolean };
 
 interface OfficerGoogleMaps {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
@@ -338,7 +341,11 @@ const addOfficerOverlay = ({
 export const OfficerDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [appSidebarCollapsed, setAppSidebarCollapsed] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    localStorage.getItem('cad_theme') === 'dark' ? 'dark' : 'light'
+  );
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [exitingPendingCalls, setExitingPendingCalls] = useState<Incident[]>([]);
   const [adminConfig, setAdminConfig] = useState<AdminConfigurationItem[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<'starting' | 'live' | 'blocked' | 'error'>('starting');
@@ -410,7 +417,23 @@ export const OfficerDashboard: React.FC = () => {
   const selectedMessageUserIdRef = useRef('');
   const activeQuickModalRef = useRef<DockItem | null>(null);
   const dockZCounterRef = useRef(60);
+  const pendingCallFeedPreviousRef = useRef<Map<string, Incident>>(new Map());
+  const pendingCallExitTimersRef = useRef<Record<string, number>>({});
 
+  const pendingCalls = useMemo(
+    () =>
+      incidents
+        .filter((incident) => incident.status === 'Pending')
+        .sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()),
+    [incidents]
+  );
+  const pendingCallFeedRows = useMemo<PendingCallFeedRow[]>(() => {
+    const rows = [
+      ...pendingCalls.map((incident) => ({ incident, exiting: false })),
+      ...exitingPendingCalls.map((incident) => ({ incident, exiting: true }))
+    ];
+    return rows.sort((first, second) => new Date(second.incident.createdAt).getTime() - new Date(first.incident.createdAt).getTime());
+  }, [exitingPendingCalls, pendingCalls]);
   const assignedIncidents = useMemo(
     () => incidents.filter((incident) => incident.units.some((unit) => unit.userId === user?.id && unit.status !== 'Cleared')),
     [incidents, user?.id]
@@ -434,6 +457,14 @@ export const OfficerDashboard: React.FC = () => {
       : realtimeState === 'offline'
         ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/20 dark:text-red-100 dark:ring-red-300/30'
         : 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/30';
+  const locationStatusLabel =
+    locationState === 'live'
+      ? 'Active'
+      : locationState === 'starting'
+        ? 'Starting GPS'
+        : locationState === 'blocked'
+          ? 'Location blocked'
+          : 'GPS unavailable';
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
   const messageThreadByUser = useMemo(
     () =>
@@ -496,6 +527,40 @@ export const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     loadIncidents();
   }, [loadIncidents]);
+
+  useEffect(() => {
+    localStorage.setItem('cad_theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const nextPendingById = new Map(pendingCalls.map((incident) => [incident.id, incident]));
+    const previousPendingById = pendingCallFeedPreviousRef.current;
+    const leavingCalls = Array.from(previousPendingById.values()).filter((incident) => !nextPendingById.has(incident.id));
+
+    if (leavingCalls.length > 0) {
+      setExitingPendingCalls((current) => {
+        const currentIds = new Set(current.map((incident) => incident.id));
+        return [...current, ...leavingCalls.filter((incident) => !currentIds.has(incident.id))];
+      });
+
+      leavingCalls.forEach((incident) => {
+        window.clearTimeout(pendingCallExitTimersRef.current[incident.id]);
+        pendingCallExitTimersRef.current[incident.id] = window.setTimeout(() => {
+          setExitingPendingCalls((current) => current.filter((item) => item.id !== incident.id));
+          delete pendingCallExitTimersRef.current[incident.id];
+        }, 360);
+      });
+    }
+
+    pendingCallFeedPreviousRef.current = nextPendingById;
+  }, [pendingCalls]);
+
+  useEffect(
+    () => () => {
+      Object.values(pendingCallExitTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+    },
+    []
+  );
 
   useEffect(() => {
     authClient.getActiveConfiguration().then(setAdminConfig).catch(() => setAdminConfig([]));
@@ -703,7 +768,9 @@ export const OfficerDashboard: React.FC = () => {
         lastLocationUploadAtRef.current = now;
         setLocationState('live');
       } catch {
-        setLocationState('error');
+        if (!latestLocationRef.current) {
+          setLocationState('error');
+        }
       } finally {
         uploadingLocationRef.current = false;
       }
@@ -733,7 +800,7 @@ export const OfficerDashboard: React.FC = () => {
         setLocationState('live');
         uploadLatestLocation();
       },
-      () => setLocationState('error'),
+      (error) => setLocationState(error.code === error.PERMISSION_DENIED ? 'blocked' : 'error'),
       liveLocationOptions
     );
 
@@ -1091,8 +1158,88 @@ export const OfficerDashboard: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  const renderPendingCallFeed = (compact: boolean) => {
+    if (compact) {
+      return (
+        <button
+          type="button"
+          onClick={() => setActiveDockItem('calls')}
+          className="relative flex h-11 w-full items-center justify-center rounded bg-white/10 text-blue-50 transition hover:bg-white/15"
+          title={`${pendingCalls.length} pending calls`}
+        >
+          <Siren size={19} />
+          {pendingCalls.length > 0 && (
+            <span className="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-cad-alert px-1 text-[10px] font-bold text-white">
+              {pendingCalls.length > 9 ? '9+' : pendingCalls.length}
+            </span>
+          )}
+        </button>
+      );
+    }
+
+    return (
+      <section className="rounded border border-white/10 bg-white/10 p-2.5 text-white shadow-inner">
+        <button
+          type="button"
+          onClick={() => setActiveDockItem('calls')}
+          className="flex w-full items-center justify-between gap-2 rounded px-1 py-0.5 text-left transition hover:bg-white/10"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-amber-400 text-slate-950">
+              <Siren size={16} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-blue-100">Pending Calls</span>
+              <span className="block truncate text-xs text-blue-50">Live feed</span>
+            </span>
+          </span>
+          <span className="rounded bg-white px-2 py-0.5 text-xs font-black text-cad-blue">{pendingCalls.length}</span>
+        </button>
+
+        <div className="mt-2 grid gap-1.5">
+          {pendingCallFeedRows.length === 0 && (
+            <div className="rounded bg-black/15 px-3 py-2 text-xs font-semibold text-blue-50">No pending calls</div>
+          )}
+          {pendingCallFeedRows.slice(0, 5).map(({ incident, exiting }) => (
+            <button
+              key={incident.id}
+              type="button"
+              onClick={() => {
+                setSelectedIncidentId(incident.id);
+                setActiveDockItem('calls');
+              }}
+              className={`pending-call-feed-item overflow-hidden rounded border text-left shadow-sm transition-all duration-300 ease-out ${
+                exiting
+                  ? 'max-h-0 -translate-y-1 border-transparent bg-white/0 px-3 py-0 opacity-0'
+                  : 'max-h-24 translate-y-0 border-white/10 bg-white px-3 py-2 opacity-100 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800'
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-black text-cad-ink dark:text-white">{incident.callNumber}</span>
+                <span
+                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${
+                    incident.priority === 'Emergency' || incident.priority === 'High'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-amber-100 text-amber-800 dark:bg-amber-400 dark:text-slate-950'
+                  }`}
+                >
+                  {incident.priority}
+                </span>
+              </span>
+              <span className="mt-1 block truncate text-xs font-bold text-slate-700 dark:text-slate-200">{incident.type}</span>
+              <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                <MapPin size={11} />
+                <span className="truncate">{incident.address || 'Address pending'}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
   return (
-    <main className="flex h-screen overflow-hidden bg-gray-50 text-slate-950 dark:bg-gray-950 dark:text-white">
+    <main className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-white' : 'bg-gray-50 text-slate-950'}`}>
       <ShieldSidebar
         title="CAD"
         subtitle="Officer"
@@ -1100,6 +1247,7 @@ export const OfficerDashboard: React.FC = () => {
         collapsed={appSidebarCollapsed}
         onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}
         items={sidebarItems}
+        bottomContent={renderPendingCallFeed(appSidebarCollapsed)}
         onProfile={() => setSettingsOpen(true)}
       />
       <div className="relative min-w-0 flex-1 overflow-hidden bg-slate-950">
@@ -1124,6 +1272,14 @@ export const OfficerDashboard: React.FC = () => {
           >
             {realtimeState === 'offline' ? <WifiOff size={19} /> : <Wifi size={19} />}
           </span>
+          <button
+            type="button"
+            onClick={() => setTheme((value) => (value === 'dark' ? 'light' : 'dark'))}
+            className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
+            aria-label="Toggle light dark mode"
+          >
+            {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
+          </button>
           <button
             type="button"
             onClick={() => setActiveDockItem('inquiries')}
@@ -1209,9 +1365,7 @@ export const OfficerDashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Live Tracking</p>
-              <p className="mt-1 text-sm font-semibold">
-                {locationState === 'live' ? 'Active' : locationState === 'starting' ? 'Starting GPS' : 'Needs attention'}
-              </p>
+              <p className="mt-1 text-sm font-semibold">{locationStatusLabel}</p>
             </div>
             {locationState === 'live' ? <Wifi className="text-emerald-500" size={22} /> : <WifiOff className="text-amber-500" size={22} />}
           </div>

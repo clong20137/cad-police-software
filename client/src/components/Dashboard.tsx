@@ -143,7 +143,6 @@ type UnitBoardSortKey = 'status' | 'unit' | 'name' | 'cadUnit' | 'district';
 type SortDirection = 'asc' | 'desc';
 type UnitBoardUser = User & Partial<Pick<TrackedUnit, 'lat' | 'lon'>>;
 type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
-type PendingCallFeedRow = { incident: Incident; exiting: boolean };
 
 const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.ReactNode }> = [
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
@@ -536,7 +535,6 @@ export const Dashboard: React.FC = () => {
   const [emojiSearch, setEmojiSearch] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<SendMessageAttachment[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [exitingPendingCalls, setExitingPendingCalls] = useState<Incident[]>([]);
   const [adminConfig, setAdminConfig] = useState<AdminConfigurationItem[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [addressSuggestions, setAddressSuggestions] = useState<GooglePlacePrediction[]>([]);
@@ -591,28 +589,12 @@ export const Dashboard: React.FC = () => {
   const locationPublishInFlightRef = useRef(false);
   const knownIncidentIdsRef = useRef<Set<string>>(new Set());
   const initialIncidentsLoadedRef = useRef(false);
-  const pendingCallFeedPreviousRef = useRef<Map<string, Incident>>(new Map());
-  const pendingCallExitTimersRef = useRef<Record<string, number>>({});
 
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || incidents[0] || null;
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
   const configuredUnitStatuses = useMemo(() => unitStatusesFromConfig(adminConfig), [adminConfig]);
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
-  const pendingCalls = useMemo(
-    () =>
-      incidents
-        .filter((incident) => incident.status === 'Pending')
-        .sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()),
-    [incidents]
-  );
-  const pendingCallFeedRows = useMemo<PendingCallFeedRow[]>(() => {
-    const rows = [
-      ...pendingCalls.map((incident) => ({ incident, exiting: false })),
-      ...exitingPendingCalls.map((incident) => ({ incident, exiting: true }))
-    ];
-    return rows.sort((first, second) => new Date(second.incident.createdAt).getTime() - new Date(first.incident.createdAt).getTime());
-  }, [exitingPendingCalls, pendingCalls]);
 
   const loadUnits = useCallback(async () => {
     try {
@@ -769,36 +751,6 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     loadIncidents();
   }, [loadIncidents]);
-
-  useEffect(() => {
-    const nextPendingById = new Map(pendingCalls.map((incident) => [incident.id, incident]));
-    const previousPendingById = pendingCallFeedPreviousRef.current;
-    const leavingCalls = Array.from(previousPendingById.values()).filter((incident) => !nextPendingById.has(incident.id));
-
-    if (leavingCalls.length > 0) {
-      setExitingPendingCalls((current) => {
-        const currentIds = new Set(current.map((incident) => incident.id));
-        return [...current, ...leavingCalls.filter((incident) => !currentIds.has(incident.id))];
-      });
-
-      leavingCalls.forEach((incident) => {
-        window.clearTimeout(pendingCallExitTimersRef.current[incident.id]);
-        pendingCallExitTimersRef.current[incident.id] = window.setTimeout(() => {
-          setExitingPendingCalls((current) => current.filter((item) => item.id !== incident.id));
-          delete pendingCallExitTimersRef.current[incident.id];
-        }, 320);
-      });
-    }
-
-    pendingCallFeedPreviousRef.current = nextPendingById;
-  }, [pendingCalls]);
-
-  useEffect(
-    () => () => {
-      Object.values(pendingCallExitTimersRef.current).forEach((timer) => window.clearTimeout(timer));
-    },
-    []
-  );
 
   useEffect(() => {
     authClient.getActiveConfiguration().then(setAdminConfig).catch(() => setAdminConfig([]));
@@ -1694,86 +1646,6 @@ export const Dashboard: React.FC = () => {
         ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/20 dark:text-red-100 dark:ring-red-300/30'
         : 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/30';
 
-  const renderPendingCallFeed = (compact: boolean) => {
-    if (compact) {
-      return (
-        <button
-          type="button"
-          onClick={() => setActiveQuickModal('calls')}
-          className="relative flex h-11 w-full items-center justify-center rounded bg-white/10 text-blue-50 transition hover:bg-white/15"
-          title={`${pendingCalls.length} pending calls`}
-        >
-          <Bell size={19} />
-          {pendingCalls.length > 0 && (
-            <span className="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-cad-alert px-1 text-[10px] font-bold text-white">
-              {pendingCalls.length > 9 ? '9+' : pendingCalls.length}
-            </span>
-          )}
-        </button>
-      );
-    }
-
-    return (
-      <section className="rounded border border-white/10 bg-white/10 p-2.5 text-white shadow-inner">
-        <button
-          type="button"
-          onClick={() => setActiveQuickModal('calls')}
-          className="flex w-full items-center justify-between gap-2 rounded px-1 py-0.5 text-left transition hover:bg-white/10"
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-amber-400 text-slate-950">
-              <Bell size={16} />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-blue-100">Pending Calls</span>
-              <span className="block truncate text-xs text-blue-50">Live feed</span>
-            </span>
-          </span>
-          <span className="rounded bg-white px-2 py-0.5 text-xs font-black text-cad-blue">{pendingCalls.length}</span>
-        </button>
-
-        <div className="mt-2 grid gap-1.5">
-          {pendingCallFeedRows.length === 0 && (
-            <div className="rounded bg-black/15 px-3 py-2 text-xs font-semibold text-blue-50">No pending calls</div>
-          )}
-          {pendingCallFeedRows.slice(0, 5).map(({ incident, exiting }) => (
-            <button
-              key={incident.id}
-              type="button"
-              onClick={() => {
-                setSelectedIncidentId(incident.id);
-                setActiveQuickModal('call-detail');
-              }}
-              className={`overflow-hidden rounded border text-left shadow-sm transition-all duration-300 ease-out ${
-                exiting
-                  ? 'max-h-0 -translate-y-1 border-transparent bg-white/0 px-3 py-0 opacity-0'
-                  : 'max-h-24 translate-y-0 border-white/10 bg-white px-3 py-2 opacity-100 hover:bg-blue-50'
-              }`}
-            >
-              <span className="flex items-center justify-between gap-2">
-                <span className="truncate text-xs font-black text-cad-ink">{incident.callNumber}</span>
-                <span
-                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${
-                    incident.priority === 'Emergency' || incident.priority === 'High'
-                      ? 'bg-red-600 text-white'
-                      : 'bg-amber-100 text-amber-800'
-                  }`}
-                >
-                  {incident.priority}
-                </span>
-              </span>
-              <span className="mt-1 block truncate text-xs font-bold text-slate-700">{incident.type}</span>
-              <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
-                <MapPin size={11} />
-                <span className="truncate">{incident.address || 'Address pending'}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-    );
-  };
-
   const renderNewCallForm = () => (
     <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
       <select
@@ -2458,7 +2330,6 @@ export const Dashboard: React.FC = () => {
         collapsed={appSidebarCollapsed}
         onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}
         items={sidebarItems}
-        bottomContent={renderPendingCallFeed(appSidebarCollapsed)}
         onProfile={() => setSettingsOpen(true)}
       />
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">

@@ -91,6 +91,10 @@
     padding-right: 0.75rem !important;
   }
 
+  .pending-call-feed-item {
+    animation: pendingFeedIn 220ms ease-out;
+  }
+
   select.unit-board-control.unit-board-control {
     padding-right: 2rem !important;
   }
@@ -119,6 +123,18 @@
       opacity: 1;
       transform: translateY(0) scale(1);
       filter: blur(0);
+    }
+  }
+
+  @keyframes pendingFeedIn {
+    0% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 }
