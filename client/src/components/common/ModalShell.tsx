@@ -1,4 +1,4 @@
-import React, { CSSProperties, useEffect, useRef, useState } from 'react';
+import React, { CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { GripHorizontal, X } from 'lucide-react';
 
 type ModalPlacement = 'center' | 'bottom';
@@ -44,15 +44,30 @@ export const ModalShell: React.FC<{
   const [position, setPosition] = useState<ModalPosition>(() => ({ x: Math.max(16, window.innerWidth / 2 - 360), y: 96 }));
   const [isDragging, setIsDragging] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(() => isMobileViewport());
+  const [isClosing, setIsClosing] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
+
+  const requestClose = useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+    closeTimerRef.current = window.setTimeout(onClose, 210);
+  }, [isClosing, onClose]);
+
+  useEffect(() => {
+    if (open) setIsClosing(false);
+    return () => {
+      if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') requestClose();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose, open]);
+  }, [open, requestClose]);
 
   useEffect(() => {
     const syncLayout = () => {
@@ -122,9 +137,9 @@ export const ModalShell: React.FC<{
     <div className={`pointer-events-none fixed inset-0 flex justify-center p-4 ${shellPositionClass}`} style={{ zIndex }}>
       <div
         ref={windowRef}
-        className={`pointer-events-auto flex max-h-[calc(100vh-7rem)] w-full origin-bottom animate-[dockModalIn_160ms_ease-out] flex-col overflow-hidden rounded-lg border bg-white shadow-2xl dark:bg-slate-900 ${
+        className={`pointer-events-auto flex max-h-[calc(100vh-7rem)] w-full origin-bottom flex-col overflow-hidden rounded-lg border bg-white shadow-2xl dark:bg-slate-900 ${
           active ? 'modal-active-pulse border-cad-accent' : 'border-cad-line dark:border-slate-700'
-        } ${
+        } ${isClosing ? 'floating-window-mac-exit' : 'floating-window-mac-enter'} ${
           placement === 'center' && !isMobileLayout ? `fixed ${isDragging ? 'cursor-grabbing' : ''}` : ''
         } ${resizable && placement === 'center' && !isMobileLayout ? 'resize min-h-[28rem] min-w-[36rem]' : ''} ${maxWidthClass}`}
         style={floatingStyle}
@@ -143,7 +158,7 @@ export const ModalShell: React.FC<{
             {placement === 'center' && !isMobileLayout && <GripHorizontal size={17} className="shrink-0 text-blue-100" />}
             <h2 className="truncate text-lg font-bold">{title}</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md bg-red-600 p-2 text-white shadow-sm hover:bg-red-700">
+          <button type="button" onClick={requestClose} className="rounded-md bg-red-600 p-2 text-white shadow-sm hover:bg-red-700">
             <X size={18} />
           </button>
         </div>

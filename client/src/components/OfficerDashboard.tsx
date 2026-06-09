@@ -1699,21 +1699,43 @@ const DockContent: React.FC<{
   onAttachment
 }) => {
   const [activeCallTab, setActiveCallTab] = useState<CallTabId>('all');
+  const [callSearch, setCallSearch] = useState('');
   const isClosedCall = (incident: Incident) => incident.status === 'Closed' || incident.status === 'Canceled';
   const isMyCall = (incident: Incident) =>
     incident.units.some((unit) => unit.userId === currentUserId && unit.status !== 'Cleared') || incident.createdBy === currentUserId;
+  const callMatchesSearch = (incident: Incident) => {
+    const query = callSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      incident.callNumber,
+      incident.type,
+      incident.priority,
+      incident.status,
+      incident.address,
+      incident.description,
+      incident.callerName,
+      incident.callerPhone,
+      incident.disposition,
+      ...incident.units.flatMap((unit) => [unit.name, unit.cadUnitNumber, unit.status])
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(query);
+  };
   const tabIncidents = (tab: CallTabId) =>
     incidents.filter((incident) => {
+      if (!callMatchesSearch(incident)) return false;
       if (tab === 'my') return isMyCall(incident);
       if (tab === 'pending') return incident.status === 'Pending';
       if (tab === 'closed') return isClosedCall(incident);
       return true;
     });
-  const callTabs: Array<{ id: CallTabId; label: string; calls: Incident[] }> = [
-    { id: 'all', label: 'All Calls', calls: tabIncidents('all') },
-    { id: 'my', label: 'My Calls', calls: tabIncidents('my') },
-    { id: 'pending', label: 'Pending Calls', calls: tabIncidents('pending') },
-    { id: 'closed', label: 'Closed Calls', calls: tabIncidents('closed') }
+  const callTabs: Array<{ id: CallTabId; label: string; icon: React.ReactNode; calls: Incident[] }> = [
+    { id: 'all', label: 'All Calls', icon: <ClipboardList size={14} />, calls: tabIncidents('all') },
+    { id: 'my', label: 'My Calls', icon: <Radio size={14} />, calls: tabIncidents('my') },
+    { id: 'pending', label: 'Pending Calls', icon: <Siren size={14} />, calls: tabIncidents('pending') },
+    { id: 'closed', label: 'Closed Calls', icon: <CheckCircle2 size={14} />, calls: tabIncidents('closed') }
   ];
   const visibleCallTabIncidents = callTabs.find((tab) => tab.id === activeCallTab)?.calls || [];
   const callEmptyCopy =
@@ -1728,19 +1750,28 @@ const DockContent: React.FC<{
   if (activeItem === 'calls') {
     return (
       <div className="grid gap-3">
+        <label className="relative block">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+          <input
+            value={callSearch}
+            onChange={(event) => setCallSearch(event.target.value)}
+            placeholder="Search calls"
+            className="h-9 w-full rounded border border-cad-line bg-white pl-9 pr-3 text-sm outline-none focus:border-cad-accent focus:ring-4 focus:ring-cad-accent/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+          />
+        </label>
         <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
           {callTabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveCallTab(tab.id)}
-              className={`rounded px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.08em] transition ${
+              className={`rounded border px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.08em] transition ${
                 activeCallTab === tab.id
-                  ? 'bg-cad-blue text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                  ? 'border-cad-accent bg-white text-cad-blue shadow-sm dark:bg-slate-900 dark:text-blue-100'
+                  : 'border-cad-line bg-white text-slate-600 hover:border-cad-accent/60 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
               }`}
             >
-              <span className="block truncate">{tab.label}</span>
+              <span className="flex items-center gap-1.5 truncate">{tab.icon}{tab.label}</span>
               <span className="mt-0.5 block text-xs opacity-80">{tab.calls.length}</span>
             </button>
           ))}
