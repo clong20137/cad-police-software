@@ -1,5 +1,6 @@
 import { ResultSetHeader } from 'mysql2';
 import { v4 as uuidv4 } from 'uuid';
+import { indianaCountyBoundaries } from '../data/indianaCountyBoundaries';
 import { AdminConfigurationRow, pool } from '../db/mysql';
 
 export type AdminConfigSection = 'agencies' | 'districts' | 'units' | 'calls' | 'statuses' | 'security';
@@ -31,17 +32,8 @@ export interface UpsertConfigurationItemRequest {
 
 const allowedSections = new Set<AdminConfigSection>(['agencies', 'districts', 'units', 'calls', 'statuses', 'security']);
 
-const districtBoundary = (
-  nw: [number, number],
-  ne: [number, number],
-  se: [number, number],
-  sw: [number, number]
-): Array<{ lat: number; lon: number }> => [
-  { lat: nw[0], lon: nw[1] },
-  { lat: ne[0], lon: ne[1] },
-  { lat: se[0], lon: se[1] },
-  { lat: sw[0], lon: sw[1] }
-];
+const districtBoundariesForCounties = (counties: string[]) =>
+  counties.flatMap((county) => indianaCountyBoundaries[county] || []);
 
 const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'updatedAt'>> = [
   {
@@ -56,7 +48,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#0f766e',
       counties: ['Indiana Toll Road'],
-      boundary: districtBoundary([41.77, -87.55], [41.77, -84.80], [41.61, -84.80], [41.61, -87.55])
+      boundaries: districtBoundariesForCounties(['Lake', 'Porter', 'LaPorte', 'St. Joseph', 'Elkhart'])
     }
   },
   {
@@ -71,7 +63,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#2563eb',
       counties: ['Jasper', 'Lake', 'LaPorte', 'Newton', 'Porter', 'Pulaski', 'Starke'],
-      boundary: districtBoundary([41.77, -87.55], [41.77, -86.45], [40.72, -86.45], [40.72, -87.55])
+      boundaries: districtBoundariesForCounties(['Jasper', 'Lake', 'LaPorte', 'Newton', 'Porter', 'Pulaski', 'Starke'])
     }
   },
   {
@@ -86,7 +78,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#7c3aed',
       counties: ['Benton', 'Carroll', 'Clinton', 'Fountain', 'Montgomery', 'Tippecanoe', 'Warren', 'White'],
-      boundary: districtBoundary([40.72, -87.55], [40.72, -86.45], [39.70, -86.45], [39.70, -87.55])
+      boundaries: districtBoundariesForCounties(['Benton', 'Carroll', 'Clinton', 'Fountain', 'Montgomery', 'Tippecanoe', 'Warren', 'White'])
     }
   },
   {
@@ -101,7 +93,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#0891b2',
       counties: ['Cass', 'Fulton', 'Grant', 'Howard', 'Miami', 'Tipton', 'Wabash'],
-      boundary: districtBoundary([41.00, -86.45], [41.00, -85.55], [40.30, -85.55], [40.30, -86.45])
+      boundaries: districtBoundariesForCounties(['Cass', 'Fulton', 'Grant', 'Howard', 'Miami', 'Tipton', 'Wabash'])
     }
   },
   {
@@ -116,7 +108,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#dc2626',
       counties: ['Adams', 'Allen', 'Blackford', 'DeKalb', 'Huntington', 'Jay', 'LaGrange', 'Noble', 'Steuben', 'Wells', 'Whitley'],
-      boundary: districtBoundary([41.77, -85.55], [41.77, -84.78], [40.30, -84.78], [40.30, -85.55])
+      boundaries: districtBoundariesForCounties(['Adams', 'Allen', 'Blackford', 'DeKalb', 'Huntington', 'Jay', 'LaGrange', 'Noble', 'Steuben', 'Wells', 'Whitley'])
     }
   },
   {
@@ -131,7 +123,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#ca8a04',
       counties: ['Elkhart', 'Kosciusko', 'Marshall', 'St. Joseph'],
-      boundary: districtBoundary([41.77, -86.45], [41.77, -85.55], [41.00, -85.55], [41.00, -86.45])
+      boundaries: districtBoundariesForCounties(['Elkhart', 'Kosciusko', 'Marshall', 'St. Joseph'])
     }
   },
   {
@@ -146,7 +138,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#16a34a',
       counties: ['Brown', 'Greene', 'Lawrence', 'Monroe', 'Morgan', 'Owen'],
-      boundary: districtBoundary([39.70, -86.45], [39.70, -85.85], [38.70, -85.85], [38.70, -86.80])
+      boundaries: districtBoundariesForCounties(['Brown', 'Greene', 'Lawrence', 'Monroe', 'Morgan', 'Owen'])
     }
   },
   {
@@ -161,7 +153,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#ea580c',
       counties: ['Crawford', 'Daviess', 'Dubois', 'Martin', 'Orange', 'Perry', 'Spencer'],
-      boundary: districtBoundary([38.80, -87.35], [38.80, -86.20], [37.75, -86.20], [37.75, -87.35])
+      boundaries: districtBoundariesForCounties(['Crawford', 'Daviess', 'Dubois', 'Martin', 'Orange', 'Perry', 'Spencer'])
     }
   },
   {
@@ -176,7 +168,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#be123c',
       counties: ['Gibson', 'Knox', 'Pike', 'Posey', 'Vanderburgh', 'Warrick'],
-      boundary: districtBoundary([38.80, -88.10], [38.80, -87.25], [37.75, -87.25], [37.75, -88.10])
+      boundaries: districtBoundariesForCounties(['Gibson', 'Knox', 'Pike', 'Posey', 'Vanderburgh', 'Warrick'])
     }
   },
   {
@@ -191,7 +183,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#4f46e5',
       counties: ['Bartholomew', 'Dearborn', 'Decatur', 'Franklin', 'Jackson', 'Jefferson', 'Jennings', 'Ohio', 'Ripley', 'Switzerland'],
-      boundary: districtBoundary([39.45, -86.15], [39.45, -84.78], [38.55, -84.78], [38.55, -86.15])
+      boundaries: districtBoundariesForCounties(['Bartholomew', 'Dearborn', 'Decatur', 'Franklin', 'Jackson', 'Jefferson', 'Jennings', 'Ohio', 'Ripley', 'Switzerland'])
     }
   },
   {
@@ -206,7 +198,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#db2777',
       counties: ['Clark', 'Floyd', 'Harrison', 'Scott', 'Washington'],
-      boundary: districtBoundary([38.75, -86.35], [38.75, -85.35], [37.75, -85.35], [37.75, -86.35])
+      boundaries: districtBoundariesForCounties(['Clark', 'Floyd', 'Harrison', 'Scott', 'Washington'])
     }
   },
   {
@@ -221,7 +213,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#0284c7',
       counties: ['Delaware', 'Fayette', 'Henry', 'Madison', 'Randolph', 'Rush', 'Union', 'Wayne'],
-      boundary: districtBoundary([40.30, -85.55], [40.30, -84.78], [39.30, -84.78], [39.30, -85.55])
+      boundaries: districtBoundariesForCounties(['Delaware', 'Fayette', 'Henry', 'Madison', 'Randolph', 'Rush', 'Union', 'Wayne'])
     }
   },
   {
@@ -236,7 +228,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#9333ea',
       counties: ['Boone', 'Hamilton', 'Hancock', 'Hendricks', 'Johnson', 'Marion', 'Shelby'],
-      boundary: districtBoundary([40.30, -86.45], [40.30, -85.55], [39.30, -85.55], [39.30, -86.45])
+      boundaries: districtBoundariesForCounties(['Boone', 'Hamilton', 'Hancock', 'Hendricks', 'Johnson', 'Marion', 'Shelby'])
     }
   },
   {
@@ -251,7 +243,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
     metadata: {
       fillColor: '#64748b',
       counties: ['Clay', 'Parke', 'Putnam', 'Sullivan', 'Vermillion', 'Vigo'],
-      boundary: districtBoundary([39.70, -87.55], [39.70, -86.45], [38.70, -86.45], [38.70, -87.55])
+      boundaries: districtBoundariesForCounties(['Clay', 'Parke', 'Putnam', 'Sullivan', 'Vermillion', 'Vigo'])
     }
   }
 ];
@@ -325,6 +317,16 @@ export class ConfigurationService {
         `,
         [JSON.stringify(item.metadata), item.id]
       );
+      if (item.id.startsWith('district-isp-')) {
+        await pool.execute(
+          `
+            UPDATE admin_configuration_items
+            SET metadata = ?
+            WHERE id = ?
+          `,
+          [JSON.stringify(item.metadata), item.id]
+        );
+      }
     }
     await pool.execute(
       `

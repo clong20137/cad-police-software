@@ -1151,16 +1151,18 @@ export const OfficerDashboard: React.FC = () => {
 
     configuredGeofences.forEach((geofence) => {
       if (!googleMaps.Polygon) return;
-      const polygon = new googleMaps.Polygon({
-        paths: geofence.points.map((point) => ({ lat: point.lat, lng: point.lon })),
-        strokeColor: geofence.color,
-        strokeOpacity: geofence.kind === 'beat' ? 0.85 : 0.7,
-        strokeWeight: geofence.kind === 'beat' ? 2 : 3,
-        fillColor: geofence.color,
-        fillOpacity: geofence.kind === 'beat' ? 0.08 : 0.05,
-        map
+      geofence.rings.forEach((ring) => {
+        const polygon = new googleMaps.Polygon({
+          paths: ring.map((point) => ({ lat: point.lat, lng: point.lon })),
+          strokeColor: geofence.color,
+          strokeOpacity: geofence.kind === 'beat' ? 0.85 : 0.7,
+          strokeWeight: geofence.kind === 'beat' ? 2 : 3,
+          fillColor: geofence.color,
+          fillOpacity: geofence.kind === 'beat' ? 0.08 : 0.05,
+          map
+        });
+        mapPolygonsRef.current.push(polygon);
       });
-      mapPolygonsRef.current.push(polygon);
     });
 
     trackedOfficers.forEach((officer) => {

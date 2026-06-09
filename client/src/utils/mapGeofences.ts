@@ -8,6 +8,7 @@ export type MapGeofence = {
   code: string;
   kind: 'district' | 'beat';
   color: string;
+  rings: MapPoint[][];
   points: MapPoint[];
 };
 
@@ -20,20 +21,32 @@ const isPoint = (value: unknown): value is { lat: number | string; lon?: number 
   return Number.isFinite(lat) && Number.isFinite(lon);
 };
 
-const parseBoundary = (metadata: Record<string, unknown>): MapPoint[] => {
-  const raw = metadata.boundary || metadata.polygon || metadata.points;
+const normalizeRing = (value: unknown): MapPoint[] =>
+  Array.isArray(value)
+    ? value
+        .filter(isPoint)
+        .map((point) => ({ lat: Number(point.lat), lon: Number(point.lon ?? point.lng) }))
+    : [];
+
+const parseBoundary = (metadata: Record<string, unknown>): MapPoint[][] => {
+  const raw = metadata.boundaries || metadata.boundary || metadata.polygon || metadata.points;
   if (Array.isArray(raw)) {
+    if (raw.every(isPoint)) {
+      return [normalizeRing(raw)].filter((ring) => ring.length >= 3);
+    }
+
     return raw
-      .filter(isPoint)
-      .map((point) => ({ lat: Number(point.lat), lon: Number(point.lon ?? point.lng) }));
+      .map(normalizeRing)
+      .filter((ring) => ring.length >= 3);
   }
 
   if (typeof raw === 'string') {
-    return raw
+    const ring = raw
       .split(';')
       .map((pair) => pair.trim().split(',').map(Number))
       .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon))
       .map(([lat, lon]) => ({ lat, lon }));
+    return ring.length >= 3 ? [ring] : [];
   }
 
   return [];
@@ -46,22 +59,24 @@ export const geofencesFromConfig = (items: AdminConfigurationItem[]): MapGeofenc
       const metadata = item.metadata || {};
       const category = item.category.toLowerCase();
       const kind: MapGeofence['kind'] = category.includes('beat') ? 'beat' : 'district';
+      const rings = parseBoundary(metadata);
       return {
         id: item.id,
         name: item.name,
         code: item.code,
         kind,
         color: typeof metadata.fillColor === 'string' ? metadata.fillColor : defaultColors[index % defaultColors.length],
-        points: parseBoundary(metadata)
+        rings,
+        points: rings[0] || []
       };
     })
-    .filter((geofence) => geofence.points.length >= 3);
+    .filter((geofence) => geofence.rings.length > 0);
 
-export const pointInGeofence = (point: MapPoint, geofence: MapGeofence): boolean => {
+const pointInRing = (point: MapPoint, ring: MapPoint[]): boolean => {
   let inside = false;
-  for (let current = 0, previous = geofence.points.length - 1; current < geofence.points.length; previous = current++) {
-    const currentPoint = geofence.points[current];
-    const previousPoint = geofence.points[previous];
+  for (let current = 0, previous = ring.length - 1; current < ring.length; previous = current++) {
+    const currentPoint = ring[current];
+    const previousPoint = ring[previous];
     const crossesLongitude =
       (currentPoint.lon > point.lon) !== (previousPoint.lon > point.lon);
     const intersects =
@@ -74,6 +89,9 @@ export const pointInGeofence = (point: MapPoint, geofence: MapGeofence): boolean
   }
   return inside;
 };
+
+export const pointInGeofence = (point: MapPoint, geofence: MapGeofence): boolean =>
+  geofence.rings.some((ring) => pointInRing(point, ring));
 
 export const geofenceAssignmentForPoint = (
   point: MapPoint | null,

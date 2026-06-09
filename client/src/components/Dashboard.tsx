@@ -1308,17 +1308,20 @@ export const Dashboard: React.FC = () => {
       mapPolygonsRef.current = [];
 
       configuredGeofences.forEach((geofence) => {
-        if (!window.google?.maps.Polygon) return;
-        const polygon = new window.google.maps.Polygon({
-          paths: geofence.points.map((point) => ({ lat: point.lat, lng: point.lon })),
-          strokeColor: geofence.color,
-          strokeOpacity: geofence.kind === 'beat' ? 0.85 : 0.7,
-          strokeWeight: geofence.kind === 'beat' ? 2 : 3,
-          fillColor: geofence.color,
-          fillOpacity: geofence.kind === 'beat' ? 0.09 : 0.06,
-          map
+        const googleMaps = window.google?.maps;
+        if (!googleMaps?.Polygon) return;
+        geofence.rings.forEach((ring) => {
+          const polygon = new googleMaps.Polygon({
+            paths: ring.map((point) => ({ lat: point.lat, lng: point.lon })),
+            strokeColor: geofence.color,
+            strokeOpacity: geofence.kind === 'beat' ? 0.85 : 0.7,
+            strokeWeight: geofence.kind === 'beat' ? 2 : 3,
+            fillColor: geofence.color,
+            fillOpacity: geofence.kind === 'beat' ? 0.09 : 0.06,
+            map
+          });
+          mapPolygonsRef.current.push(polygon);
         });
-        mapPolygonsRef.current.push(polygon);
       });
 
       units.forEach((unit) => {
