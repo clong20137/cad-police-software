@@ -26,9 +26,10 @@ export const ShieldSidebar: React.FC<{
   collapsed: boolean;
   onToggleCollapsed: () => void;
   items: ShieldSidebarItem[];
+  bottomContent?: React.ReactNode;
   footerItems?: ShieldSidebarItem[];
   onProfile?: () => void;
-}> = ({ title, subtitle, user, collapsed, onToggleCollapsed, items, footerItems = [], onProfile }) => (
+}> = ({ title, subtitle, user, collapsed, onToggleCollapsed, items, bottomContent, footerItems = [], onProfile }) => (
   <aside
     className={`relative hidden h-[100dvh] shrink-0 overflow-visible bg-cad-blue text-white shadow-xl transition-all duration-200 md:block ${
       collapsed ? 'w-20' : 'w-72'
@@ -103,6 +104,12 @@ export const ShieldSidebar: React.FC<{
       </nav>
 
       <div className="flex-1" />
+
+      {bottomContent && (
+        <div className={`shrink-0 ${collapsed ? 'px-3 py-3' : 'px-4 py-3'}`}>
+          {bottomContent}
+        </div>
+      )}
 
       {footerItems.length > 0 && (
         <nav className={`shrink-0 border-t border-white/10 py-3 ${collapsed ? 'px-3' : 'px-4'}`}>
