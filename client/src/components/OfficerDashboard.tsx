@@ -14,6 +14,8 @@ import {
   MessageCircle,
   Navigation,
   Paperclip,
+  Pin,
+  PinOff,
   Radio,
   Search,
   Send,
@@ -172,6 +174,23 @@ const darkMapStyles = [
 
 const formatTime = (value: Date | string): string =>
   new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+const formatMessageTime = (value?: Date | string): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  if (date.toDateString() === yesterday.toDateString()) {
+    return `Yesterday ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
 
 const distanceMiles = (fromLat: number, fromLon: number, toLat: number, toLon: number): number => {
   const earthRadiusMiles = 3958.8;
@@ -359,6 +378,13 @@ export const OfficerDashboard: React.FC = () => {
   const [messageBody, setMessageBody] = useState('');
   const [messageSearch, setMessageSearch] = useState('');
   const [messageTextSearch, setMessageTextSearch] = useState('');
+  const [pinnedMessageThreadIds, setPinnedMessageThreadIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cad_officer_pinned_message_threads') || '[]') as string[];
+    } catch {
+      return [];
+    }
+  });
   const [pendingAttachments, setPendingAttachments] = useState<SendMessageAttachment[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [emojiSearch, setEmojiSearch] = useState('');
@@ -415,6 +441,9 @@ export const OfficerDashboard: React.FC = () => {
     if (item.id === user?.id) return false;
     return !messageSearch.trim() || `${item.name} ${item.email} ${item.cadUnitNumber || ''}`.toLowerCase().includes(messageSearch.toLowerCase());
   }).sort((first, second) => {
+    const firstPinned = pinnedMessageThreadIds.includes(first.id);
+    const secondPinned = pinnedMessageThreadIds.includes(second.id);
+    if (firstPinned !== secondPinned) return firstPinned ? -1 : 1;
     const firstThread = messageThreadByUser[first.id];
     const secondThread = messageThreadByUser[second.id];
     return new Date(secondThread?.updatedAt || 0).getTime() - new Date(firstThread?.updatedAt || 0).getTime();
@@ -426,6 +455,16 @@ export const OfficerDashboard: React.FC = () => {
       message.attachments.some((attachment) => attachment.fileName.toLowerCase().includes(messageTextSearch.toLowerCase()))
   );
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
+
+  useEffect(() => {
+    localStorage.setItem('cad_officer_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
+  }, [pinnedMessageThreadIds]);
+
+  const togglePinnedMessageThread = (threadId: string) => {
+    setPinnedMessageThreadIds((current) =>
+      current.includes(threadId) ? current.filter((id) => id !== threadId) : [threadId, ...current]
+    );
+  };
 
   const loadIncidents = useCallback(async () => {
     const activeIncidents = await authClient.getIncidents();
@@ -1267,6 +1306,7 @@ export const OfficerDashboard: React.FC = () => {
                 messageBody={messageBody}
                 messageSearch={messageSearch}
                 messageTextSearch={messageTextSearch}
+                pinnedMessageThreadIds={pinnedMessageThreadIds}
                 pendingAttachments={pendingAttachments}
                 emojiOpen={emojiOpen}
                 emojiSearch={emojiSearch}
@@ -1277,6 +1317,7 @@ export const OfficerDashboard: React.FC = () => {
                 setMessageBody={setMessageBody}
                 setMessageSearch={setMessageSearch}
                 setMessageTextSearch={setMessageTextSearch}
+                onTogglePinnedThread={togglePinnedMessageThread}
                 setPendingAttachments={setPendingAttachments}
                 setEmojiOpen={setEmojiOpen}
                 setEmojiSearch={setEmojiSearch}
@@ -1359,6 +1400,7 @@ const DockContent: React.FC<{
   messageBody: string;
   messageSearch: string;
   messageTextSearch: string;
+  pinnedMessageThreadIds: string[];
   pendingAttachments: SendMessageAttachment[];
   emojiOpen: boolean;
   emojiSearch: string;
@@ -1369,6 +1411,7 @@ const DockContent: React.FC<{
   setMessageBody: (value: string) => void;
   setMessageSearch: (value: string) => void;
   setMessageTextSearch: (value: string) => void;
+  onTogglePinnedThread: (threadId: string) => void;
   setPendingAttachments: React.Dispatch<React.SetStateAction<SendMessageAttachment[]>>;
   setEmojiOpen: (value: boolean) => void;
   setEmojiSearch: (value: string) => void;
@@ -1408,6 +1451,7 @@ const DockContent: React.FC<{
   messageBody,
   messageSearch,
   messageTextSearch,
+  pinnedMessageThreadIds,
   pendingAttachments,
   emojiOpen,
   emojiSearch,
@@ -1418,6 +1462,7 @@ const DockContent: React.FC<{
   setMessageBody,
   setMessageSearch,
   setMessageTextSearch,
+  onTogglePinnedThread,
   setPendingAttachments,
   setEmojiOpen,
   setEmojiSearch,
@@ -1609,6 +1654,7 @@ const DockContent: React.FC<{
         messageBody={messageBody}
         messageSearch={messageSearch}
         messageTextSearch={messageTextSearch}
+        pinnedMessageThreadIds={pinnedMessageThreadIds}
         pendingAttachments={pendingAttachments}
         emojiOpen={emojiOpen}
         emojiSearch={emojiSearch}
@@ -1619,6 +1665,7 @@ const DockContent: React.FC<{
         setMessageBody={setMessageBody}
         setMessageSearch={setMessageSearch}
         setMessageTextSearch={setMessageTextSearch}
+        onTogglePinnedThread={onTogglePinnedThread}
         setPendingAttachments={setPendingAttachments}
         setEmojiOpen={setEmojiOpen}
         setEmojiSearch={setEmojiSearch}
@@ -1659,6 +1706,7 @@ const OfficerMessages: React.FC<{
   messageBody: string;
   messageSearch: string;
   messageTextSearch: string;
+  pinnedMessageThreadIds: string[];
   pendingAttachments: SendMessageAttachment[];
   emojiOpen: boolean;
   emojiSearch: string;
@@ -1669,6 +1717,7 @@ const OfficerMessages: React.FC<{
   setMessageBody: (value: string) => void;
   setMessageSearch: (value: string) => void;
   setMessageTextSearch: (value: string) => void;
+  onTogglePinnedThread: (threadId: string) => void;
   setPendingAttachments: React.Dispatch<React.SetStateAction<SendMessageAttachment[]>>;
   setEmojiOpen: (value: boolean) => void;
   setEmojiSearch: (value: string) => void;
@@ -1684,6 +1733,7 @@ const OfficerMessages: React.FC<{
   messageBody,
   messageSearch,
   messageTextSearch,
+  pinnedMessageThreadIds,
   pendingAttachments,
   emojiOpen,
   emojiSearch,
@@ -1694,6 +1744,7 @@ const OfficerMessages: React.FC<{
   setMessageBody,
   setMessageSearch,
   setMessageTextSearch,
+  onTogglePinnedThread,
   setPendingAttachments,
   setEmojiOpen,
   setEmojiSearch,
@@ -1730,6 +1781,22 @@ const OfficerMessages: React.FC<{
                     {thread.unreadCount}
                   </span>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onTogglePinnedThread(item.id);
+                  }}
+                  className={`rounded-full p-1 ${
+                    pinnedMessageThreadIds.includes(item.id)
+                      ? 'text-cad-blue'
+                      : 'text-slate-400 hover:text-cad-blue'
+                  }`}
+                  aria-label={pinnedMessageThreadIds.includes(item.id) ? 'Unpin conversation' : 'Pin conversation'}
+                  title={pinnedMessageThreadIds.includes(item.id) ? 'Unpin conversation' : 'Pin conversation'}
+                >
+                  {pinnedMessageThreadIds.includes(item.id) ? <PinOff size={13} /> : <Pin size={13} />}
+                </button>
               </span>
               <span className="mt-1 block truncate text-xs text-slate-500">
                 {thread?.lastMessage?.body ||
@@ -1788,25 +1855,46 @@ const OfficerMessages: React.FC<{
         {!selectedMessageUserId && <p className="text-sm text-slate-500">Select a thread or compose a new message.</p>}
         {messages.map((message) => {
           const mine = message.senderId === currentUserId;
+          const index = messages.findIndex((item) => item.id === message.id);
+          const previous = messages[index - 1];
+          const showTimestamp =
+            !previous ||
+            new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() > 10 * 60 * 1000;
           return (
-            <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${mine ? 'bg-cad-blue text-white' : 'bg-slate-100 text-slate-950 dark:bg-slate-800 dark:text-white'}`}>
-                {message.body && <p>{message.body}</p>}
-                {message.attachments?.map((attachment) => (
-                  <MessageAttachmentPreview key={attachment.id} attachment={attachment} mine={mine} />
-                ))}
-                <p className={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
-                  <Lock size={10} />
-                  {mine && message.deliveryStatus === 'sending'
-                    ? 'Sending'
-                    : mine && message.deliveryStatus === 'failed'
-                      ? 'Failed'
-                      : mine && message.readAt
-                        ? 'Read'
-                        : mine
-                          ? 'Sent'
-                          : 'Encrypted'}
-                </p>
+            <div key={message.id}>
+              {showTimestamp && (
+                <div className="my-3 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                  <span className="text-[11px] font-bold uppercase text-slate-400">{formatMessageTime(message.createdAt)}</span>
+                  <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                </div>
+              )}
+              <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  className={`max-w-[85%] rounded-[1.35rem] px-4 py-2.5 text-sm shadow-sm ${
+                    mine
+                      ? 'rounded-br-md bg-cad-blue text-white'
+                      : 'rounded-bl-md border border-slate-200 bg-white text-slate-950 dark:border-slate-800 dark:bg-slate-900 dark:text-white'
+                  }`}
+                >
+                  {message.body && <p className="whitespace-pre-wrap text-left leading-6">{message.body}</p>}
+                  {message.attachments?.map((attachment) => (
+                    <MessageAttachmentPreview key={attachment.id} attachment={attachment} mine={mine} />
+                  ))}
+                  <p className={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
+                    <Lock size={10} />
+                    {formatMessageTime(message.createdAt)}
+                    {mine && message.deliveryStatus === 'sending'
+                      ? 'Sending'
+                      : mine && message.deliveryStatus === 'failed'
+                        ? 'Failed'
+                        : mine && message.readAt
+                          ? 'Read'
+                          : mine
+                            ? 'Sent'
+                            : 'Encrypted'}
+                  </p>
+                </div>
               </div>
             </div>
           );

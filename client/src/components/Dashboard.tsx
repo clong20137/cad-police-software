@@ -14,6 +14,8 @@ import {
   Lock,
   MapPin,
   Paperclip,
+  Pin,
+  PinOff,
   Radio,
   Send,
   Settings,
@@ -47,7 +49,7 @@ import {
 import { ChangePasswordModal } from './common/ChangePasswordModal';
 import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
-import { QuickLaunchDock } from './common/QuickLaunchDock';
+import { QuickLaunchDock, QuickLaunchSlot as DockSlotValue } from './common/QuickLaunchDock';
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
 import { callTypesFromConfig, defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
 
@@ -135,7 +137,7 @@ interface GoogleAutocompleteService {
 
 type TrackedUnit = User & { lat: number; lon: number };
 type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'inquiries' | 'map' | 'settings';
-type QuickLaunchSlot = QuickLaunchId | null;
+type QuickLaunchSlot = DockSlotValue<QuickLaunchId>;
 type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
 
@@ -353,6 +355,23 @@ const formatDateTime = (value?: Date | string): string => {
   return date.toLocaleString();
 };
 
+const formatMessageTime = (value?: Date | string): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  if (date.toDateString() === yesterday.toDateString()) {
+    return `Yesterday ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
 const addGooglePulseMarker = ({
   map,
   lat,
@@ -459,6 +478,13 @@ export const Dashboard: React.FC = () => {
   const [messageThreadSummaries, setMessageThreadSummaries] = useState<MessageThread[]>([]);
   const [messageSearch, setMessageSearch] = useState('');
   const [messageTextSearch, setMessageTextSearch] = useState('');
+  const [pinnedMessageThreadIds, setPinnedMessageThreadIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('cad_pinned_message_threads') || '[]') as string[];
+    } catch {
+      return [];
+    }
+  });
   const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [callBadgeCount, setCallBadgeCount] = useState(0);
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
@@ -1188,6 +1214,9 @@ export const Dashboard: React.FC = () => {
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query));
   }).sort((first, second) => {
+    const firstPinned = pinnedMessageThreadIds.includes(first.id);
+    const secondPinned = pinnedMessageThreadIds.includes(second.id);
+    if (firstPinned !== secondPinned) return firstPinned ? -1 : 1;
     const firstThread = messageThreadByUser[first.id];
     const secondThread = messageThreadByUser[second.id];
     return new Date(secondThread?.updatedAt || 0).getTime() - new Date(firstThread?.updatedAt || 0).getTime();
@@ -1199,6 +1228,16 @@ export const Dashboard: React.FC = () => {
   );
   const searchedMessages = visibleMessages;
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
+
+  useEffect(() => {
+    localStorage.setItem('cad_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
+  }, [pinnedMessageThreadIds]);
+
+  const togglePinnedMessageThread = (threadId: string) => {
+    setPinnedMessageThreadIds((current) =>
+      current.includes(threadId) ? current.filter((id) => id !== threadId) : [threadId, ...current]
+    );
+  };
 
   const sendChatMessage = async () => {
     if (!selectedMessageUserId || (!messageBody.trim() && pendingAttachments.length === 0)) return;
@@ -1778,6 +1817,22 @@ export const Dashboard: React.FC = () => {
                             {thread.unreadCount}
                           </span>
                         ) : null}
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            togglePinnedMessageThread(item.id);
+                          }}
+                          className={`rounded-full p-1 ${
+                            pinnedMessageThreadIds.includes(item.id)
+                              ? 'text-cad-blue'
+                              : 'text-slate-400 hover:text-cad-blue'
+                          }`}
+                          aria-label={pinnedMessageThreadIds.includes(item.id) ? 'Unpin conversation' : 'Pin conversation'}
+                          title={pinnedMessageThreadIds.includes(item.id) ? 'Unpin conversation' : 'Pin conversation'}
+                        >
+                          {pinnedMessageThreadIds.includes(item.id) ? <PinOff size={13} /> : <Pin size={13} />}
+                        </button>
                       </span>
                       <span className="mt-1 block truncate text-xs text-slate-500">
                         {thread?.lastMessage?.body ||
@@ -1828,25 +1883,41 @@ export const Dashboard: React.FC = () => {
                 <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-white p-4 dark:bg-slate-950">
                   {searchedMessages.map((message) => {
                     const mine = message.senderId === user?.id;
+                    const index = searchedMessages.findIndex((item) => item.id === message.id);
+                    const previous = searchedMessages[index - 1];
+                    const showTimestamp =
+                      !previous ||
+                      new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() > 10 * 60 * 1000;
                     return (
-                      <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                        <div
-                          className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                            mine ? 'bg-cad-blue text-white' : 'bg-slate-100 text-cad-ink'
-                          }`}
-                        >
-                          {message.body && <p>{message.body}</p>}
-                          {message.attachments?.map((attachment) => (
-                            <MessageAttachmentPreview key={attachment.id} attachment={attachment} mine={mine} />
-                          ))}
-                          <p className={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
-                            <Lock size={10} />
-                            {formatDateTime(message.createdAt)}
-                            {mine && message.deliveryStatus === 'sending' && <span>Sending</span>}
-                            {mine && message.deliveryStatus === 'failed' && <span>Failed</span>}
-                            {mine && !message.readAt && message.deliveryStatus !== 'sending' && message.deliveryStatus !== 'failed' && <span>Sent</span>}
-                            {mine && message.readAt && <><CheckCheck size={12} />Read</>}
-                          </p>
+                      <div key={message.id}>
+                        {showTimestamp && (
+                          <div className="my-3 flex items-center gap-3">
+                            <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                            <span className="text-[11px] font-bold uppercase text-slate-400">{formatMessageTime(message.createdAt)}</span>
+                            <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                          </div>
+                        )}
+                        <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                          <div
+                            className={`max-w-[85%] rounded-[1.35rem] px-4 py-2.5 text-sm shadow-sm ${
+                              mine
+                                ? 'rounded-br-md bg-cad-blue text-white'
+                                : 'rounded-bl-md border border-slate-200 bg-white text-cad-ink dark:border-slate-800 dark:bg-slate-900 dark:text-white'
+                            }`}
+                          >
+                            {message.body && <p className="whitespace-pre-wrap text-left leading-6">{message.body}</p>}
+                            {message.attachments?.map((attachment) => (
+                              <MessageAttachmentPreview key={attachment.id} attachment={attachment} mine={mine} />
+                            ))}
+                            <p className={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'text-blue-100' : 'text-slate-500'}`}>
+                              <Lock size={10} />
+                              {formatMessageTime(message.createdAt)}
+                              {mine && message.deliveryStatus === 'sending' && <span>Sending</span>}
+                              {mine && message.deliveryStatus === 'failed' && <span>Failed</span>}
+                              {mine && !message.readAt && message.deliveryStatus !== 'sending' && message.deliveryStatus !== 'failed' && <span>Sent</span>}
+                              {mine && message.readAt && <><CheckCheck size={12} />Read</>}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     );
