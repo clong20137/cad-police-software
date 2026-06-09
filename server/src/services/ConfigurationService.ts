@@ -31,68 +31,237 @@ export interface UpsertConfigurationItemRequest {
 
 const allowedSections = new Set<AdminConfigSection>(['agencies', 'districts', 'units', 'calls', 'statuses', 'security']);
 
+const districtBoundary = (
+  nw: [number, number],
+  ne: [number, number],
+  se: [number, number],
+  sw: [number, number]
+): Array<{ lat: number; lon: number }> => [
+  { lat: nw[0], lon: nw[1] },
+  { lat: ne[0], lon: ne[1] },
+  { lat: se[0], lon: se[1] },
+  { lat: sw[0], lon: sw[1] }
+];
+
+const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'updatedAt'>> = [
+  {
+    id: 'district-isp-21-toll-road',
+    section: 'districts',
+    name: 'ISP District 21 - Toll Road',
+    code: 'ISP-21',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 10,
+    metadata: {
+      fillColor: '#0f766e',
+      counties: ['Indiana Toll Road'],
+      boundary: districtBoundary([41.77, -87.55], [41.77, -84.80], [41.61, -84.80], [41.61, -87.55])
+    }
+  },
+  {
+    id: 'district-isp-13-lowell',
+    section: 'districts',
+    name: 'ISP District 13 - Lowell',
+    code: 'ISP-13',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 20,
+    metadata: {
+      fillColor: '#2563eb',
+      counties: ['Jasper', 'Lake', 'LaPorte', 'Newton', 'Porter', 'Pulaski', 'Starke'],
+      boundary: districtBoundary([41.77, -87.55], [41.77, -86.45], [40.72, -86.45], [40.72, -87.55])
+    }
+  },
+  {
+    id: 'district-isp-14-lafayette',
+    section: 'districts',
+    name: 'ISP District 14 - Lafayette',
+    code: 'ISP-14',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 30,
+    metadata: {
+      fillColor: '#7c3aed',
+      counties: ['Benton', 'Carroll', 'Clinton', 'Fountain', 'Montgomery', 'Tippecanoe', 'Warren', 'White'],
+      boundary: districtBoundary([40.72, -87.55], [40.72, -86.45], [39.70, -86.45], [39.70, -87.55])
+    }
+  },
+  {
+    id: 'district-isp-16-peru',
+    section: 'districts',
+    name: 'ISP District 16 - Peru',
+    code: 'ISP-16',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 40,
+    metadata: {
+      fillColor: '#0891b2',
+      counties: ['Cass', 'Fulton', 'Grant', 'Howard', 'Miami', 'Tipton', 'Wabash'],
+      boundary: districtBoundary([41.00, -86.45], [41.00, -85.55], [40.30, -85.55], [40.30, -86.45])
+    }
+  },
+  {
+    id: 'district-isp-22-fort-wayne',
+    section: 'districts',
+    name: 'ISP District 22 - Fort Wayne',
+    code: 'ISP-22',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 50,
+    metadata: {
+      fillColor: '#dc2626',
+      counties: ['Adams', 'Allen', 'Blackford', 'DeKalb', 'Huntington', 'Jay', 'LaGrange', 'Noble', 'Steuben', 'Wells', 'Whitley'],
+      boundary: districtBoundary([41.77, -85.55], [41.77, -84.78], [40.30, -84.78], [40.30, -85.55])
+    }
+  },
+  {
+    id: 'district-isp-24-bremen',
+    section: 'districts',
+    name: 'ISP District 24 - Bremen',
+    code: 'ISP-24',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 60,
+    metadata: {
+      fillColor: '#ca8a04',
+      counties: ['Elkhart', 'Kosciusko', 'Marshall', 'St. Joseph'],
+      boundary: districtBoundary([41.77, -86.45], [41.77, -85.55], [41.00, -85.55], [41.00, -86.45])
+    }
+  },
+  {
+    id: 'district-isp-33-bloomington',
+    section: 'districts',
+    name: 'ISP District 33 - Bloomington',
+    code: 'ISP-33',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 70,
+    metadata: {
+      fillColor: '#16a34a',
+      counties: ['Brown', 'Greene', 'Lawrence', 'Monroe', 'Morgan', 'Owen'],
+      boundary: districtBoundary([39.70, -86.45], [39.70, -85.85], [38.70, -85.85], [38.70, -86.80])
+    }
+  },
+  {
+    id: 'district-isp-34-jasper',
+    section: 'districts',
+    name: 'ISP District 34 - Jasper',
+    code: 'ISP-34',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 80,
+    metadata: {
+      fillColor: '#ea580c',
+      counties: ['Crawford', 'Daviess', 'Dubois', 'Martin', 'Orange', 'Perry', 'Spencer'],
+      boundary: districtBoundary([38.80, -87.35], [38.80, -86.20], [37.75, -86.20], [37.75, -87.35])
+    }
+  },
+  {
+    id: 'district-isp-35-evansville',
+    section: 'districts',
+    name: 'ISP District 35 - Evansville',
+    code: 'ISP-35',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 90,
+    metadata: {
+      fillColor: '#be123c',
+      counties: ['Gibson', 'Knox', 'Pike', 'Posey', 'Vanderburgh', 'Warrick'],
+      boundary: districtBoundary([38.80, -88.10], [38.80, -87.25], [37.75, -87.25], [37.75, -88.10])
+    }
+  },
+  {
+    id: 'district-isp-42-versailles',
+    section: 'districts',
+    name: 'ISP District 42 - Versailles',
+    code: 'ISP-42',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 100,
+    metadata: {
+      fillColor: '#4f46e5',
+      counties: ['Bartholomew', 'Dearborn', 'Decatur', 'Franklin', 'Jackson', 'Jefferson', 'Jennings', 'Ohio', 'Ripley', 'Switzerland'],
+      boundary: districtBoundary([39.45, -86.15], [39.45, -84.78], [38.55, -84.78], [38.55, -86.15])
+    }
+  },
+  {
+    id: 'district-isp-45-sellersburg',
+    section: 'districts',
+    name: 'ISP District 45 - Sellersburg',
+    code: 'ISP-45',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 110,
+    metadata: {
+      fillColor: '#db2777',
+      counties: ['Clark', 'Floyd', 'Harrison', 'Scott', 'Washington'],
+      boundary: districtBoundary([38.75, -86.35], [38.75, -85.35], [37.75, -85.35], [37.75, -86.35])
+    }
+  },
+  {
+    id: 'district-isp-51-pendleton',
+    section: 'districts',
+    name: 'ISP District 51 - Pendleton',
+    code: 'ISP-51',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 120,
+    metadata: {
+      fillColor: '#0284c7',
+      counties: ['Delaware', 'Fayette', 'Henry', 'Madison', 'Randolph', 'Rush', 'Union', 'Wayne'],
+      boundary: districtBoundary([40.30, -85.55], [40.30, -84.78], [39.30, -84.78], [39.30, -85.55])
+    }
+  },
+  {
+    id: 'district-isp-52-indianapolis',
+    section: 'districts',
+    name: 'ISP District 52 - Indianapolis',
+    code: 'ISP-52',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 130,
+    metadata: {
+      fillColor: '#9333ea',
+      counties: ['Boone', 'Hamilton', 'Hancock', 'Hendricks', 'Johnson', 'Marion', 'Shelby'],
+      boundary: districtBoundary([40.30, -86.45], [40.30, -85.55], [39.30, -85.55], [39.30, -86.45])
+    }
+  },
+  {
+    id: 'district-isp-53-putnamville',
+    section: 'districts',
+    name: 'ISP District 53 - Putnamville',
+    code: 'ISP-53',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 140,
+    metadata: {
+      fillColor: '#64748b',
+      counties: ['Clay', 'Parke', 'Putnam', 'Sullivan', 'Vermillion', 'Vigo'],
+      boundary: districtBoundary([39.70, -87.55], [39.70, -86.45], [38.70, -86.45], [38.70, -87.55])
+    }
+  }
+];
+
 const defaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'updatedAt'>> = [
   { id: 'agency-police', section: 'agencies', name: 'Police', code: 'POL', agency: 'CAD', category: 'Public Safety', active: true, sortOrder: 10, metadata: {} },
   { id: 'agency-ems', section: 'agencies', name: 'EMS', code: 'EMS', agency: 'CAD', category: 'Medical', active: true, sortOrder: 20, metadata: {} },
   { id: 'agency-fire', section: 'agencies', name: 'Fire', code: 'FIRE', agency: 'CAD', category: 'Fire', active: true, sortOrder: 30, metadata: {} },
   { id: 'agency-towing', section: 'agencies', name: 'Towing', code: 'TOW', agency: 'CAD', category: 'Service', active: true, sortOrder: 40, metadata: {} },
-  {
-    id: 'district-north',
-    section: 'districts',
-    name: 'North District',
-    code: 'NORTH',
-    agency: 'Police',
-    category: 'District',
-    active: true,
-    sortOrder: 10,
-    metadata: {
-      fillColor: '#2563eb',
-      boundary: [
-        { lat: 39.9000, lon: -86.2600 },
-        { lat: 39.9000, lon: -86.0500 },
-        { lat: 39.7900, lon: -86.0500 },
-        { lat: 39.7900, lon: -86.2600 }
-      ]
-    }
-  },
-  {
-    id: 'district-south',
-    section: 'districts',
-    name: 'South District',
-    code: 'SOUTH',
-    agency: 'Police',
-    category: 'District',
-    active: true,
-    sortOrder: 20,
-    metadata: {
-      fillColor: '#0f766e',
-      boundary: [
-        { lat: 39.7900, lon: -86.2600 },
-        { lat: 39.7900, lon: -86.0500 },
-        { lat: 39.6500, lon: -86.0500 },
-        { lat: 39.6500, lon: -86.2600 }
-      ]
-    }
-  },
-  {
-    id: 'district-beat-central',
-    section: 'districts',
-    name: 'Central Beat',
-    code: 'CENTRAL',
-    agency: 'Police',
-    category: 'Beat',
-    active: true,
-    sortOrder: 30,
-    metadata: {
-      fillColor: '#f59e0b',
-      boundary: [
-        { lat: 39.8150, lon: -86.1900 },
-        { lat: 39.8150, lon: -86.1250 },
-        { lat: 39.7450, lon: -86.1250 },
-        { lat: 39.7450, lon: -86.1900 }
-      ]
-    }
-  },
+  ...ispDistrictDefaults,
   { id: 'unit-patrol', section: 'units', name: 'Patrol Unit', code: 'PATROL', agency: 'Police', category: 'Officer', active: true, sortOrder: 10, metadata: {} },
   { id: 'unit-medic', section: 'units', name: 'Medic Unit', code: 'MEDIC', agency: 'EMS', category: 'Ambulance', active: true, sortOrder: 20, metadata: {} },
   { id: 'unit-engine', section: 'units', name: 'Engine', code: 'ENG', agency: 'Fire', category: 'Apparatus', active: true, sortOrder: 30, metadata: {} },
@@ -157,6 +326,14 @@ export class ConfigurationService {
         [JSON.stringify(item.metadata), item.id]
       );
     }
+    await pool.execute(
+      `
+        UPDATE admin_configuration_items
+        SET active = 0,
+            category = 'Legacy'
+        WHERE id IN ('district-north', 'district-south', 'district-beat-central')
+      `
+    );
   }
 
   static async list(): Promise<AdminConfigurationItem[]> {

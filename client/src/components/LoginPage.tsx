@@ -21,7 +21,7 @@ import {
 import { UserRole } from '../types/auth';
 import { useAuth } from '../context/AuthContext';
 import { authClient } from '../services/authClient';
-import { APP_DESCRIPTION, APP_NAME } from '../constants/branding';
+import { APP_NAME } from '../constants/branding';
 
 const inputBase =
   'h-11 w-full rounded-md border border-cad-line bg-white px-3 text-sm text-cad-ink shadow-control outline-none transition placeholder:text-slate-400 focus:border-cad-blue focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-900';
@@ -167,19 +167,8 @@ export const LoginPage: React.FC = () => {
             <div className="login-logo-pulse mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-cad-blue text-white shadow-control">
               <Radio size={25} />
             </div>
-            <p className="mt-4 text-xs font-black uppercase tracking-[0.22em] text-cad-accent">Secure CAD</p>
-            <h1 className="mt-1 text-2xl font-black text-cad-blue dark:text-blue-100">{APP_NAME}</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{APP_DESCRIPTION}</p>
+            <h1 className="mt-4 text-2xl font-black text-cad-blue dark:text-blue-100">{APP_NAME}</h1>
             <div className="mx-auto mt-4 h-1 w-16 rounded-full bg-cad-accent" />
-
-            <div className="mt-6">
-              <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                {isRegistering ? 'Create agency account' : 'Welcome back'}
-              </h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                {isRegistering ? 'Request access with your unit details.' : 'Sign in to continue.'}
-              </p>
-            </div>
 
             {registrationEnabled && (
               <div className="mt-5 grid grid-cols-2 rounded-md border border-cad-line bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-950">
@@ -289,8 +278,8 @@ export const LoginPage: React.FC = () => {
               disabled={loading || transitioning}
               className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-cad-blue px-4 text-sm font-black text-white shadow-control transition hover:bg-cad-secondary focus:outline-none focus:ring-4 focus:ring-cad-accent/30 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
+              <span>{loading || transitioning ? 'Opening...' : isRegistering ? 'Create Account' : 'Login'}</span>
               {loading || transitioning ? <Loader2 size={17} className="animate-spin" /> : <ArrowRight size={17} />}
-              {loading || transitioning ? 'Opening...' : isRegistering ? 'Create Account' : 'Enter CAD'}
             </button>
           </form>
           </div>
