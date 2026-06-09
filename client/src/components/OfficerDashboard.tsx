@@ -1797,8 +1797,18 @@ export const OfficerDashboard: React.FC = () => {
         <MapPin size={19} />
       </button>
 
-      <aside className="absolute left-3 top-3 z-40 inline-flex h-10 items-center rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95 sm:left-5 sm:top-4">
-        <p className="text-sm font-black text-slate-950 dark:text-white">{currentSpeed === null ? '--' : Math.round(currentSpeed)} MPH</p>
+      <aside className="absolute left-3 top-3 z-40 grid gap-2 sm:left-5 sm:top-4">
+        <div className="inline-flex h-10 items-center rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95">
+          <p className="text-sm font-black text-slate-950 dark:text-white">{currentSpeed === null ? '--' : Math.round(currentSpeed)} MPH</p>
+        </div>
+        <div className="rounded border border-cad-line bg-white/95 px-3 py-2 shadow-xl dark:border-slate-700 dark:bg-slate-900/95">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+            {locationState === 'live' ? 'My Location' : `Location ${locationState}`}
+          </p>
+          <p className="mt-1 text-xs font-black text-slate-950 dark:text-white">
+            {currentLocation ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'Waiting for GPS'}
+          </p>
+        </div>
       </aside>
 
       {navigationSummary && (

@@ -669,7 +669,7 @@ export const Dashboard: React.FC = () => {
       setUnits(trackedUnits);
       setUnitLoadError('');
       setSelectedUnitId((current) => {
-        if (current && trackedUnits.some((unit) => unit.id === current)) {
+        if (current) {
           return current;
         }
         return trackedUnits[0]?.id || '';
@@ -2641,8 +2641,23 @@ export const Dashboard: React.FC = () => {
     }
 
     if (modalId === 'units') {
+      const onDutyCount = unitBoardUnits.length;
+      const availableCount = unitBoardUnits.filter((unit) => displayStatus(unit) === 'Available').length;
+      const enRouteCount = unitBoardUnits.filter((unit) => displayStatus(unit) === 'En Route').length;
+      const busyCount = unitBoardUnits.filter((unit) => {
+        const status = displayStatus(unit);
+        return status !== 'Available' && status !== 'En Route';
+      }).length;
+      const liveTrackingCount = unitBoardUnits.filter((unit) => locationReliability(unit, locationClock) === 'live').length;
       return (
         <div className="grid h-full min-h-[520px] gap-3 overflow-hidden">
+          <div className="grid shrink-0 gap-2 sm:grid-cols-5">
+            <UnitStatusMetric label="On Duty" value={onDutyCount} tone="blue" />
+            <UnitStatusMetric label="Available" value={availableCount} tone="green" />
+            <UnitStatusMetric label="En Route" value={enRouteCount} tone="yellow" />
+            <UnitStatusMetric label="Busy" value={busyCount} tone="red" />
+            <UnitStatusMetric label="Live GPS" value={liveTrackingCount} tone="slate" />
+          </div>
           <div className="grid shrink-0 gap-2 md:grid-cols-[1fr_9.5rem_9.5rem_auto]">
             <input
               value={unitBoardSearch}
@@ -2686,7 +2701,7 @@ export const Dashboard: React.FC = () => {
           {unitLoadError && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{unitLoadError}</p>}
           {unitBoardUnits.length === 0 ? (
             <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
-              No logged-in users are sharing live unit data yet.
+              No officers are currently on duty.
             </p>
           ) : (
             <div className="grid min-h-0 gap-3">
@@ -2713,7 +2728,7 @@ export const Dashboard: React.FC = () => {
                           type="button"
                           onClick={() => setSelectedUnitId(unit.id)}
                           className={`grid w-full grid-cols-[112px_84px_1fr_112px_112px] gap-2 border-l-4 px-3 py-2.5 text-left transition hover:brightness-[0.98] dark:hover:brightness-125 ${
-                            selectedUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/40' : ''
+                            selectedUnitBoardUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/40' : ''
                           } ${colors.row}`}
                         >
                           <span className="flex min-w-0 items-center gap-2">
@@ -3267,6 +3282,27 @@ const UnitProfileCard: React.FC<{ unit: UnitBoardUser | null; locationClock: num
         <Detail label="ETA" value={typeof unit.lat === 'number' && typeof unit.lon === 'number' ? etaText(unit as TrackedUnit) : 'Unavailable'} />
       </dl>
     </aside>
+  );
+};
+
+const UnitStatusMetric: React.FC<{ label: string; value: number; tone: 'blue' | 'green' | 'yellow' | 'red' | 'slate' }> = ({
+  label,
+  value,
+  tone
+}) => {
+  const toneClass = {
+    blue: 'text-cad-blue dark:text-blue-100',
+    green: 'text-emerald-700 dark:text-emerald-200',
+    yellow: 'text-amber-700 dark:text-amber-200',
+    red: 'text-red-700 dark:text-red-200',
+    slate: 'text-slate-700 dark:text-slate-200'
+  }[tone];
+
+  return (
+    <div className="rounded-md border border-cad-line bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950">
+      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{label}</p>
+      <p className={`mt-1 text-xl font-black ${toneClass}`}>{value}</p>
+    </div>
   );
 };
 
