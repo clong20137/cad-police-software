@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@property --login-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -144,6 +150,41 @@
     will-change: transform, opacity;
   }
 
+  .login-orbit-motion {
+    border: 1px solid rgba(26, 54, 93, 0.12);
+    box-shadow:
+      0 0 0 72px rgba(26, 54, 93, 0.025),
+      inset 0 0 80px rgba(156, 134, 92, 0.08);
+    animation: loginOrbitMove 16s ease-in-out infinite;
+    will-change: transform, opacity;
+  }
+
+  .login-sweep-motion {
+    background: linear-gradient(90deg, transparent 0%, rgba(156, 134, 92, 0.5) 45%, rgba(26, 54, 93, 0.28) 55%, transparent 100%);
+    animation: loginSweepMove 6.5s ease-in-out infinite;
+    opacity: 0.55;
+    will-change: transform, opacity;
+  }
+
+  .login-card-border {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(255deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.96)) padding-box,
+      conic-gradient(from var(--login-border-angle), rgba(156, 134, 92, 0.18), rgba(26, 54, 93, 0.72), rgba(156, 134, 92, 0.9), rgba(26, 54, 93, 0.26), rgba(156, 134, 92, 0.18)) border-box;
+    animation: loginBorderSpin 9s linear infinite, loginCardEnter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .dark .login-card-border {
+    background:
+      linear-gradient(255deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.96)) padding-box,
+      conic-gradient(from var(--login-border-angle), rgba(156, 134, 92, 0.2), rgba(147, 197, 253, 0.68), rgba(156, 134, 92, 0.9), rgba(59, 130, 246, 0.24), rgba(156, 134, 92, 0.2)) border-box;
+  }
+
+  .login-logo-pulse {
+    animation: loginLogoPulse 3.5s ease-in-out infinite;
+    will-change: transform, box-shadow;
+  }
+
   .login-card-enter {
     animation: loginCardEnter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
     will-change: transform, opacity;
@@ -272,6 +313,61 @@
     100% {
       opacity: 0.76;
       transform: translate3d(2%, 1%, 0) scale(1.04);
+    }
+  }
+
+  @keyframes loginOrbitMove {
+    0%,
+    100% {
+      opacity: 0.58;
+      transform: translate3d(-50%, -50%, 0) rotate(0deg) scale(0.96);
+    }
+
+    50% {
+      opacity: 0.86;
+      transform: translate3d(-50%, -50%, 0) rotate(16deg) scale(1.08);
+    }
+  }
+
+  @keyframes loginSweepMove {
+    0% {
+      opacity: 0;
+      transform: translateY(-18vh) skewY(-7deg);
+    }
+
+    30%,
+    70% {
+      opacity: 0.55;
+    }
+
+    100% {
+      opacity: 0;
+      transform: translateY(62vh) skewY(-7deg);
+    }
+  }
+
+  @keyframes loginBorderSpin {
+    0% {
+      --login-border-angle: 0deg;
+    }
+
+    100% {
+      --login-border-angle: 360deg;
+    }
+  }
+
+  @keyframes loginLogoPulse {
+    0%,
+    100% {
+      box-shadow: 0 10px 24px rgba(26, 54, 93, 0.22);
+      transform: translateY(0);
+    }
+
+    50% {
+      box-shadow:
+        0 12px 28px rgba(26, 54, 93, 0.28),
+        0 0 0 6px rgba(156, 134, 92, 0.12);
+      transform: translateY(-1px);
     }
   }
 

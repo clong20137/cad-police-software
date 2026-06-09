@@ -148,6 +148,8 @@ export const LoginPage: React.FC = () => {
     >
       <div className="login-grid-motion absolute inset-0 bg-[linear-gradient(90deg,rgba(26,54,93,0.06)_1px,transparent_1px),linear-gradient(0deg,rgba(26,54,93,0.05)_1px,transparent_1px)] bg-[size:56px_56px] dark:bg-[linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,0.07)_1px,transparent_1px)]" />
       <div className="login-scan-motion absolute left-0 top-0 h-full w-full opacity-70" />
+      <div className="login-orbit-motion absolute left-1/2 top-1/2 h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+      <div className="login-sweep-motion absolute inset-x-0 top-1/4 h-px" />
 
       <button
         type="button"
@@ -159,10 +161,11 @@ export const LoginPage: React.FC = () => {
       </button>
 
       <section className="relative z-10 flex min-h-screen w-full items-center justify-center px-4 py-12">
-        <section className={`login-card-enter mx-auto w-full rounded-lg border border-cad-line bg-white/95 shadow-shield transition-all duration-300 dark:border-slate-800 dark:bg-slate-900/95 ${isRegistering ? 'max-w-xl' : 'max-w-sm'} ${transitioning ? 'translate-y-1 scale-[0.985] opacity-75' : ''}`}>
+        <section className={`login-card-border mx-auto w-full rounded-lg bg-white/95 p-px shadow-shield transition-all duration-300 dark:bg-slate-900/95 ${isRegistering ? 'max-w-xl' : 'max-w-sm'} ${transitioning ? 'translate-y-1 scale-[0.985] opacity-75' : ''}`}>
+          <div className="overflow-hidden rounded-[7px] bg-white/95 dark:bg-slate-900/95">
           <div className="border-b border-cad-line p-5 text-center dark:border-slate-800 sm:p-6">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-cad-blue text-white shadow-control">
-              <Shield size={24} />
+            <div className="login-logo-pulse mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-cad-blue text-white shadow-control">
+              <Radio size={25} />
             </div>
             <p className="mt-4 text-xs font-black uppercase tracking-[0.22em] text-cad-accent">Secure CAD</p>
             <h1 className="mt-1 text-2xl font-black text-cad-blue dark:text-blue-100">{APP_NAME}</h1>
@@ -178,19 +181,19 @@ export const LoginPage: React.FC = () => {
               </p>
             </div>
 
-            <div className={`mt-5 grid rounded-md border border-cad-line bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-950 ${registrationEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
-              <button
-                type="button"
-                onClick={() => setMode('login')}
-                className={`rounded px-3 py-2 text-sm font-black transition ${
-                  !isRegistering
-                    ? 'bg-white text-cad-blue shadow-control dark:bg-slate-800 dark:text-blue-100'
-                    : 'text-slate-600 hover:text-cad-blue dark:text-slate-300'
-                }`}
-              >
-                Login
-              </button>
-              {registrationEnabled && (
+            {registrationEnabled && (
+              <div className="mt-5 grid grid-cols-2 rounded-md border border-cad-line bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-950">
+                <button
+                  type="button"
+                  onClick={() => setMode('login')}
+                  className={`rounded px-3 py-2 text-sm font-black transition ${
+                    !isRegistering
+                      ? 'bg-white text-cad-blue shadow-control dark:bg-slate-800 dark:text-blue-100'
+                      : 'text-slate-600 hover:text-cad-blue dark:text-slate-300'
+                  }`}
+                >
+                  Login
+                </button>
                 <button
                   type="button"
                   onClick={() => setMode('register')}
@@ -202,8 +205,8 @@ export const LoginPage: React.FC = () => {
                 >
                   Register
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 p-5 sm:p-6">
@@ -290,6 +293,7 @@ export const LoginPage: React.FC = () => {
               {loading || transitioning ? 'Opening...' : isRegistering ? 'Create Account' : 'Enter CAD'}
             </button>
           </form>
+          </div>
         </section>
       </section>
 
