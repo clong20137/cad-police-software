@@ -1097,7 +1097,7 @@ export const OfficerDashboard: React.FC = () => {
       routeRendererRef.current = new googleMaps.DirectionsRenderer({
         map,
         suppressMarkers: true,
-        preserveViewport: false,
+        preserveViewport: true,
         polylineOptions: {
           strokeColor: '#2563eb',
           strokeOpacity: 0.92,
@@ -1166,9 +1166,6 @@ export const OfficerDashboard: React.FC = () => {
       if (currentLocation) bounds.extend({ lat: currentLocation.lat, lng: currentLocation.lon });
       map.fitBounds(bounds);
       hasFitCallBoundsRef.current = true;
-    } else if (currentLocation) {
-      map.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon });
-      map.setZoom(15);
     }
   }, [assignedIncidents, currentLocation, currentSpeed, locationTrail, mapRouteIncident, selectedStatus, theme, trackedOfficers, user?.id]);
 
@@ -1298,6 +1295,10 @@ export const OfficerDashboard: React.FC = () => {
       const updated = await authClient.updateMyIncidentStatus(selectedIncident.id, status);
       setIncidents((current) => current.map((incident) => (incident.id === updated.id ? updated : incident)));
       setMessage(`Status updated to ${status}.`);
+      if (status === 'Cleared') {
+        if (navigatingIncidentId === selectedIncident.id) cancelNavigation();
+        setSelectedIncidentId(null);
+      }
     } catch {
       setMessage('Unable to update status for this call.');
     } finally {
@@ -1611,7 +1612,7 @@ export const OfficerDashboard: React.FC = () => {
         <MapPin size={19} />
       </button>
 
-      <aside className="absolute left-4 top-20 z-30 inline-flex h-9 items-center rounded-md border border-slate-200 bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95">
+      <aside className="absolute left-3 top-3 z-40 inline-flex h-10 items-center rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95 sm:left-5 sm:top-4">
         <p className="text-sm font-black text-slate-950 dark:text-white">{currentSpeed === null ? '--' : Math.round(currentSpeed)} MPH</p>
       </aside>
 
@@ -2030,10 +2031,21 @@ const DockContent: React.FC<{
             <h3 className="mt-3 text-2xl font-black text-slate-950 dark:text-white">{selectedIncident.type}</h3>
             <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{selectedIncident.callNumber} opened {formatTime(selectedIncident.createdAt)}</p>
           </div>
-          <button type="button" onClick={onNavigateToIncident} className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-3 text-sm font-bold text-white">
-            <Navigation size={18} />
-            Navigate
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={onNavigateToIncident} className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-3 text-sm font-bold text-white">
+              <Navigation size={18} />
+              Navigate
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onUpdateStatus('Cleared')}
+              className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              <CheckCircle2 size={18} />
+              Clear Call
+            </button>
+          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Metric label="ETA" value={etaText(currentLocation, selectedIncident, currentSpeed)} />
