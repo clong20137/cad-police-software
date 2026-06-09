@@ -109,10 +109,12 @@ export class IncidentService {
         SELECT *
         FROM incidents
         WHERE status NOT IN ('Closed', 'Canceled')
+          OR closed_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 DAY)
         ORDER BY
+          CASE WHEN status IN ('Closed', 'Canceled') THEN 1 ELSE 0 END,
           FIELD(priority, 'Emergency', 'High', 'Normal', 'Low'),
-          created_at DESC
-        LIMIT 100
+          COALESCE(closed_at, created_at) DESC
+        LIMIT 200
       `
     );
 

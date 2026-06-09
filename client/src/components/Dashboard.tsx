@@ -144,6 +144,7 @@ type UnitBoardSortKey = 'status' | 'unit' | 'name' | 'cadUnit' | 'district';
 type SortDirection = 'asc' | 'desc';
 type UnitBoardUser = User & Partial<Pick<TrackedUnit, 'lat' | 'lon'>>;
 type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
+type CallTabId = 'all' | 'my' | 'pending' | 'closed';
 
 const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.ReactNode }> = [
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
@@ -538,6 +539,7 @@ export const Dashboard: React.FC = () => {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [adminConfig, setAdminConfig] = useState<AdminConfigurationItem[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
+  const [activeCallTab, setActiveCallTab] = useState<CallTabId>('all');
   const [addressSuggestions, setAddressSuggestions] = useState<GooglePlacePrediction[]>([]);
   const [addressSuggestionsOpen, setAddressSuggestionsOpen] = useState(false);
   const [incidentForm, setIncidentForm] = useState({
@@ -1757,14 +1759,59 @@ export const Dashboard: React.FC = () => {
     </div>
   );
 
-  const renderCallManagement = (showCallList: boolean) => (
-    <div className={`grid h-[min(72vh,720px)] min-h-[540px] overflow-hidden rounded-md border border-cad-line dark:border-slate-700 ${showCallList ? 'md:grid-cols-[280px_1fr]' : ''}`}>
+  const renderCallManagement = (showCallList: boolean) => {
+    const isClosedCall = (incident: Incident) => incident.status === 'Closed' || incident.status === 'Canceled';
+    const isMyCall = (incident: Incident) =>
+      incident.createdBy === user?.id || incident.units.some((unit) => unit.userId === user?.id && unit.status !== 'Cleared');
+    const tabIncidents = (tab: CallTabId) =>
+      incidents.filter((incident) => {
+        if (tab === 'my') return isMyCall(incident);
+        if (tab === 'pending') return incident.status === 'Pending';
+        if (tab === 'closed') return isClosedCall(incident);
+        return true;
+      });
+    const callTabs: Array<{ id: CallTabId; label: string; calls: Incident[] }> = [
+      { id: 'all', label: 'All Calls', calls: tabIncidents('all') },
+      { id: 'my', label: 'My Calls', calls: tabIncidents('my') },
+      { id: 'pending', label: 'Pending Calls', calls: tabIncidents('pending') },
+      { id: 'closed', label: 'Closed Calls', calls: tabIncidents('closed') }
+    ];
+    const visibleIncidents = callTabs.find((tab) => tab.id === activeCallTab)?.calls || [];
+    const emptyCopy =
+      activeCallTab === 'my'
+        ? 'No calls are assigned to you or created by you.'
+        : activeCallTab === 'pending'
+          ? 'No pending calls.'
+          : activeCallTab === 'closed'
+            ? 'No recent closed calls.'
+            : 'No calls are in the queue.';
+
+    return (
+    <div className={`grid h-[min(72vh,720px)] min-h-[540px] overflow-hidden rounded-md border border-cad-line dark:border-slate-700 ${showCallList ? 'md:grid-cols-[340px_1fr]' : ''}`}>
       {showCallList && (
         <div className="flex min-h-0 flex-col border-r border-cad-line bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
-          <div className="shrink-0 border-b border-cad-line p-3 text-sm font-bold dark:border-slate-700">Active Calls</div>
+          <div className="shrink-0 border-b border-cad-line p-3 dark:border-slate-700">
+            <div className="grid grid-cols-2 gap-1">
+              {callTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveCallTab(tab.id)}
+                  className={`rounded px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.08em] transition ${
+                    activeCallTab === tab.id
+                      ? 'bg-cad-blue text-white shadow-sm'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="block truncate">{tab.label}</span>
+                  <span className="mt-0.5 block text-xs opacity-80">{tab.calls.length}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-            {incidents.length === 0 && <p className="rounded-md bg-white p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">No active calls.</p>}
-            {incidents.map((incident) => (
+            {visibleIncidents.length === 0 && <p className="rounded-md bg-white p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">{emptyCopy}</p>}
+            {visibleIncidents.map((incident) => (
               <button
                 key={incident.id}
                 type="button"
@@ -1782,6 +1829,22 @@ export const Dashboard: React.FC = () => {
                     {incident.priority}
                   </span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">{incident.units.length} units</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${incidentStatusStyles[incident.status]}`}>
+                    {incident.status}
+                  </span>
+                  {incident.units.length === 0 ? (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                      Unassigned
+                    </span>
+                  ) : (
+                    incident.units.map((assignedUnit) => (
+                      <span key={assignedUnit.userId} className="rounded-full bg-cad-blue/10 px-2 py-0.5 text-[11px] font-bold text-cad-blue dark:bg-blue-950 dark:text-blue-100">
+                        {assignedUnit.cadUnitNumber || assignedUnit.name}: {assignedUnit.status}
+                      </span>
+                    ))
+                  )}
                 </div>
               </button>
             ))}
@@ -1899,7 +1962,8 @@ export const Dashboard: React.FC = () => {
         )}
       </div>
     </div>
-  );
+    );
+  };
 
   const renderQuickModalContent = (modalId: QuickLaunchId) => {
     if (modalId === 'messages') {

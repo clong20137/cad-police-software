@@ -45,6 +45,7 @@ type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | '
 type DockSlot = QuickLaunchSlot<DockItem>;
 type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
 type PendingCallFeedRow = { incident: Incident; exiting: boolean };
+type CallTabId = 'all' | 'my' | 'pending' | 'closed';
 
 interface OfficerGoogleMaps {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
@@ -140,6 +141,15 @@ const priorityClasses: Record<Incident['priority'], string> = {
   Normal: 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-200',
   High: 'bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
   Emergency: 'bg-red-600 text-white'
+};
+
+const incidentStatusClasses: Record<Incident['status'], string> = {
+  Pending: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+  Dispatched: 'bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
+  'En Route': 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-200',
+  'On Scene': 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-200',
+  Closed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200',
+  Canceled: 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
 };
 
 const statusClasses: Record<IncidentUnitStatus, string> = {
@@ -440,7 +450,7 @@ export const OfficerDashboard: React.FC = () => {
     [incidents, user?.id]
   );
   const assignmentMapKey = assignedIncidents.map((incident) => incident.id).join(',');
-  const selectedIncident = assignedIncidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || null;
+  const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || incidents[0] || null;
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
   const selectedAssignmentWarning = assignmentWarning(selectedIncident, user?.id);
@@ -1477,7 +1487,7 @@ export const OfficerDashboard: React.FC = () => {
         >
               <DockContent
                 activeItem={dockItem}
-                incidents={assignedIncidents}
+                incidents={incidents}
                 selectedIncident={selectedIncident}
                 selectedStatus={selectedStatus}
                 workflowStatuses={workflowStatuses(selectedIncident)}
@@ -1566,7 +1576,21 @@ const IncidentButton: React.FC<{
       <span className={`rounded-full px-2 py-1 text-xs font-bold ${priorityClasses[incident.priority]}`}>{incident.priority}</span>
     </div>
     <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{incident.address}</p>
-    {status && <span className={`mt-3 inline-flex rounded-full px-2 py-1 text-xs font-bold ring-1 ${statusClasses[status]}`}>{status}</span>}
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      <span className={`rounded-full px-2 py-1 text-xs font-bold ${incidentStatusClasses[incident.status]}`}>{incident.status}</span>
+      {status && <span className={`rounded-full px-2 py-1 text-xs font-bold ring-1 ${statusClasses[status]}`}>My unit: {status}</span>}
+      {incident.units.length === 0 ? (
+        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+          Unassigned
+        </span>
+      ) : (
+        incident.units.map((unit) => (
+          <span key={unit.userId} className="rounded-full bg-cad-blue/10 px-2 py-1 text-xs font-bold text-cad-blue dark:bg-blue-950 dark:text-blue-100">
+            {unit.cadUnitNumber || unit.name}: {unit.status}
+          </span>
+        ))
+      )}
+    </div>
   </button>
 );
 
@@ -1673,19 +1697,65 @@ const DockContent: React.FC<{
   onSendMessage,
   onAttachment
 }) => {
+  const [activeCallTab, setActiveCallTab] = useState<CallTabId>('all');
+  const isClosedCall = (incident: Incident) => incident.status === 'Closed' || incident.status === 'Canceled';
+  const isMyCall = (incident: Incident) =>
+    incident.units.some((unit) => unit.userId === currentUserId && unit.status !== 'Cleared') || incident.createdBy === currentUserId;
+  const tabIncidents = (tab: CallTabId) =>
+    incidents.filter((incident) => {
+      if (tab === 'my') return isMyCall(incident);
+      if (tab === 'pending') return incident.status === 'Pending';
+      if (tab === 'closed') return isClosedCall(incident);
+      return true;
+    });
+  const callTabs: Array<{ id: CallTabId; label: string; calls: Incident[] }> = [
+    { id: 'all', label: 'All Calls', calls: tabIncidents('all') },
+    { id: 'my', label: 'My Calls', calls: tabIncidents('my') },
+    { id: 'pending', label: 'Pending Calls', calls: tabIncidents('pending') },
+    { id: 'closed', label: 'Closed Calls', calls: tabIncidents('closed') }
+  ];
+  const visibleCallTabIncidents = callTabs.find((tab) => tab.id === activeCallTab)?.calls || [];
+  const callEmptyCopy =
+    activeCallTab === 'my'
+      ? 'No calls are assigned to you or created by you.'
+      : activeCallTab === 'pending'
+        ? 'No pending calls.'
+        : activeCallTab === 'closed'
+          ? 'No recent closed calls.'
+          : 'No calls are in the queue.';
+
   if (activeItem === 'calls') {
     return (
-      <div className="grid gap-2">
-        {incidents.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No active assignments.</p>}
-        {incidents.map((incident) => (
-          <IncidentButton
-            key={incident.id}
-            incident={incident}
-            selected={selectedIncident?.id === incident.id}
-            status={getMyUnitStatus(incident, currentUserId)}
-            onClick={() => onSelectIncident(incident.id)}
-          />
-        ))}
+      <div className="grid gap-3">
+        <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+          {callTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveCallTab(tab.id)}
+              className={`rounded px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.08em] transition ${
+                activeCallTab === tab.id
+                  ? 'bg-cad-blue text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              <span className="block truncate">{tab.label}</span>
+              <span className="mt-0.5 block text-xs opacity-80">{tab.calls.length}</span>
+            </button>
+          ))}
+        </div>
+        <div className="grid gap-2">
+          {visibleCallTabIncidents.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">{callEmptyCopy}</p>}
+          {visibleCallTabIncidents.map((incident) => (
+            <IncidentButton
+              key={incident.id}
+              incident={incident}
+              selected={selectedIncident?.id === incident.id}
+              status={getMyUnitStatus(incident, currentUserId)}
+              onClick={() => onSelectIncident(incident.id)}
+            />
+          ))}
+        </div>
       </div>
     );
   }
