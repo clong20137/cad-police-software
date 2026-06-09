@@ -1,7 +1,7 @@
 {
-  "name": "cad-police-software",
+  "name": "blueline-cad",
   "version": "1.0.0",
-  "description": "Computer-Aided Dispatch system for law enforcement",
+  "description": "Blueline CAD computer-aided dispatch system for law enforcement",
   "private": true,
   "scripts": {
     "install-all": "npm install && cd server && npm install && cd ../client && npm install",

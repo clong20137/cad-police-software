@@ -1,6 +1,6 @@
-# CAD Server
+# Blueline CAD Server
 
-Express.js TypeScript backend for CAD Police Software with JWT authentication and role-based access control.
+Express.js TypeScript backend for Blueline CAD with JWT authentication and role-based access control.
 
 ## Setup
 

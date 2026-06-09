@@ -51,6 +51,7 @@ import { QuickLaunchDock, QuickLaunchSlot as DockSlotValue } from './common/Quic
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
 import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { callTypesFromConfig, defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
+import { APP_NAME } from '../constants/branding';
 
 declare global {
   interface Window {
@@ -2324,7 +2325,7 @@ export const Dashboard: React.FC = () => {
   return (
     <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-gray-100' : 'bg-gray-50 text-cad-ink'}`}>
       <ShieldSidebar
-        title="CAD"
+        title={APP_NAME}
         subtitle="Dispatch"
         user={user}
         collapsed={appSidebarCollapsed}

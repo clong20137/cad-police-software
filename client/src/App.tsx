@@ -6,14 +6,15 @@ import { LoginPage } from './components/LoginPage';
 import { Dashboard } from './components/Dashboard';
 import { AdminConfigurationPage } from './components/AdminConfigurationPage';
 import { OfficerDashboard } from './components/OfficerDashboard';
+import { APP_NAME } from './constants/branding';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: UserRole[] }> = ({ children, allowedRoles }) => {
   const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-cad-panel text-sm font-medium text-slate-600">
-        Loading...
+      <div className="flex min-h-screen items-center justify-center bg-cad-panel text-sm font-medium text-slate-600 dark:bg-gray-950 dark:text-gray-300">
+        Loading {APP_NAME}...
       </div>
     );
   }

@@ -39,6 +39,7 @@ import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
 import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { callTypesFromConfig } from '../utils/adminConfig';
+import { APP_NAME } from '../constants/branding';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'location' | 'settings' | 'navigation' | 'status';
 type DockSlot = QuickLaunchSlot<DockItem>;
@@ -887,16 +888,16 @@ export const OfficerDashboard: React.FC = () => {
       mapTypeControl: false,
       streetViewControl: false,
       fullscreenControl: false,
-      styles: darkMapStyles
+      styles: theme === 'dark' ? darkMapStyles : []
     });
-  }, [currentLocation, mapReady]);
+  }, [currentLocation, mapReady, theme]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
     const googleMaps = window.google?.maps as unknown as OfficerGoogleMaps | undefined;
     if (!map || !googleMaps) return;
 
-    map.setOptions({ styles: darkMapStyles });
+    map.setOptions({ styles: theme === 'dark' ? darkMapStyles : [] });
     mapOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
     mapOverlaysRef.current = [];
     trailPolylineRef.current?.setMap(null);
@@ -969,7 +970,7 @@ export const OfficerDashboard: React.FC = () => {
       map.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon });
       map.setZoom(15);
     }
-  }, [assignedIncidents, currentLocation, currentSpeed, locationTrail, selectedStatus]);
+  }, [assignedIncidents, currentLocation, currentSpeed, locationTrail, selectedStatus, theme]);
 
   const recenterMap = () => {
     if (!currentLocation) return;
@@ -1241,7 +1242,7 @@ export const OfficerDashboard: React.FC = () => {
   return (
     <main className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-white' : 'bg-gray-50 text-slate-950'}`}>
       <ShieldSidebar
-        title="CAD"
+        title={APP_NAME}
         subtitle="Officer"
         user={user}
         collapsed={appSidebarCollapsed}

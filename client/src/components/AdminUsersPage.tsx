@@ -4,6 +4,7 @@ import { ArrowLeft, Moon, RefreshCw, Save, Shield, Sun, UserCog } from 'lucide-r
 import { useAuth } from '../context/AuthContext';
 import { authClient } from '../services/authClient';
 import { UnitStatus, User, UserRole } from '../types/auth';
+import { APP_NAME } from '../constants/branding';
 
 const unitStatuses: UnitStatus[] = ['Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop'];
 
@@ -125,8 +126,8 @@ export const AdminUsersPage: React.FC = () => {
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold">User Management</h1>
-            <p className="text-xs text-slate-300">Admin controls for CAD access and unit metadata</p>
+            <h1 className="text-xl font-semibold">{APP_NAME} Users</h1>
+            <p className="text-xs text-slate-300">Admin controls for access and unit metadata</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

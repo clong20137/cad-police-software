@@ -1,4 +1,4 @@
-# CAD Police Software
+# Blueline CAD
 
 A comprehensive Computer-Aided Dispatch (CAD) system for law enforcement built with React, TypeScript, Node.js, and Express.
 

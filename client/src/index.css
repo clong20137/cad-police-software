@@ -15,7 +15,7 @@
 
   body {
     margin: 0;
-    background: #eef2f7;
+    background: #f8fafc;
     color: #172033;
     font-family:
       Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
@@ -28,9 +28,24 @@
     color: #f8fafc;
   }
 
+  :focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px #9c865c,
+      0 0 0 4px rgba(156, 134, 92, 0.24);
+  }
+
   button,
-  input {
+  input,
+  select,
+  textarea {
     font: inherit;
+  }
+
+  button {
+    transition-property: color, background-color, border-color, opacity, box-shadow, transform, filter;
+    transition-duration: 180ms;
+    transition-timing-function: ease-in-out;
   }
 }
 
@@ -55,6 +70,10 @@
   .dark .border-slate-100,
   .dark .border-slate-200 {
     border-color: #334155;
+  }
+
+  .dark .shadow-control {
+    box-shadow: none;
   }
 }
 

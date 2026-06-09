@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, LucideIcon, Shield, UserCircle } from 'lucide-react';
 import { User } from '../../types/auth';
+import { APP_NAME } from '../../constants/branding';
 
 export interface ShieldSidebarItem {
   id: string;
@@ -13,7 +14,7 @@ export interface ShieldSidebarItem {
 }
 
 const userInitials = (user?: User | null): string => {
-  const source = user?.name || user?.email || user?.badge || 'CAD';
+  const source = user?.name || user?.email || user?.badge || APP_NAME;
   const parts = source.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   return source.slice(0, 2).toUpperCase();
@@ -33,7 +34,7 @@ export const ShieldSidebar: React.FC<{
   <aside
     className={`relative hidden h-[100dvh] shrink-0 overflow-visible bg-cad-blue text-white shadow-xl transition-all duration-200 md:block ${
       collapsed ? 'w-20' : 'w-72'
-    }`}
+    } dark:bg-gray-900`}
   >
     <button
       type="button"
@@ -84,8 +85,8 @@ export const ShieldSidebar: React.FC<{
             {!collapsed && (
               <div className="min-w-0 text-white">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-blue-100">Profile</p>
-                <p className="truncate text-sm font-bold">{user?.name || 'CAD User'}</p>
-                <p className="truncate text-xs text-blue-100">{user?.email || user?.role || 'Signed in'}</p>
+                <p className="truncate text-sm font-bold">{user?.name || `${APP_NAME} User`}</p>
+                <p className="truncate text-xs text-blue-100">{user?.email || user?.role || APP_NAME}</p>
               </div>
             )}
           </div>

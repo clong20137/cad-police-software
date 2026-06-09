@@ -27,6 +27,7 @@ import {
   UserRole
 } from '../types/auth';
 import { defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
+import { APP_NAME } from '../constants/branding';
 
 type EditableConfigSection = Exclude<AdminConfigSection, 'security'>;
 type AdminSection = EditableConfigSection | 'users' | 'security';
@@ -323,8 +324,8 @@ export const AdminConfigurationPage: React.FC = () => {
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold">Admin</h1>
-            <p className="text-xs text-slate-300">Users and CAD configuration</p>
+            <h1 className="text-xl font-semibold">{APP_NAME} Admin</h1>
+            <p className="text-xs text-slate-300">Users and dispatch configuration</p>
           </div>
         </div>
         <button

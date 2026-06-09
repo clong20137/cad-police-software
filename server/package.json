@@ -1,7 +1,7 @@
 {
   "name": "cad-server",
   "version": "1.0.0",
-  "description": "CAD Police Software - Express Backend",
+  "description": "Blueline CAD Express backend",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node src/index.ts",
