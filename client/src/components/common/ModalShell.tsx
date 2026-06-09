@@ -25,6 +25,7 @@ export const ModalShell: React.FC<{
   resizable?: boolean;
   zIndex?: number;
   onFocus?: () => void;
+  active?: boolean;
 }> = ({
   title,
   open,
@@ -35,7 +36,8 @@ export const ModalShell: React.FC<{
   contentClassName = 'p-4',
   resizable = true,
   zIndex = 50,
-  onFocus
+  onFocus,
+  active = false
 }) => {
   const windowRef = useRef<HTMLDivElement | null>(null);
   const dragOffsetRef = useRef<ModalPosition>({ x: 0, y: 0 });
@@ -120,7 +122,9 @@ export const ModalShell: React.FC<{
     <div className={`pointer-events-none fixed inset-0 flex justify-center p-4 ${shellPositionClass}`} style={{ zIndex }}>
       <div
         ref={windowRef}
-        className={`pointer-events-auto flex max-h-[calc(100vh-7rem)] w-full origin-bottom animate-[dockModalIn_160ms_ease-out] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${
+        className={`pointer-events-auto flex max-h-[calc(100vh-7rem)] w-full origin-bottom animate-[dockModalIn_160ms_ease-out] flex-col overflow-hidden rounded-lg border bg-white shadow-2xl dark:bg-slate-900 ${
+          active ? 'modal-active-pulse border-cad-accent' : 'border-cad-line dark:border-slate-700'
+        } ${
           placement === 'center' && !isMobileLayout ? `fixed ${isDragging ? 'cursor-grabbing' : ''}` : ''
         } ${resizable && placement === 'center' && !isMobileLayout ? 'resize min-h-[28rem] min-w-[36rem]' : ''} ${maxWidthClass}`}
         style={floatingStyle}
@@ -130,16 +134,16 @@ export const ModalShell: React.FC<{
         }}
       >
         <div
-          className={`flex shrink-0 items-center justify-between border-b border-cad-line p-4 dark:border-slate-700 ${
+          className={`flex shrink-0 items-center justify-between border-b border-cad-blue/40 bg-cad-blue p-4 text-white ${
             placement === 'center' && !isMobileLayout ? 'cursor-grab select-none' : ''
           }`}
           onPointerDown={startDragging}
         >
           <div className="flex min-w-0 items-center gap-2">
-            {placement === 'center' && !isMobileLayout && <GripHorizontal size={17} className="shrink-0 text-slate-400" />}
+            {placement === 'center' && !isMobileLayout && <GripHorizontal size={17} className="shrink-0 text-blue-100" />}
             <h2 className="truncate text-lg font-bold">{title}</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <button type="button" onClick={onClose} className="rounded-md bg-red-600 p-2 text-white shadow-sm hover:bg-red-700">
             <X size={18} />
           </button>
         </div>

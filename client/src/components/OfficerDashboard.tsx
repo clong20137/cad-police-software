@@ -1481,6 +1481,7 @@ export const OfficerDashboard: React.FC = () => {
           onClose={() => closeDockItem(dockItem)}
           onFocus={() => focusDockItem(dockItem)}
           zIndex={dockZOrder[dockItem] || 50}
+          active={activeDockItem === dockItem}
           maxWidthClass="max-w-3xl"
           placement="center"
           contentClassName="max-h-[70vh] overflow-auto p-4"

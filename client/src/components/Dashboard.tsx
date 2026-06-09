@@ -2778,6 +2778,7 @@ export const Dashboard: React.FC = () => {
           onClose={() => closeQuickModal(modalId)}
           onFocus={() => focusQuickModal(modalId)}
           zIndex={modalZOrder[modalId] || 50}
+          active={activeQuickModal === modalId}
           placement="center"
           maxWidthClass={modalId === 'units' ? 'max-w-none w-[min(92vw,54rem)]' : modalId === 'messages' || modalId === 'calls' || modalId === 'call-detail' ? 'max-w-5xl' : 'max-w-2xl'}
           contentClassName={modalId === 'units' ? 'p-3 overflow-hidden h-[min(70vh,680px)]' : 'p-4 overflow-hidden'}

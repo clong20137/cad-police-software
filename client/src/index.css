@@ -114,6 +114,10 @@
     animation: pendingFeedIn 220ms ease-out;
   }
 
+  .modal-active-pulse {
+    animation: modalActivePulse 1.8s ease-in-out infinite;
+  }
+
   select.unit-board-control.unit-board-control {
     padding-right: 2rem !important;
   }
@@ -154,6 +158,23 @@
     100% {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  @keyframes modalActivePulse {
+    0%,
+    100% {
+      box-shadow:
+        0 24px 70px rgba(15, 23, 42, 0.24),
+        0 0 0 1px rgba(156, 134, 92, 0.46),
+        0 0 0 0 rgba(156, 134, 92, 0.32);
+    }
+
+    50% {
+      box-shadow:
+        0 24px 70px rgba(15, 23, 42, 0.28),
+        0 0 0 1px rgba(156, 134, 92, 0.72),
+        0 0 0 5px rgba(156, 134, 92, 0.12);
     }
   }
 }
