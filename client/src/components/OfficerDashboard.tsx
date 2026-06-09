@@ -4,8 +4,6 @@ import { io, Socket } from 'socket.io-client';
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   ClipboardList,
   Lock,
@@ -53,6 +51,10 @@ interface OfficerGoogleMaps {
   LatLng: new (lat: number, lng: number) => GoogleLatLngInstance;
   Polyline: new (options: GooglePolylineOptions) => GooglePolylineInstance;
   LatLngBounds: new () => GoogleLatLngBoundsInstance;
+  InfoWindow: new (options: { content: string }) => GoogleInfoWindowInstance;
+  DirectionsService: new () => GoogleDirectionsServiceInstance;
+  DirectionsRenderer: new (options: Record<string, unknown>) => GoogleDirectionsRendererInstance;
+  TravelMode: { DRIVING: string };
 }
 
 interface GoogleMapInstance {
@@ -87,6 +89,19 @@ interface GooglePolylineInstance {
 
 interface GoogleLatLngBoundsInstance {
   extend: (location: { lat: number; lng: number }) => void;
+}
+
+interface GoogleInfoWindowInstance {
+  open: (options: { map: GoogleMapInstance; position: { lat: number; lng: number } }) => void;
+}
+
+interface GoogleDirectionsServiceInstance {
+  route: (options: Record<string, unknown>, callback: (result: unknown, status: string) => void) => void;
+}
+
+interface GoogleDirectionsRendererInstance {
+  setMap: (map: GoogleMapInstance | null) => void;
+  setDirections: (result: unknown) => void;
 }
 
 type WakeLockSentinel = {
@@ -208,6 +223,30 @@ const formatMessageTime = (value?: Date | string): string => {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
+const escapeHtml = (value: string): string =>
+  value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&#39;';
+      default:
+        return character;
+    }
+  });
+
+const officerMapLabel = (officer: User): string =>
+  officer.cadUnitNumber || officer.unitNumber || officer.badge || officer.name.split(' ')[0] || 'Unit';
+
+const officerMapStatus = (officer: User, currentUserId?: string, selectedStatus?: IncidentUnitStatus | null): string =>
+  officer.id === currentUserId && selectedStatus ? selectedStatus : officer.status || 'Available';
+
 const distanceMiles = (fromLat: number, fromLon: number, toLat: number, toLon: number): number => {
   const earthRadiusMiles = 3958.8;
   const toRadians = (value: number) => (value * Math.PI) / 180;
@@ -262,11 +301,6 @@ const workflowStatuses = (incident: Incident | null): IncidentUnitStatus[] => {
     return ['Acknowledged', 'En Route', 'On Scene', 'Loaded', 'Delivered', 'Cleared'];
   }
   return ['Acknowledged', 'En Route', 'On Scene', 'Cleared'];
-};
-
-const navigationUrl = (incident: Incident): string => {
-  const destination = incident.lat && incident.lon ? `${incident.lat},${incident.lon}` : incident.address;
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
 };
 
 const getMyUnitStatus = (incident: Incident, userId?: string): IncidentUnitStatus | null =>
@@ -366,7 +400,6 @@ export const OfficerDashboard: React.FC = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationTrail, setLocationTrail] = useState<Array<{ lat: number; lon: number; speedMph?: number | null }>>([]);
   const [mapReady, setMapReady] = useState(false);
-  const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [activeDockItem, setActiveDockItem] = useState<DockItem | null>(null);
   const [openDockItems, setOpenDockItems] = useState<DockItem[]>([]);
@@ -423,6 +456,8 @@ export const OfficerDashboard: React.FC = () => {
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
   const mapOverlaysRef = useRef<GoogleOverlayViewInstance[]>([]);
   const trailPolylineRef = useRef<GooglePolylineInstance | null>(null);
+  const routeRendererRef = useRef<GoogleDirectionsRendererInstance | null>(null);
+  const routeFallbackPolylineRef = useRef<GooglePolylineInstance | null>(null);
   const hasFitCallBoundsRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
@@ -451,9 +486,31 @@ export const OfficerDashboard: React.FC = () => {
   );
   const assignmentMapKey = assignedIncidents.map((incident) => incident.id).join(',');
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || incidents[0] || null;
+  const mapRouteIncident =
+    selectedIncident && (selectedIncidentId || assignedIncidents.some((incident) => incident.id === selectedIncident.id))
+      ? selectedIncident
+      : null;
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
   const selectedAssignmentWarning = assignmentWarning(selectedIncident, user?.id);
+  const trackedOfficers = useMemo(() => {
+    const byId = new Map<string, User>();
+    directory
+      .filter((item) => onlineUserIds.includes(item.id) && item.lat !== undefined && item.lon !== undefined)
+      .forEach((item) => byId.set(item.id, item));
+
+    if (user && currentLocation) {
+      byId.set(user.id, {
+        ...user,
+        lat: currentLocation.lat,
+        lon: currentLocation.lon,
+        speedMph: currentSpeed ?? user.speedMph,
+        status: user.status || 'Available'
+      });
+    }
+
+    return Array.from(byId.values());
+  }, [currentLocation, currentSpeed, directory, onlineUserIds, user]);
   const realtimeStatusLabel =
     realtimeState === 'live'
       ? `Live${lastRealtimeSync ? ` - synced ${lastRealtimeSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`
@@ -468,14 +525,6 @@ export const OfficerDashboard: React.FC = () => {
       : realtimeState === 'offline'
         ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/20 dark:text-red-100 dark:ring-red-300/30'
         : 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/30';
-  const locationStatusLabel =
-    locationState === 'live'
-      ? 'Active'
-      : locationState === 'starting'
-        ? 'Starting GPS'
-        : locationState === 'blocked'
-          ? 'Location blocked'
-          : 'GPS unavailable';
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
   const messageThreadByUser = useMemo(
     () =>
@@ -912,31 +961,46 @@ export const OfficerDashboard: React.FC = () => {
     mapOverlaysRef.current = [];
     trailPolylineRef.current?.setMap(null);
     trailPolylineRef.current = null;
+    routeRendererRef.current?.setMap(null);
+    routeRendererRef.current = null;
+    routeFallbackPolylineRef.current?.setMap(null);
+    routeFallbackPolylineRef.current = null;
 
     const bounds = new googleMaps.LatLngBounds();
     let hasCallBounds = false;
 
+    trackedOfficers.forEach((officer) => {
+      if (officer.lat === undefined || officer.lon === undefined) return;
+      const status = officerMapStatus(officer, user?.id, selectedStatus);
+      const isCurrentUser = officer.id === user?.id;
+      const tone = status === 'En Route' ? 'yellow' : status === 'On Scene' || status === 'Traffic Stop' ? 'red' : 'green';
+      const label =
+        isCurrentUser && officer.speedMph !== undefined && officer.speedMph !== null
+          ? `${Math.round(officer.speedMph)} mph`
+          : officerMapLabel(officer);
+      const infoWindow = new googleMaps.InfoWindow({
+        content: `
+          <div style="min-width:190px;font-family:Arial,sans-serif;color:#0f172a">
+            <div style="font-weight:700;margin-bottom:2px">${escapeHtml(officerMapLabel(officer))}</div>
+            <div>${escapeHtml(officer.name)}</div>
+            <div style="margin-top:4px;font-size:12px;color:#475569">${escapeHtml(status)}</div>
+            <div style="font-size:12px;color:#475569">${officer.lat.toFixed(5)}, ${officer.lon.toFixed(5)}</div>
+          </div>
+        `
+      });
+      const overlay = addOfficerOverlay({
+        map,
+        lat: officer.lat,
+        lon: officer.lon,
+        label,
+        tone,
+        onClick: () => infoWindow.open({ map, position: { lat: officer.lat as number, lng: officer.lon as number } })
+      });
+      if (overlay) mapOverlaysRef.current.push(overlay);
+    });
+
     if (currentLocation) {
       const selectedIsEnRoute = selectedStatus === 'En Route';
-      mapOverlaysRef.current.push(
-        ...[
-          addOfficerOverlay({
-            map,
-            lat: currentLocation.lat,
-            lon: currentLocation.lon,
-            label: '',
-            tone: selectedIsEnRoute ? 'yellow' : 'green'
-          }),
-          addOfficerOverlay({
-            map,
-            lat: currentLocation.lat,
-            lon: currentLocation.lon,
-            label: currentSpeed === null ? '' : `${Math.round(currentSpeed)} mph`,
-            tone: selectedIsEnRoute ? 'yellow' : 'green'
-          })
-        ].filter(Boolean) as GoogleOverlayViewInstance[]
-      );
-
       if (selectedIsEnRoute && locationTrail.length > 1) {
         trailPolylineRef.current = new googleMaps.Polyline({
           path: locationTrail.map((point) => ({ lat: point.lat, lng: point.lon })),
@@ -947,6 +1011,44 @@ export const OfficerDashboard: React.FC = () => {
           map
         });
       }
+    }
+
+    if (currentLocation && mapRouteIncident?.lat !== undefined && mapRouteIncident.lon !== undefined) {
+      routeRendererRef.current = new googleMaps.DirectionsRenderer({
+        map,
+        suppressMarkers: true,
+        preserveViewport: false,
+        polylineOptions: {
+          strokeColor: '#2563eb',
+          strokeOpacity: 0.92,
+          strokeWeight: 5
+        }
+      });
+      const directionsService = new googleMaps.DirectionsService();
+      directionsService.route(
+        {
+          origin: { lat: currentLocation.lat, lng: currentLocation.lon },
+          destination: { lat: mapRouteIncident.lat, lng: mapRouteIncident.lon },
+          travelMode: googleMaps.TravelMode.DRIVING
+        },
+        (result, status) => {
+          if (status === 'OK' && routeRendererRef.current) {
+            routeRendererRef.current.setDirections(result);
+            return;
+          }
+          routeFallbackPolylineRef.current = new googleMaps.Polyline({
+            path: [
+              { lat: currentLocation.lat, lng: currentLocation.lon },
+              { lat: mapRouteIncident.lat as number, lng: mapRouteIncident.lon as number }
+            ],
+            geodesic: true,
+            strokeColor: '#2563eb',
+            strokeOpacity: 0.8,
+            strokeWeight: 4,
+            map
+          });
+        }
+      );
     }
 
     assignedIncidents.forEach((incident) => {
@@ -980,12 +1082,22 @@ export const OfficerDashboard: React.FC = () => {
       map.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon });
       map.setZoom(15);
     }
-  }, [assignedIncidents, currentLocation, currentSpeed, locationTrail, selectedStatus, theme]);
+  }, [assignedIncidents, currentLocation, currentSpeed, locationTrail, mapRouteIncident, selectedStatus, theme, trackedOfficers, user?.id]);
 
   const recenterMap = () => {
     if (!currentLocation) return;
     mapInstanceRef.current?.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon });
     mapInstanceRef.current?.setZoom(15);
+  };
+
+  const focusSelectedIncidentRoute = () => {
+    if (!selectedIncident) return;
+    if (selectedIncident.lat !== undefined && selectedIncident.lon !== undefined) {
+      mapInstanceRef.current?.setCenter({ lat: selectedIncident.lat, lng: selectedIncident.lon });
+      mapInstanceRef.current?.setZoom(16);
+    }
+    setActiveDockItem(null);
+    setOpenDockItems((current) => current.filter((item) => item !== 'call-detail' && item !== 'navigation'));
   };
 
   const assignDockSlot = (index: number, value: DockSlot) => {
@@ -1357,61 +1469,43 @@ export const OfficerDashboard: React.FC = () => {
         <MapPin size={19} />
       </button>
 
-      <button
-        type="button"
-        onClick={() => setLeftOpen((value) => !value)}
-        className="absolute top-1/2 z-30 inline-flex h-12 w-8 -translate-y-1/2 items-center justify-center rounded-r-md border border-l-0 border-slate-200 bg-white/95 text-slate-700 shadow-xl transition-all duration-300 dark:border-slate-700 dark:bg-slate-900/95 dark:text-white"
-        style={{ left: leftOpen ? 'min(22rem, calc(100vw - 3rem))' : 0 }}
-        title={leftOpen ? 'Collapse left panel' : 'Open left panel'}
-      >
-        {leftOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
-      </button>
-
-      <aside
-        className={`absolute bottom-24 left-4 top-20 z-20 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
-          leftOpen ? 'translate-x-0 opacity-100' : '-translate-x-[calc(100%+2rem)] opacity-0'
-        }`}
-      >
-        <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Live Tracking</p>
-              <p className="mt-1 text-sm font-semibold">{locationStatusLabel}</p>
-            </div>
-            {locationState === 'live' ? <Wifi className="text-emerald-500" size={22} /> : <WifiOff className="text-amber-500" size={22} />}
+      <aside className="absolute left-4 top-20 z-20 w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Speed</p>
+            <p className="mt-1 text-2xl font-black text-slate-950 dark:text-white">{currentSpeed === null ? '--' : Math.round(currentSpeed)} mph</p>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-900">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Speed</p>
-              <p className="mt-1 text-xl font-bold">{currentSpeed === null ? '--' : Math.round(currentSpeed)} mph</p>
-            </div>
-            <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-900">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Calls</p>
-              <p className="mt-1 text-xl font-bold">{assignedIncidents.length}</p>
-            </div>
+          <div className="flex h-11 w-11 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-950">
+            {locationState === 'live' ? <Wifi className="text-emerald-500" size={21} /> : <WifiOff className="text-amber-500" size={21} />}
           </div>
-        </section>
-
-        <section className="min-h-0 flex-1 overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 dark:border-slate-800">
-            <h2 className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">My Calls</h2>
-            <ClipboardList size={17} className="text-slate-500" />
+        </div>
+        <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-800">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Call Numbers</p>
+            <span className="rounded-full bg-cad-blue px-2 py-1 text-xs font-bold text-white">{assignedIncidents.length}</span>
           </div>
-          <div className="h-full overflow-auto p-2">
-            {assignedIncidents.length === 0 && (
-              <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">No assigned calls.</p>
-            )}
+          <div className="flex flex-wrap gap-2">
+            {assignedIncidents.length === 0 && <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">No assigned calls</span>}
             {assignedIncidents.map((incident) => (
-              <IncidentButton
+              <button
                 key={incident.id}
-                incident={incident}
-                selected={selectedIncident?.id === incident.id}
-                status={getMyUnitStatus(incident, user?.id)}
-                onClick={() => setSelectedIncidentId(incident.id)}
-              />
+                type="button"
+                onClick={() => {
+                  setSelectedIncidentId(incident.id);
+                  setActiveDockItem('call-detail');
+                  setOpenDockItems((current) => (current.includes('call-detail') ? current : [...current, 'call-detail']));
+                }}
+                className={`rounded-full border px-3 py-1.5 text-xs font-black transition ${
+                  selectedIncident?.id === incident.id
+                    ? 'border-cad-accent bg-blue-50 text-cad-blue dark:bg-blue-950/60 dark:text-blue-100'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-cad-accent/70 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200'
+                }`}
+              >
+                {incident.callNumber}
+              </button>
             ))}
           </div>
-        </section>
+        </div>
       </aside>
 
       <button
@@ -1504,6 +1598,7 @@ export const OfficerDashboard: React.FC = () => {
                 officerEvent={officerEvent}
                 configuredCallTypes={configuredCallTypes}
                 onSelectIncident={setSelectedIncidentId}
+                onNavigateToIncident={focusSelectedIncidentRoute}
                 onUpdateStatus={updateStatus}
                 onAddNote={addNote}
                 onLogout={logout}
@@ -1613,6 +1708,7 @@ const DockContent: React.FC<{
   officerEvent: { type: string; priority: IncidentPriority; description: string };
   configuredCallTypes: Array<{ label: string; priority: IncidentPriority }>;
   onSelectIncident: (id: string) => void;
+  onNavigateToIncident: () => void;
   onUpdateStatus: (status: IncidentUnitStatus) => void;
   onAddNote: () => void;
   onLogout: () => void;
@@ -1664,6 +1760,7 @@ const DockContent: React.FC<{
   officerEvent,
   configuredCallTypes,
   onSelectIncident,
+  onNavigateToIncident,
   onUpdateStatus,
   onAddNote,
   onLogout,
@@ -1802,10 +1899,10 @@ const DockContent: React.FC<{
             <h3 className="mt-3 text-2xl font-black text-slate-950 dark:text-white">{selectedIncident.type}</h3>
             <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{selectedIncident.callNumber} opened {formatTime(selectedIncident.createdAt)}</p>
           </div>
-          <a href={navigationUrl(selectedIncident)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-3 text-sm font-bold text-white">
+          <button type="button" onClick={onNavigateToIncident} className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-3 text-sm font-bold text-white">
             <Navigation size={18} />
             Navigate
-          </a>
+          </button>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Metric label="ETA" value={etaText(currentLocation, selectedIncident, currentSpeed)} />
