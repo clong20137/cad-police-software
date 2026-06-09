@@ -159,6 +159,8 @@ export interface Incident {
   description?: string;
   callerName?: string;
   callerPhone?: string;
+  district?: string;
+  beat?: string;
   lat?: number;
   lon?: number;
   createdBy: string;
@@ -177,6 +179,8 @@ export interface CreateIncidentRequest {
   description?: string;
   callerName?: string;
   callerPhone?: string;
+  district?: string | null;
+  beat?: string | null;
   lat?: number | null;
   lon?: number | null;
 }
@@ -186,6 +190,8 @@ export interface OfficerEventRequest {
   priority?: IncidentPriority;
   address?: string;
   description?: string;
+  district?: string | null;
+  beat?: string | null;
   lat?: number | null;
   lon?: number | null;
 }

@@ -55,6 +55,7 @@ import { QuickLaunchDock, QuickLaunchSlot as DockSlotValue } from './common/Quic
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
 import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { callTypesFromConfig, defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
+import { geofenceAssignmentForPoint, geofencesFromConfig, MapGeofence } from '../utils/mapGeofences';
 import { APP_NAME } from '../constants/branding';
 
 declare global {
@@ -64,6 +65,7 @@ declare global {
         Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
         InfoWindow: new (options: Record<string, unknown>) => GoogleInfoWindowInstance;
         Polyline: new (options: GooglePolylineOptions) => GooglePolylineInstance;
+        Polygon: new (options: GooglePolygonOptions) => GooglePolygonInstance;
         LatLng: new (lat: number, lng: number) => GoogleLatLngInstance;
         OverlayView: new () => GoogleOverlayViewInstance;
         Geocoder: new () => GoogleGeocoder;
@@ -98,6 +100,20 @@ interface GooglePolylineOptions {
 }
 
 interface GooglePolylineInstance {
+  setMap: (map: GoogleMapInstance | null) => void;
+}
+
+interface GooglePolygonOptions {
+  paths: Array<{ lat: number; lng: number }>;
+  strokeColor?: string;
+  strokeOpacity?: number;
+  strokeWeight?: number;
+  fillColor?: string;
+  fillOpacity?: number;
+  map?: GoogleMapInstance;
+}
+
+interface GooglePolygonInstance {
   setMap: (map: GoogleMapInstance | null) => void;
 }
 
@@ -389,6 +405,11 @@ const etaText = (unit: TrackedUnit): string => {
   return `${miles.toFixed(1)} mi, ${minutes} min ETA`;
 };
 
+const routeShareLabel = (unit: TrackedUnit): string => {
+  if (unit.destinationLat === undefined || unit.destinationLon === undefined) return 'No shared route';
+  return `${compactDestinationLabel(unit.destinationLabel)} - ${etaText(unit)}`;
+};
+
 const incidentDistanceLabel = (unit: TrackedUnit, incident: Incident): string => {
   if (incident.lat === undefined || incident.lon === undefined) {
     return 'Distance unavailable';
@@ -621,6 +642,7 @@ export const Dashboard: React.FC = () => {
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
   const mapOverlaysRef = useRef<GoogleOverlayViewInstance[]>([]);
   const mapPolylinesRef = useRef<GooglePolylineInstance[]>([]);
+  const mapPolygonsRef = useRef<GooglePolygonInstance[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
@@ -638,6 +660,7 @@ export const Dashboard: React.FC = () => {
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
   const configuredUnitStatuses = useMemo(() => unitStatusesFromConfig(adminConfig), [adminConfig]);
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
+  const configuredGeofences = useMemo(() => geofencesFromConfig(adminConfig), [adminConfig]);
 
   const loadUnits = useCallback(async () => {
     try {
@@ -1281,6 +1304,22 @@ export const Dashboard: React.FC = () => {
       mapOverlaysRef.current = [];
       mapPolylinesRef.current.forEach((polyline) => polyline.setMap(null));
       mapPolylinesRef.current = [];
+      mapPolygonsRef.current.forEach((polygon) => polygon.setMap(null));
+      mapPolygonsRef.current = [];
+
+      configuredGeofences.forEach((geofence) => {
+        if (!window.google?.maps.Polygon) return;
+        const polygon = new window.google.maps.Polygon({
+          paths: geofence.points.map((point) => ({ lat: point.lat, lng: point.lon })),
+          strokeColor: geofence.color,
+          strokeOpacity: geofence.kind === 'beat' ? 0.85 : 0.7,
+          strokeWeight: geofence.kind === 'beat' ? 2 : 3,
+          fillColor: geofence.color,
+          fillOpacity: geofence.kind === 'beat' ? 0.09 : 0.06,
+          map
+        });
+        mapPolygonsRef.current.push(polygon);
+      });
 
       units.forEach((unit) => {
         const shouldShowTrail = displayStatus(unit) === 'En Route' && (unit.locationTrail?.length || 0) > 1;
@@ -1305,6 +1344,11 @@ export const Dashboard: React.FC = () => {
               <div style="margin-top:4px;font-size:12px;color:#475569">${escapeHtml(displayStatus(unit))}</div>
               <div style="font-size:12px;color:#475569">${escapeHtml(locationReliabilityText(unit, locationClock))}</div>
               ${
+                unit.destinationLat !== undefined && unit.destinationLon !== undefined
+                  ? `<div style="margin-top:6px;font-size:12px;color:#92400e;font-weight:700">${escapeHtml(routeShareLabel(unit))}</div>`
+                  : ''
+              }
+              ${
                 unit.id !== user?.id
                   ? `<button id="${messageButtonId}" type="button" style="margin-top:8px;border:0;border-radius:6px;background:#2563eb;color:white;padding:6px 10px;font-weight:700;cursor:pointer">Message</button>`
                   : ''
@@ -1322,6 +1366,20 @@ export const Dashboard: React.FC = () => {
             setActiveQuickModal('messages');
           };
         });
+        if (unit.destinationLat !== undefined && unit.destinationLon !== undefined && window.google?.maps.Polyline) {
+          const routeLine = new window.google.maps.Polyline({
+            path: [
+              { lat: unit.lat, lng: unit.lon },
+              { lat: unit.destinationLat, lng: unit.destinationLon }
+            ],
+            geodesic: true,
+            strokeColor: '#f59e0b',
+            strokeOpacity: 0.78,
+            strokeWeight: 4,
+            map
+          });
+          mapPolylinesRef.current.push(routeLine);
+        }
         const unitOverlay = addGooglePulseMarker({
           map,
           lat: unit.lat,
@@ -1377,7 +1435,7 @@ export const Dashboard: React.FC = () => {
     script.async = true;
     script.onload = initializeMap;
     document.head.appendChild(script);
-  }, [center.lat, center.lon, currentLocation, incidents, locationClock, theme, units, user?.id]);
+  }, [center.lat, center.lon, configuredGeofences, currentLocation, incidents, locationClock, theme, units, user?.id]);
 
   const recenterToCurrentLocation = () => {
     const target = currentLocation || center;
@@ -1623,6 +1681,10 @@ export const Dashboard: React.FC = () => {
         setIncidentError('Coordinates must be valid latitude and longitude values.');
         return;
       }
+      const geofenceAssignment = geofenceAssignmentForPoint(
+        lat !== null && lon !== null ? { lat, lon } : null,
+        configuredGeofences
+      );
 
       const incident = await authClient.createIncident({
         type: incidentForm.type,
@@ -1631,6 +1693,8 @@ export const Dashboard: React.FC = () => {
         description: incidentForm.description,
         callerName: incidentForm.callerName,
         callerPhone: incidentForm.callerPhone,
+        district: geofenceAssignment.district || null,
+        beat: geofenceAssignment.beat || null,
         lat,
         lon
       });
@@ -1638,10 +1702,10 @@ export const Dashboard: React.FC = () => {
       setSelectedIncidentId(incident.id);
       closeQuickModal('new-call');
       setIncidentError('');
-        setIncidentForm({
-          type: configuredCallTypes[0]?.label || '911 Call',
-          priority: configuredCallTypes[0]?.priority || 'Normal',
-          address: '',
+      setIncidentForm({
+        type: configuredCallTypes[0]?.label || '911 Call',
+        priority: configuredCallTypes[0]?.priority || 'Normal',
+        address: '',
         description: '',
         callerName: '',
         callerPhone: '',
@@ -1898,6 +1962,8 @@ export const Dashboard: React.FC = () => {
         incident.priority,
         incident.status,
         incident.address,
+        incident.district,
+        incident.beat,
         incident.description,
         incident.callerName,
         incident.callerPhone,
@@ -1980,6 +2046,9 @@ export const Dashboard: React.FC = () => {
               >
                 <p className="truncate text-sm font-bold">{incident.callNumber} · {incident.type}</p>
                 <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-300">{incident.address}</p>
+                <p className="mt-1 truncate text-xs font-semibold text-cad-blue dark:text-blue-200">
+                  {[incident.district, incident.beat].filter(Boolean).join(' / ') || 'No district assigned'}
+                </p>
                 <div className="mt-3 flex items-center justify-between">
                   <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${incidentPriorityStyles[incident.priority]}`}>
                     {incident.priority}
@@ -2016,6 +2085,8 @@ export const Dashboard: React.FC = () => {
               <Detail label="Priority" value={selectedIncident.priority} />
               <Detail label="Status" value={selectedIncident.status} />
               <Detail label="Address" value={selectedIncident.address} />
+              <Detail label="District" value={selectedIncident.district || 'Unassigned'} />
+              <Detail label="Beat" value={selectedIncident.beat || 'Unassigned'} />
               <Detail label="Caller" value={selectedIncident.callerName || 'Unknown'} />
               <Detail label="Phone" value={selectedIncident.callerPhone || 'Unknown'} />
             </dl>
@@ -2614,6 +2685,7 @@ export const Dashboard: React.FC = () => {
           <Detail label="Status" value={displayStatus(selectedUnit)} />
           <Detail label="Tracking" value={locationReliabilityText(selectedUnit, locationClock)} />
           <Detail label="Location" value={`${selectedUnit.lat.toFixed(6)}, ${selectedUnit.lon.toFixed(6)}`} />
+          <Detail label="Shared Route" value={routeShareLabel(selectedUnit)} />
         </dl>
       ) : (
         <p className="text-sm text-slate-600">No tracked unit selected.</p>
@@ -2750,6 +2822,7 @@ export const Dashboard: React.FC = () => {
           <FallbackMap
             units={units}
             incidents={incidents}
+            geofences={configuredGeofences}
             selectedUnit={selectedUnit}
             currentLocation={currentLocation}
             currentUserId={user?.id}
@@ -2842,6 +2915,8 @@ export const Dashboard: React.FC = () => {
                   <Detail label="Priority" value={selectedIncident.priority} />
                   <Detail label="Status" value={selectedIncident.status} />
                   <Detail label="Address" value={selectedIncident.address} />
+                  <Detail label="District" value={selectedIncident.district || 'Unassigned'} />
+                  <Detail label="Beat" value={selectedIncident.beat || 'Unassigned'} />
                   <Detail label="Caller" value={selectedIncident.callerName || 'Unknown'} />
                   <Detail label="Phone" value={selectedIncident.callerPhone || 'Unknown'} />
                 </dl>
@@ -3124,6 +3199,7 @@ const UnitProfileCard: React.FC<{ unit: UnitBoardUser | null; locationClock: num
         <Detail label="Latitude" value={typeof unit.lat === 'number' ? unit.lat.toFixed(6) : 'Unavailable'} />
         <Detail label="Longitude" value={typeof unit.lon === 'number' ? unit.lon.toFixed(6) : 'Unavailable'} />
         <Detail label="Speed" value={`${(unit.speedMph || 0).toFixed(1)} mph`} />
+        <Detail label="Shared Route" value={typeof unit.lat === 'number' && typeof unit.lon === 'number' ? routeShareLabel(unit as TrackedUnit) : 'Unavailable'} />
         <Detail label="ETA" value={typeof unit.lat === 'number' && typeof unit.lon === 'number' ? etaText(unit as TrackedUnit) : 'Unavailable'} />
       </dl>
     </aside>
@@ -3175,13 +3251,14 @@ const Detail: React.FC<{ label: string; value: string | number }> = ({ label, va
 const FallbackMap: React.FC<{
   units: TrackedUnit[];
   incidents: Incident[];
+  geofences: MapGeofence[];
   selectedUnit: TrackedUnit | null;
   currentLocation: { lat: number; lon: number } | null;
   currentUserId?: string;
   locationClock: number;
   onSelectUnit: (unit: TrackedUnit) => void;
   onSelectIncident: (incident: Incident) => void;
-}> = ({ units, incidents, selectedUnit, currentLocation, currentUserId, locationClock, onSelectUnit, onSelectIncident }) => {
+}> = ({ units, incidents, geofences, selectedUnit, currentLocation, currentUserId, locationClock, onSelectUnit, onSelectIncident }) => {
   const pinnedIncidents = incidents.filter(
     (incident): incident is Incident & { lat: number; lon: number } =>
       incident.lat !== undefined && incident.lon !== undefined
@@ -3198,9 +3275,10 @@ const FallbackMap: React.FC<{
         ...units,
         ...destinations,
         ...pinnedIncidents,
+        ...geofences.flatMap((geofence) => geofence.points.map((point) => ({ id: `${geofence.id}-${point.lat}-${point.lon}`, ...point }))),
         { id: 'current-location', lat: currentLocation.lat, lon: currentLocation.lon }
       ]
-    : [...units, ...destinations, ...pinnedIncidents];
+    : [...units, ...destinations, ...pinnedIncidents, ...geofences.flatMap((geofence) => geofence.points.map((point) => ({ id: `${geofence.id}-${point.lat}-${point.lon}`, ...point })))];
   const minLat = Math.min(...points.map((point) => point.lat), 39.7);
   const maxLat = Math.max(...points.map((point) => point.lat), 39.85);
   const minLon = Math.min(...points.map((point) => point.lon), -86.25);
@@ -3210,6 +3288,10 @@ const FallbackMap: React.FC<{
     left: `${((lon - minLon) / Math.max(maxLon - minLon, 0.01)) * 82 + 9}%`,
     top: `${(1 - (lat - minLat) / Math.max(maxLat - minLat, 0.01)) * 78 + 11}%`
   });
+  const svgPoint = (lat: number, lon: number) => {
+    const pos = position(lat, lon);
+    return `${parseFloat(pos.left)},${parseFloat(pos.top)}`;
+  };
 
   return (
     <div className="relative h-full min-h-[520px] w-full overflow-hidden bg-[linear-gradient(90deg,rgba(148,163,184,.18)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,.18)_1px,transparent_1px)] bg-[size:48px_48px]">
@@ -3218,6 +3300,33 @@ const FallbackMap: React.FC<{
       <div className="absolute left-1/2 top-8 h-[calc(100%-4rem)] w-1 -translate-x-1/2 bg-slate-500/50" />
 
       <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        {geofences.map((geofence) => (
+          <polygon
+            key={geofence.id}
+            points={geofence.points.map((point) => svgPoint(point.lat, point.lon)).join(' ')}
+            fill={geofence.color}
+            fillOpacity={geofence.kind === 'beat' ? 0.1 : 0.07}
+            stroke={geofence.color}
+            strokeWidth={geofence.kind === 'beat' ? 0.45 : 0.65}
+            strokeDasharray={geofence.kind === 'beat' ? '1.8 1.1' : undefined}
+          />
+        ))}
+        {units
+          .filter((unit) => unit.destinationLat !== undefined && unit.destinationLon !== undefined)
+          .map((unit) => (
+            <line
+              key={`${unit.id}-shared-route`}
+              x1={parseFloat(position(unit.lat, unit.lon).left)}
+              y1={parseFloat(position(unit.lat, unit.lon).top)}
+              x2={parseFloat(position(unit.destinationLat as number, unit.destinationLon as number).left)}
+              y2={parseFloat(position(unit.destinationLat as number, unit.destinationLon as number).top)}
+              stroke="#f59e0b"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeDasharray="2.5 1.5"
+              opacity="0.9"
+            />
+          ))}
         {units
           .filter((unit) => displayStatus(unit) === 'En Route' && (unit.locationTrail?.length || 0) > 1)
           .map((unit) => {

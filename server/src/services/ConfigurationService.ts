@@ -36,8 +36,63 @@ const defaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'updatedAt'>> =
   { id: 'agency-ems', section: 'agencies', name: 'EMS', code: 'EMS', agency: 'CAD', category: 'Medical', active: true, sortOrder: 20, metadata: {} },
   { id: 'agency-fire', section: 'agencies', name: 'Fire', code: 'FIRE', agency: 'CAD', category: 'Fire', active: true, sortOrder: 30, metadata: {} },
   { id: 'agency-towing', section: 'agencies', name: 'Towing', code: 'TOW', agency: 'CAD', category: 'Service', active: true, sortOrder: 40, metadata: {} },
-  { id: 'district-north', section: 'districts', name: 'North District', code: 'NORTH', agency: 'Police', category: 'District', active: true, sortOrder: 10, metadata: {} },
-  { id: 'district-south', section: 'districts', name: 'South District', code: 'SOUTH', agency: 'Police', category: 'District', active: true, sortOrder: 20, metadata: {} },
+  {
+    id: 'district-north',
+    section: 'districts',
+    name: 'North District',
+    code: 'NORTH',
+    agency: 'Police',
+    category: 'District',
+    active: true,
+    sortOrder: 10,
+    metadata: {
+      fillColor: '#2563eb',
+      boundary: [
+        { lat: 39.9000, lon: -86.2600 },
+        { lat: 39.9000, lon: -86.0500 },
+        { lat: 39.7900, lon: -86.0500 },
+        { lat: 39.7900, lon: -86.2600 }
+      ]
+    }
+  },
+  {
+    id: 'district-south',
+    section: 'districts',
+    name: 'South District',
+    code: 'SOUTH',
+    agency: 'Police',
+    category: 'District',
+    active: true,
+    sortOrder: 20,
+    metadata: {
+      fillColor: '#0f766e',
+      boundary: [
+        { lat: 39.7900, lon: -86.2600 },
+        { lat: 39.7900, lon: -86.0500 },
+        { lat: 39.6500, lon: -86.0500 },
+        { lat: 39.6500, lon: -86.2600 }
+      ]
+    }
+  },
+  {
+    id: 'district-beat-central',
+    section: 'districts',
+    name: 'Central Beat',
+    code: 'CENTRAL',
+    agency: 'Police',
+    category: 'Beat',
+    active: true,
+    sortOrder: 30,
+    metadata: {
+      fillColor: '#f59e0b',
+      boundary: [
+        { lat: 39.8150, lon: -86.1900 },
+        { lat: 39.8150, lon: -86.1250 },
+        { lat: 39.7450, lon: -86.1250 },
+        { lat: 39.7450, lon: -86.1900 }
+      ]
+    }
+  },
   { id: 'unit-patrol', section: 'units', name: 'Patrol Unit', code: 'PATROL', agency: 'Police', category: 'Officer', active: true, sortOrder: 10, metadata: {} },
   { id: 'unit-medic', section: 'units', name: 'Medic Unit', code: 'MEDIC', agency: 'EMS', category: 'Ambulance', active: true, sortOrder: 20, metadata: {} },
   { id: 'unit-engine', section: 'units', name: 'Engine', code: 'ENG', agency: 'Fire', category: 'Apparatus', active: true, sortOrder: 30, metadata: {} },
@@ -90,6 +145,15 @@ export class ConfigurationService {
           item.sortOrder,
           JSON.stringify(item.metadata)
         ]
+      );
+      await pool.execute(
+        `
+          UPDATE admin_configuration_items
+          SET metadata = ?
+          WHERE id = ?
+            AND (metadata IS NULL OR JSON_LENGTH(metadata) = 0)
+        `,
+        [JSON.stringify(item.metadata), item.id]
       );
     }
   }

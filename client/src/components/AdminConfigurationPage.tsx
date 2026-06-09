@@ -80,6 +80,21 @@ const getSecurityBoolean = (items: AdminConfigurationItem[], code: string, fallb
   return typeof value === 'boolean' ? value : fallback;
 };
 
+const boundaryTextFromMetadata = (metadata: Record<string, unknown>): string => {
+  const raw = metadata.boundary || metadata.polygon || metadata.points;
+  if (typeof raw === 'string') return raw;
+  if (!Array.isArray(raw)) return '';
+  return raw
+    .map((point) => {
+      const candidate = point as { lat?: unknown; lon?: unknown; lng?: unknown };
+      const lat = Number(candidate.lat);
+      const lon = Number(candidate.lon ?? candidate.lng);
+      return Number.isFinite(lat) && Number.isFinite(lon) ? `${lat},${lon}` : '';
+    })
+    .filter(Boolean)
+    .join('; ');
+};
+
 export const AdminConfigurationPage: React.FC = () => {
   const { hasPermission } = useAuth();
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
@@ -501,6 +516,21 @@ export const AdminConfigurationPage: React.FC = () => {
                     <button type="button" onClick={() => removeItem(item.id)} className="inline-flex h-10 items-center justify-center rounded-md border border-cad-line text-slate-500 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:hover:bg-red-950/40 dark:hover:text-red-200" aria-label={`Remove ${item.name || item.code || 'configuration item'}`}>
                       <Trash2 size={16} />
                     </button>
+                    {activeSection === 'districts' && (
+                      <label className="grid gap-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500 md:col-span-6">
+                        Boundary
+                        <textarea
+                          value={boundaryTextFromMetadata(item.metadata)}
+                          onChange={(event) =>
+                            scheduleItemUpdate(item.id, {
+                              metadata: { ...item.metadata, boundary: event.target.value }
+                            })
+                          }
+                          placeholder="39.9000,-86.2600; 39.9000,-86.0500; 39.7900,-86.0500"
+                          className="min-h-20 rounded-md border border-cad-line bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </label>
+                    )}
                   </div>
                 ))}
               </div>

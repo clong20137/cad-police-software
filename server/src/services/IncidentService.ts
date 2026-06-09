@@ -1,6 +1,8 @@
 import { ResultSetHeader } from 'mysql2';
 import { v4 as uuidv4 } from 'uuid';
 import { pool, IncidentNoteRow, IncidentRow, IncidentUnitRow } from '../db/mysql';
+import { ConfigurationService } from './ConfigurationService';
+import { geofenceAssignmentForPoint, geofencesFromConfig } from '../utils/mapGeofences';
 import {
   AddIncidentNoteRequest,
   CreateIncidentRequest,
@@ -78,6 +80,8 @@ const toIncident = (row: IncidentRow, units: IncidentUnit[] = [], notes: Inciden
   description: row.description || undefined,
   callerName: row.caller_name || undefined,
   callerPhone: row.caller_phone || undefined,
+  district: row.district || undefined,
+  beat: row.beat || undefined,
   lat: row.lat === null ? undefined : Number(row.lat),
   lon: row.lon === null ? undefined : Number(row.lon),
   createdBy: row.created_by,
@@ -143,6 +147,17 @@ export class IncidentService {
 
     const id = uuidv4();
     const callNumber = await this.nextCallNumber();
+    const lat = input.lat ?? null;
+    const lon = input.lon ?? null;
+    const geofenceAssignment =
+      lat !== null && lon !== null
+        ? geofenceAssignmentForPoint(
+            { lat, lon },
+            geofencesFromConfig(await ConfigurationService.list())
+          )
+        : {};
+    const district = input.district?.trim() || geofenceAssignment.district || null;
+    const beat = input.beat?.trim() || geofenceAssignment.beat || null;
 
     await pool.execute<ResultSetHeader>(
       `
@@ -155,11 +170,13 @@ export class IncidentService {
           description,
           caller_name,
           caller_phone,
+          district,
+          beat,
           lat,
           lon,
           created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
@@ -170,8 +187,10 @@ export class IncidentService {
         input.description?.trim() || null,
         input.callerName?.trim() || null,
         input.callerPhone?.trim() || null,
-        input.lat ?? null,
-        input.lon ?? null,
+        district,
+        beat,
+        lat,
+        lon,
         createdBy
       ]
     );

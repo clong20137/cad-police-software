@@ -300,6 +300,8 @@ export const initializeIncidentTables = async (): Promise<void> => {
       description TEXT NULL,
       caller_name VARCHAR(120) NULL,
       caller_phone VARCHAR(40) NULL,
+      district VARCHAR(120) NULL,
+      beat VARCHAR(120) NULL,
       lat DECIMAL(10, 7) NULL,
       lon DECIMAL(10, 7) NULL,
       disposition VARCHAR(255) NULL,
@@ -320,6 +322,20 @@ export const initializeIncidentTables = async (): Promise<void> => {
   } catch (error) {
     if ((error as { code?: string }).code !== 'ER_DUP_FIELDNAME') {
       throw error;
+    }
+  }
+
+  const incidentColumns = [
+    'ADD COLUMN district VARCHAR(120) NULL',
+    'ADD COLUMN beat VARCHAR(120) NULL'
+  ];
+  for (const column of incidentColumns) {
+    try {
+      await pool.query(`ALTER TABLE incidents ${column}`);
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
     }
   }
 
@@ -488,6 +504,8 @@ export type IncidentRow = RowDataPacket & {
   description: string | null;
   caller_name: string | null;
   caller_phone: string | null;
+  district: string | null;
+  beat: string | null;
   lat: string | number | null;
   lon: string | number | null;
   disposition: string | null;

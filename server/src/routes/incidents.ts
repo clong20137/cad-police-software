@@ -64,6 +64,8 @@ router.post(
               ? `Officer location ${Number(req.body.lat).toFixed(5)}, ${Number(req.body.lon).toFixed(5)}`
               : 'Officer initiated event'),
           description: req.body.description || `${eventType} initiated by officer`,
+          district: req.body.district,
+          beat: req.body.beat,
           lat: req.body.lat ?? null,
           lon: req.body.lon ?? null
         },

@@ -43,6 +43,7 @@ import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
 import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { callTypesFromConfig } from '../utils/adminConfig';
+import { geofenceAssignmentForPoint, geofencesFromConfig } from '../utils/mapGeofences';
 import { APP_NAME } from '../constants/branding';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'location' | 'settings' | 'navigation' | 'status';
@@ -56,6 +57,7 @@ interface OfficerGoogleMaps {
   OverlayView: new () => GoogleOverlayViewInstance;
   LatLng: new (lat: number, lng: number) => GoogleLatLngInstance;
   Polyline: new (options: GooglePolylineOptions) => GooglePolylineInstance;
+  Polygon: new (options: GooglePolygonOptions) => GooglePolygonInstance;
   LatLngBounds: new () => GoogleLatLngBoundsInstance;
   InfoWindow: new (options: { content: string }) => GoogleInfoWindowInstance;
   DirectionsService: new () => GoogleDirectionsServiceInstance;
@@ -91,6 +93,20 @@ interface GooglePolylineOptions {
 }
 
 interface GooglePolylineInstance {
+  setMap: (map: GoogleMapInstance | null) => void;
+}
+
+interface GooglePolygonOptions {
+  paths: Array<{ lat: number; lng: number }>;
+  strokeColor?: string;
+  strokeOpacity?: number;
+  strokeWeight?: number;
+  fillColor?: string;
+  fillOpacity?: number;
+  map?: GoogleMapInstance;
+}
+
+interface GooglePolygonInstance {
   setMap: (map: GoogleMapInstance | null) => void;
 }
 
@@ -577,6 +593,7 @@ export const OfficerDashboard: React.FC = () => {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
   const mapOverlaysRef = useRef<GoogleOverlayViewInstance[]>([]);
+  const mapPolygonsRef = useRef<GooglePolygonInstance[]>([]);
   const trailPolylineRef = useRef<GooglePolylineInstance | null>(null);
   const routeRendererRef = useRef<GoogleDirectionsRendererInstance | null>(null);
   const routeFallbackPolylineRef = useRef<GooglePolylineInstance | null>(null);
@@ -613,6 +630,7 @@ export const OfficerDashboard: React.FC = () => {
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || incidents[0] || null;
   const mapRouteIncident = incidents.find((incident) => incident.id === navigatingIncidentId) || null;
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
+  const configuredGeofences = useMemo(() => geofencesFromConfig(adminConfig), [adminConfig]);
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
   const selectedAssignmentWarning = assignmentWarning(selectedIncident, user?.id);
   const trackedOfficers = useMemo(() => {
@@ -1117,6 +1135,8 @@ export const OfficerDashboard: React.FC = () => {
     map.setOptions({ styles: theme === 'dark' ? darkMapStyles : [] });
     mapOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
     mapOverlaysRef.current = [];
+    mapPolygonsRef.current.forEach((polygon) => polygon.setMap(null));
+    mapPolygonsRef.current = [];
     trailPolylineRef.current?.setMap(null);
     trailPolylineRef.current = null;
     routeRendererRef.current?.setMap(null);
@@ -1128,6 +1148,20 @@ export const OfficerDashboard: React.FC = () => {
 
     const bounds = new googleMaps.LatLngBounds();
     let hasCallBounds = false;
+
+    configuredGeofences.forEach((geofence) => {
+      if (!googleMaps.Polygon) return;
+      const polygon = new googleMaps.Polygon({
+        paths: geofence.points.map((point) => ({ lat: point.lat, lng: point.lon })),
+        strokeColor: geofence.color,
+        strokeOpacity: geofence.kind === 'beat' ? 0.85 : 0.7,
+        strokeWeight: geofence.kind === 'beat' ? 2 : 3,
+        fillColor: geofence.color,
+        fillOpacity: geofence.kind === 'beat' ? 0.08 : 0.05,
+        map
+      });
+      mapPolygonsRef.current.push(polygon);
+    });
 
     trackedOfficers.forEach((officer) => {
       if (officer.lat === undefined || officer.lon === undefined) return;
@@ -1256,7 +1290,7 @@ export const OfficerDashboard: React.FC = () => {
       map.fitBounds(bounds);
       hasFitCallBoundsRef.current = true;
     }
-  }, [assignedIncidents, currentLocation, currentSpeed, locationTrail, mapRouteIncident, selectedStatus, theme, trackedOfficers, user?.id]);
+  }, [assignedIncidents, configuredGeofences, currentLocation, currentSpeed, locationTrail, mapRouteIncident, selectedStatus, theme, trackedOfficers, user?.id]);
 
   const recenterMap = () => {
     if (!currentLocation) return;
@@ -1267,6 +1301,7 @@ export const OfficerDashboard: React.FC = () => {
   const cancelNavigation = () => {
     setNavigatingIncidentId(null);
     setNavigationSummary(null);
+    authClient.updateDestination(null, null, null).catch(() => undefined);
     routeRendererRef.current?.setMap(null);
     routeRendererRef.current = null;
     routeFallbackPolylineRef.current?.setMap(null);
@@ -1290,6 +1325,9 @@ export const OfficerDashboard: React.FC = () => {
 
     setSelectedIncidentId(selectedIncident.id);
     setNavigatingIncidentId(selectedIncident.id);
+    authClient
+      .updateDestination(selectedIncident.lat, selectedIncident.lon, selectedIncident.callNumber)
+      .catch(() => undefined);
     setNavigationSummary({
       callNumber: selectedIncident.callNumber,
       distance: 'Calculating',
@@ -1415,10 +1453,13 @@ export const OfficerDashboard: React.FC = () => {
     setBusy(true);
     setMessage('');
     try {
+      const geofenceAssignment = geofenceAssignmentForPoint(currentLocation, configuredGeofences);
       const incident = await authClient.createOfficerEvent({
         type: officerEvent.type,
         priority: officerEvent.priority,
         description: officerEvent.description,
+        district: geofenceAssignment.district || null,
+        beat: geofenceAssignment.beat || null,
         lat: currentLocation?.lat ?? null,
         lon: currentLocation?.lon ?? null,
         address: currentLocation ? `Officer location ${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : undefined
@@ -1439,10 +1480,13 @@ export const OfficerDashboard: React.FC = () => {
     setBusy(true);
     setMessage('');
     try {
+      const geofenceAssignment = geofenceAssignmentForPoint(currentLocation, configuredGeofences);
       const incident = await authClient.createOfficerEvent({
         type: submission.title,
         priority: 'Normal',
         description: submission.description,
+        district: geofenceAssignment.district || null,
+        beat: geofenceAssignment.beat || null,
         lat: currentLocation?.lat ?? null,
         lon: currentLocation?.lon ?? null,
         address: currentLocation
@@ -2225,6 +2269,8 @@ const DockContent: React.FC<{
         <div className="grid gap-3 sm:grid-cols-2">
           <Metric label="ETA" value={etaText(currentLocation, selectedIncident, currentSpeed)} />
           <Metric label="Coordinates" value={selectedIncident.lat !== undefined && selectedIncident.lon !== undefined ? `${selectedIncident.lat.toFixed(5)}, ${selectedIncident.lon.toFixed(5)}` : 'No map pin'} />
+          <Metric label="District" value={selectedIncident.district || 'Unassigned'} />
+          <Metric label="Beat" value={selectedIncident.beat || 'Unassigned'} />
         </div>
         <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
           <p className="text-sm font-bold">{selectedIncident.address}</p>
