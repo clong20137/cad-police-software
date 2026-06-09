@@ -10,6 +10,7 @@ import {
   IncidentUnitStatus,
   LoginResponse,
   Permission,
+  PublicAuthSettings,
   RegisterRequest,
   RegisterResponse,
   ROLE_PERMISSIONS,
@@ -146,6 +147,11 @@ class AuthClient {
 
   async getActiveConfiguration(): Promise<AdminConfigurationItem[]> {
     const response = await this.api.get<AdminConfigurationItem[]>('/configuration/active');
+    return response.data;
+  }
+
+  async getPublicAuthSettings(): Promise<PublicAuthSettings> {
+    const response = await this.api.get<PublicAuthSettings>('/configuration/public/auth');
     return response.data;
   }
 

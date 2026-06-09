@@ -2721,7 +2721,7 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-gray-100' : 'bg-gray-50 text-cad-ink'}`}>
+    <div className={`dashboard-enter flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-gray-100' : 'bg-gray-50 text-cad-ink'}`}>
       <ShieldSidebar
         title={APP_NAME}
         subtitle="Dispatch"

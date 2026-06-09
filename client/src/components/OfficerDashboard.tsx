@@ -1688,7 +1688,7 @@ export const OfficerDashboard: React.FC = () => {
   };
 
   return (
-    <main className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-white' : 'bg-gray-50 text-slate-950'}`}>
+    <main className={`dashboard-enter flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-white' : 'bg-gray-50 text-slate-950'}`}>
       <ShieldSidebar
         title={APP_NAME}
         subtitle="Officer"

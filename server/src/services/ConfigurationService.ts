@@ -109,7 +109,8 @@ const defaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'updatedAt'>> =
   { id: 'security-location-stale', section: 'security', name: 'Location stale seconds', code: 'LOCATION_STALE_SECONDS', agency: 'All', category: 'Realtime', active: true, sortOrder: 20, metadata: { value: 45, type: 'number', min: 10 } },
   { id: 'security-heartbeat', section: 'security', name: 'Websocket heartbeat seconds', code: 'WEBSOCKET_HEARTBEAT_SECONDS', agency: 'All', category: 'Realtime', active: true, sortOrder: 30, metadata: { value: 20, type: 'number', min: 5 } },
   { id: 'security-https', section: 'security', name: 'Require HTTPS', code: 'REQUIRE_HTTPS', agency: 'All', category: 'Transport', active: true, sortOrder: 40, metadata: { value: true, type: 'boolean' } },
-  { id: 'security-db-ssl', section: 'security', name: 'Require DB SSL', code: 'REQUIRE_DB_SSL', agency: 'All', category: 'Database', active: true, sortOrder: 50, metadata: { value: true, type: 'boolean' } }
+  { id: 'security-db-ssl', section: 'security', name: 'Require DB SSL', code: 'REQUIRE_DB_SSL', agency: 'All', category: 'Database', active: true, sortOrder: 50, metadata: { value: true, type: 'boolean' } },
+  { id: 'security-registration-enabled', section: 'security', name: 'Allow public registration', code: 'ALLOW_PUBLIC_REGISTRATION', agency: 'All', category: 'Access', active: true, sortOrder: 60, metadata: { value: true, type: 'boolean' } }
 ];
 
 const toItem = (row: AdminConfigurationRow): AdminConfigurationItem => ({
@@ -164,6 +165,17 @@ export class ConfigurationService {
       'SELECT * FROM admin_configuration_items ORDER BY section ASC, sort_order ASC, name ASC'
     );
     return rows.map(toItem);
+  }
+
+  static async getBoolean(code: string, fallback: boolean): Promise<boolean> {
+    await this.ensureDefaults();
+    const [rows] = await pool.execute<AdminConfigurationRow[]>(
+      'SELECT * FROM admin_configuration_items WHERE section = ? AND code = ? LIMIT 1',
+      ['security', code]
+    );
+    const item = rows[0] ? toItem(rows[0]) : null;
+    const value = item?.metadata?.value;
+    return item?.active !== false && typeof value === 'boolean' ? value : fallback;
   }
 
   static async create(input: UpsertConfigurationItemRequest): Promise<AdminConfigurationItem> {

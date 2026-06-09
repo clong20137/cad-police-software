@@ -249,6 +249,10 @@ export interface UpsertConfigurationItemRequest {
   metadata?: Record<string, unknown>;
 }
 
+export interface PublicAuthSettings {
+  registrationEnabled: boolean;
+}
+
 export type Permission =
   | 'view_dispatch'
   | 'create_dispatch'

@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  AlertCircle,
   BadgeCheck,
   Building2,
+  CheckCircle2,
   Eye,
   EyeOff,
   Loader2,
@@ -13,14 +15,23 @@ import {
   Radio,
   Shield,
   Sun,
-  User
+  User,
+  X
 } from 'lucide-react';
 import { UserRole } from '../types/auth';
 import { useAuth } from '../context/AuthContext';
+import { authClient } from '../services/authClient';
 import { APP_DESCRIPTION, APP_NAME } from '../constants/branding';
 
 const inputBase =
   'h-11 w-full rounded-md border border-cad-line bg-white px-3 text-sm text-cad-ink shadow-control outline-none transition placeholder:text-slate-400 focus:border-cad-blue focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-900';
+
+type ToastNotice = {
+  id: string;
+  title: string;
+  message: string;
+  tone: 'success' | 'error';
+};
 
 export const LoginPage: React.FC = () => {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -39,6 +50,9 @@ export const LoginPage: React.FC = () => {
   const [role, setRole] = useState<UserRole>(UserRole.VIEWER);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState(true);
+  const [toasts, setToasts] = useState<ToastNotice[]>([]);
   const { login, register } = useAuth();
   const navigate = useNavigate();
 
@@ -48,9 +62,46 @@ export const LoginPage: React.FC = () => {
     localStorage.setItem('cad_theme', theme);
   }, [theme]);
 
+  const addToast = useCallback((title: string, message: string, tone: ToastNotice['tone'] = 'success') => {
+    const id = `${Date.now()}-${Math.random()}`;
+    setToasts((current) => [{ id, title, message, tone }, ...current].slice(0, 3));
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 3600);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    authClient
+      .getPublicAuthSettings()
+      .then((settings) => {
+        if (!mounted) return;
+        setRegistrationEnabled(settings.registrationEnabled);
+        if (!settings.registrationEnabled) {
+          setMode('login');
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setRegistrationEnabled(true);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
+
+    if (isRegistering && !registrationEnabled) {
+      addToast('Registration disabled', 'An administrator has disabled public account requests.', 'error');
+      setMode('login');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -70,12 +121,18 @@ export const LoginPage: React.FC = () => {
         : await login(email, password);
 
       if (success) {
-        navigate('/');
+        setTransitioning(true);
+        addToast(isRegistering ? 'Account created' : 'Signed in', isRegistering ? 'Taking you into Blueline CAD.' : 'Opening your dashboard.', 'success');
+        window.setTimeout(() => navigate('/'), 620);
       } else {
-        setError(isRegistering ? 'Registration failed. Check the account details and password requirements.' : 'Invalid credentials.');
+        const message = isRegistering ? 'Registration failed. Check the account details and password requirements.' : 'Invalid credentials.';
+        setError(message);
+        addToast(isRegistering ? 'Registration failed' : 'Sign in failed', message, 'error');
       }
     } catch {
-      setError('Request failed. Please try again.');
+      const message = 'Request failed. Please try again.';
+      setError(message);
+      addToast('Request failed', message, 'error');
     } finally {
       setLoading(false);
     }
@@ -89,7 +146,8 @@ export const LoginPage: React.FC = () => {
           : 'bg-[linear-gradient(180deg,#f8fafc_0%,#edf2f7_100%)] text-cad-ink'
       }`}
     >
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(26,54,93,0.06)_1px,transparent_1px),linear-gradient(0deg,rgba(26,54,93,0.05)_1px,transparent_1px)] bg-[size:56px_56px] dark:bg-[linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,0.07)_1px,transparent_1px)]" />
+      <div className="login-grid-motion absolute inset-0 bg-[linear-gradient(90deg,rgba(26,54,93,0.06)_1px,transparent_1px),linear-gradient(0deg,rgba(26,54,93,0.05)_1px,transparent_1px)] bg-[size:56px_56px] dark:bg-[linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,0.07)_1px,transparent_1px)]" />
+      <div className="login-scan-motion absolute left-0 top-0 h-full w-full opacity-70" />
 
       <button
         type="button"
@@ -101,7 +159,7 @@ export const LoginPage: React.FC = () => {
       </button>
 
       <section className="relative z-10 flex min-h-screen w-full items-center justify-center px-4 py-12">
-        <section className={`mx-auto w-full rounded-lg border border-cad-line bg-white/95 shadow-shield dark:border-slate-800 dark:bg-slate-900/95 ${isRegistering ? 'max-w-xl' : 'max-w-sm'}`}>
+        <section className={`login-card-enter mx-auto w-full rounded-lg border border-cad-line bg-white/95 shadow-shield transition-all duration-300 dark:border-slate-800 dark:bg-slate-900/95 ${isRegistering ? 'max-w-xl' : 'max-w-sm'} ${transitioning ? 'translate-y-1 scale-[0.985] opacity-75' : ''}`}>
           <div className="border-b border-cad-line p-5 text-center dark:border-slate-800 sm:p-6">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-cad-blue text-white shadow-control">
               <Shield size={24} />
@@ -120,7 +178,7 @@ export const LoginPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 rounded-md border border-cad-line bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-950">
+            <div className={`mt-5 grid rounded-md border border-cad-line bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-950 ${registrationEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <button
                 type="button"
                 onClick={() => setMode('login')}
@@ -132,17 +190,19 @@ export const LoginPage: React.FC = () => {
               >
                 Login
               </button>
-              <button
-                type="button"
-                onClick={() => setMode('register')}
-                className={`rounded px-3 py-2 text-sm font-black transition ${
-                  isRegistering
-                    ? 'bg-white text-cad-blue shadow-control dark:bg-slate-800 dark:text-blue-100'
-                    : 'text-slate-600 hover:text-cad-blue dark:text-slate-300'
-                }`}
-              >
-                Register
-              </button>
+              {registrationEnabled && (
+                <button
+                  type="button"
+                  onClick={() => setMode('register')}
+                  className={`rounded px-3 py-2 text-sm font-black transition ${
+                    isRegistering
+                      ? 'bg-white text-cad-blue shadow-control dark:bg-slate-800 dark:text-blue-100'
+                      : 'text-slate-600 hover:text-cad-blue dark:text-slate-300'
+                  }`}
+                >
+                  Register
+                </button>
+              )}
             </div>
           </div>
 
@@ -223,15 +283,30 @@ export const LoginPage: React.FC = () => {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || transitioning}
               className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-cad-blue px-4 text-sm font-black text-white shadow-control transition hover:bg-cad-secondary focus:outline-none focus:ring-4 focus:ring-cad-accent/30 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              {loading ? <Loader2 size={17} className="animate-spin" /> : <ArrowRight size={17} />}
-              {loading ? 'Working...' : isRegistering ? 'Create Account' : 'Enter CAD'}
+              {loading || transitioning ? <Loader2 size={17} className="animate-spin" /> : <ArrowRight size={17} />}
+              {loading || transitioning ? 'Opening...' : isRegistering ? 'Create Account' : 'Enter CAD'}
             </button>
           </form>
         </section>
       </section>
+
+      <div className="fixed right-4 top-20 z-50 grid w-[min(24rem,calc(100vw-2rem))] gap-2">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={`login-toast-enter flex items-start gap-3 rounded-lg border bg-white/95 p-3 shadow-xl backdrop-blur-sm dark:bg-slate-900/95 ${toast.tone === 'success' ? 'border-emerald-200 dark:border-emerald-800' : 'border-red-200 dark:border-red-800'}`}>
+            {toast.tone === 'success' ? <CheckCircle2 size={18} className="mt-0.5 text-emerald-600" /> : <AlertCircle size={18} className="mt-0.5 text-red-600" />}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold">{toast.title}</p>
+              <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300">{toast.message}</p>
+            </div>
+            <button type="button" onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))} className="text-slate-400 hover:text-slate-700 dark:hover:text-white" aria-label="Dismiss notification">
+              <X size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
     </main>
   );
 };

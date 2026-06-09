@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
 import { AuditLogService } from '../services/AuditLogService';
+import { ConfigurationService } from '../services/ConfigurationService';
 import { MessageService } from '../services/MessageService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
 import { requireRequestSignature, sensitiveRateLimiter } from '../middleware/security';
@@ -50,6 +51,12 @@ const isRateLimited = (key: string): boolean => {
 // Public routes
 router.post('/register', sensitiveRateLimiter, async (req: Request<{}, {}, RegisterRequest>, res: Response): Promise<void> => {
   try {
+    const registrationEnabled = await ConfigurationService.getBoolean('ALLOW_PUBLIC_REGISTRATION', true);
+    if (!registrationEnabled) {
+      res.status(403).json({ error: 'Public registration is disabled' });
+      return;
+    }
+
     const {
       email,
       password,

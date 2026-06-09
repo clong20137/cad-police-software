@@ -7,6 +7,14 @@ import { ConfigurationService, UpsertConfigurationItemRequest } from '../service
 const router = Router();
 
 router.get(
+  '/public/auth',
+  async (_req: Request, res: Response): Promise<void> => {
+    const registrationEnabled = await ConfigurationService.getBoolean('ALLOW_PUBLIC_REGISTRATION', true);
+    res.json({ registrationEnabled });
+  }
+);
+
+router.get(
   '/active',
   authMiddleware,
   async (_req: Request, res: Response): Promise<void> => {

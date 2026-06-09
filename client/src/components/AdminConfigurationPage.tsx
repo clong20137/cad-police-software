@@ -42,6 +42,7 @@ type ToastNotice = {
 
 type SecurityConfig = {
   idleTimeoutMinutes: number;
+  registrationEnabled: boolean;
   requireHttps: boolean;
   requireDbSsl: boolean;
   locationStaleSeconds: number;
@@ -51,6 +52,7 @@ type SecurityConfig = {
 const configSections: EditableConfigSection[] = ['agencies', 'districts', 'units', 'calls', 'statuses'];
 const defaultSecurity: SecurityConfig = {
   idleTimeoutMinutes: 30,
+  registrationEnabled: true,
   requireHttps: true,
   requireDbSsl: true,
   locationStaleSeconds: 45,
@@ -141,6 +143,7 @@ export const AdminConfigurationPage: React.FC = () => {
       setItems(configItems);
       setSecurity({
         idleTimeoutMinutes: getSecurityNumber(configItems, 'IDLE_TIMEOUT_MINUTES', defaultSecurity.idleTimeoutMinutes),
+        registrationEnabled: getSecurityBoolean(configItems, 'ALLOW_PUBLIC_REGISTRATION', defaultSecurity.registrationEnabled),
         requireHttps: getSecurityBoolean(configItems, 'REQUIRE_HTTPS', defaultSecurity.requireHttps),
         requireDbSsl: getSecurityBoolean(configItems, 'REQUIRE_DB_SSL', defaultSecurity.requireDbSsl),
         locationStaleSeconds: getSecurityNumber(configItems, 'LOCATION_STALE_SECONDS', defaultSecurity.locationStaleSeconds),
@@ -542,6 +545,7 @@ export const AdminConfigurationPage: React.FC = () => {
               <NumberSetting label="Idle timeout minutes" value={security.idleTimeoutMinutes} min={1} onChange={(value) => updateSecurity('idleTimeoutMinutes', 'IDLE_TIMEOUT_MINUTES', value)} />
               <NumberSetting label="Location stale seconds" value={security.locationStaleSeconds} min={10} onChange={(value) => updateSecurity('locationStaleSeconds', 'LOCATION_STALE_SECONDS', value)} />
               <NumberSetting label="Websocket heartbeat seconds" value={security.websocketHeartbeatSeconds} min={5} onChange={(value) => updateSecurity('websocketHeartbeatSeconds', 'WEBSOCKET_HEARTBEAT_SECONDS', value)} />
+              <ToggleSetting label="Allow public registration" checked={security.registrationEnabled} onChange={(value) => updateSecurity('registrationEnabled', 'ALLOW_PUBLIC_REGISTRATION', value)} />
               <ToggleSetting label="Require HTTPS" checked={security.requireHttps} onChange={(value) => updateSecurity('requireHttps', 'REQUIRE_HTTPS', value)} />
               <ToggleSetting label="Require DB SSL" checked={security.requireDbSsl} onChange={(value) => updateSecurity('requireDbSsl', 'REQUIRE_DB_SSL', value)} />
             </div>
