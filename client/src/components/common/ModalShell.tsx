@@ -122,7 +122,7 @@ export const ModalShell: React.FC<{
         ref={windowRef}
         className={`flex max-h-[calc(100vh-7rem)] w-full origin-bottom animate-[dockModalIn_160ms_ease-out] flex-col overflow-hidden rounded-lg border border-cad-line bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 ${
           placement === 'center' && !isMobileLayout ? `fixed ${isDragging ? 'cursor-grabbing' : ''}` : ''
-        } ${resizable && placement === 'center' && !isMobileLayout ? 'resize min-h-[28rem] min-w-[48rem]' : ''} ${maxWidthClass}`}
+        } ${resizable && placement === 'center' && !isMobileLayout ? 'resize min-h-[28rem] min-w-[36rem]' : ''} ${maxWidthClass}`}
         style={floatingStyle}
         onMouseDown={(event) => event.stopPropagation()}
       >

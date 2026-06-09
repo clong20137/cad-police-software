@@ -631,7 +631,15 @@ export const Dashboard: React.FC = () => {
   const unitBoardUnits = useMemo<UnitBoardUser[]>(() => {
     const trackedById = new Map(units.map((unit) => [unit.id, unit]));
     return directory
-      .filter((item) => item.id !== user?.id && onlineUserIds.includes(item.id))
+      .filter((item) => {
+        const hasUnitIdentity = Boolean(item.unitNumber || item.cadUnitNumber || item.badge || item.status);
+        return (
+          item.id !== user?.id &&
+          item.active !== false &&
+          onlineUserIds.includes(item.id) &&
+          (item.role === UserRole.OFFICER || item.role === UserRole.ADMIN || hasUnitIdentity)
+        );
+      })
       .map((item) => ({ ...item, ...trackedById.get(item.id) }));
   }, [directory, onlineUserIds, units, user?.id]);
   const unitBoardStatuses = useMemo(
@@ -2154,7 +2162,7 @@ export const Dashboard: React.FC = () => {
     if (activeQuickModal === 'units') {
       return (
         <div className="grid h-full min-h-[520px] gap-3 overflow-hidden">
-          <div className="grid shrink-0 gap-2 md:grid-cols-[1fr_180px_180px_auto]">
+          <div className="grid shrink-0 gap-2 md:grid-cols-[1fr_9.5rem_9.5rem_auto]">
             <input
               value={unitBoardSearch}
               onChange={(event) => setUnitBoardSearch(event.target.value)}
@@ -2200,10 +2208,10 @@ export const Dashboard: React.FC = () => {
               No logged-in users are sharing live unit data yet.
             </p>
           ) : (
-            <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <div className="grid min-h-0 gap-3">
               <div className="min-h-0 overflow-auto rounded-md border border-cad-line bg-white text-sm shadow-sm dark:border-slate-700 dark:bg-slate-950">
-                <div className="min-w-[760px]">
-                  <div className="grid grid-cols-[150px_120px_1fr_150px_150px] gap-3 border-b border-cad-line bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                <div className="min-w-[620px]">
+                  <div className="grid grid-cols-[112px_84px_1fr_112px_112px] gap-2 border-b border-cad-line bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
                     <SortHeader label="Status" active={unitBoardSort.key === 'status'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('status')} />
                     <SortHeader label="Unit" active={unitBoardSort.key === 'unit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('unit')} />
                     <SortHeader label="First & Last Name" active={unitBoardSort.key === 'name'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('name')} />
@@ -2223,7 +2231,7 @@ export const Dashboard: React.FC = () => {
                           key={unit.id}
                           type="button"
                           onClick={() => setSelectedUnitId(unit.id)}
-                          className={`grid w-full grid-cols-[150px_120px_1fr_150px_150px] gap-3 border-l-4 px-4 py-3 text-left transition hover:brightness-[0.98] dark:hover:brightness-125 ${
+                          className={`grid w-full grid-cols-[112px_84px_1fr_112px_112px] gap-2 border-l-4 px-3 py-2.5 text-left transition hover:brightness-[0.98] dark:hover:brightness-125 ${
                             selectedUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/40' : ''
                           } ${colors.row}`}
                         >
@@ -2245,9 +2253,9 @@ export const Dashboard: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <UnitProfileCard unit={selectedUnitBoardUnit} locationClock={locationClock} />
             </div>
           )}
+          {unitBoardUnits.length > 0 && <UnitProfileCard unit={selectedUnitBoardUnit} locationClock={locationClock} />}
         </div>
       );
     }
@@ -2684,8 +2692,8 @@ export const Dashboard: React.FC = () => {
         open={Boolean(activeQuickModal)}
         onClose={() => setActiveQuickModal(null)}
         placement={activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' || activeQuickModal === 'units' ? 'center' : 'bottom'}
-        maxWidthClass={activeQuickModal === 'units' ? 'max-w-none w-[min(96vw,72rem)]' : activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'max-w-5xl' : 'mb-20 max-w-2xl'}
-        contentClassName={activeQuickModal === 'units' ? 'p-4 overflow-hidden h-[min(74vh,760px)]' : 'p-4 overflow-hidden'}
+        maxWidthClass={activeQuickModal === 'units' ? 'max-w-none w-[min(92vw,54rem)]' : activeQuickModal === 'messages' || activeQuickModal === 'calls' || activeQuickModal === 'call-detail' ? 'max-w-5xl' : 'mb-20 max-w-2xl'}
+        contentClassName={activeQuickModal === 'units' ? 'p-3 overflow-hidden h-[min(70vh,680px)]' : 'p-4 overflow-hidden'}
         resizable={activeQuickModal === 'units'}
       >
         {activeQuickModal ? renderQuickModalContent() : null}
