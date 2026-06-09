@@ -618,6 +618,7 @@ export const Dashboard: React.FC = () => {
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [activeCallTab, setActiveCallTab] = useState<CallTabId>('all');
   const [callSearch, setCallSearch] = useState('');
+  const [mapFilterOpen, setMapFilterOpen] = useState(false);
   const [mapLayers, setMapLayers] = useState<DispatchMapLayers>({
     units: true,
     calls: true,
@@ -1492,43 +1493,6 @@ export const Dashboard: React.FC = () => {
     const target = currentLocation || center;
     mapInstanceRef.current?.setCenter({ lat: target.lat, lng: target.lon });
     mapInstanceRef.current?.setZoom(14);
-  };
-
-  const fitMapToActiveItems = () => {
-    const googleMaps = window.google?.maps;
-    const map = mapInstanceRef.current;
-    if (!googleMaps?.LatLngBounds || !map) {
-      recenterToCurrentLocation();
-      return;
-    }
-
-    const bounds = new googleMaps.LatLngBounds();
-    let hasBounds = false;
-    if (currentLocation) {
-      bounds.extend({ lat: currentLocation.lat, lng: currentLocation.lon });
-      hasBounds = true;
-    }
-    if (mapLayers.units) {
-      units.forEach((unit) => {
-        bounds.extend({ lat: unit.lat, lng: unit.lon });
-        hasBounds = true;
-        if (unit.destinationLat !== undefined && unit.destinationLon !== undefined) {
-          bounds.extend({ lat: unit.destinationLat, lng: unit.destinationLon });
-        }
-      });
-    }
-    if (mapLayers.calls) {
-      incidents.forEach((incident) => {
-        if (incident.lat === undefined || incident.lon === undefined) return;
-        bounds.extend({ lat: incident.lat, lng: incident.lon });
-        hasBounds = true;
-      });
-    }
-    if (!hasBounds) {
-      recenterToCurrentLocation();
-      return;
-    }
-    map.fitBounds(bounds);
   };
 
   const toggleMapLayer = (layer: keyof DispatchMapLayers) => {
@@ -2925,6 +2889,55 @@ export const Dashboard: React.FC = () => {
           >
             {realtimeState === 'offline' ? <WifiOff size={19} /> : <Wifi size={19} />}
           </span>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setMapFilterOpen((value) => !value);
+                setSettingsOpen(false);
+              }}
+              className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
+              aria-label="Map filters"
+              aria-expanded={mapFilterOpen}
+              title="Map filters"
+            >
+              <SlidersHorizontal size={19} />
+            </button>
+            {mapFilterOpen && (
+              <div className="absolute right-0 top-12 z-40 w-56 rounded border border-cad-line bg-white p-2 text-cad-ink shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                <div className="border-b border-slate-100 px-2 pb-2 dark:border-slate-800">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Map Layers</p>
+                </div>
+                <div className="mt-2 grid gap-1">
+                  {[
+                    { id: 'units' as const, label: 'Units', icon: <Radio size={16} /> },
+                    { id: 'calls' as const, label: 'Calls', icon: <ClipboardList size={16} /> },
+                    { id: 'geofences' as const, label: 'Districts', icon: <Layers size={16} /> }
+                  ].map((layer) => (
+                    <button
+                      key={layer.id}
+                      type="button"
+                      onClick={() => toggleMapLayer(layer.id)}
+                      className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                      aria-pressed={mapLayers[layer.id]}
+                    >
+                      <span className="text-cad-blue dark:text-blue-100">{layer.icon}</span>
+                      <span className="min-w-0 flex-1">{layer.label}</span>
+                      <span
+                        className={`flex h-5 w-5 items-center justify-center rounded border ${
+                          mapLayers[layer.id]
+                            ? 'border-cad-blue bg-cad-blue text-white'
+                            : 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-950'
+                        }`}
+                      >
+                        {mapLayers[layer.id] && <Check size={13} />}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => setTheme((value) => (value === 'dark' ? 'light' : 'dark'))}
@@ -2944,7 +2957,10 @@ export const Dashboard: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => setSettingsOpen((value) => !value)}
+            onClick={() => {
+              setSettingsOpen((value) => !value);
+              setMapFilterOpen(false);
+            }}
             className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
             aria-label="Settings"
           >
@@ -3040,48 +3056,7 @@ export const Dashboard: React.FC = () => {
           <MapPin size={18} />
         </button>
 
-        <div className="absolute bottom-4 left-20 z-20 flex max-w-[calc(100vw-7rem)] flex-col gap-2 rounded-xl border border-cad-line bg-white/95 p-2 text-cad-ink shadow-xl dark:border-slate-700 dark:bg-slate-900/95 dark:text-white">
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { id: 'units' as const, label: 'Units', icon: <Radio size={14} /> },
-              { id: 'calls' as const, label: 'Calls', icon: <ClipboardList size={14} /> },
-              { id: 'geofences' as const, label: 'Districts', icon: <Layers size={14} /> },
-              { id: 'trails' as const, label: 'Routes', icon: <Pin size={14} /> },
-              { id: 'traffic' as const, label: 'Traffic', icon: <Wifi size={14} /> }
-            ].map((layer) => (
-              <button
-                key={layer.id}
-                type="button"
-                onClick={() => toggleMapLayer(layer.id)}
-                className={`inline-flex h-9 items-center gap-1.5 rounded border px-2.5 text-xs font-black transition ${
-                  mapLayers[layer.id]
-                    ? 'border-cad-blue bg-blue-50 text-cad-blue shadow-sm dark:border-blue-400/70 dark:bg-blue-500/15 dark:text-blue-100'
-                    : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 dark:hover:bg-slate-800'
-                }`}
-                aria-pressed={mapLayers[layer.id]}
-              >
-                {layer.icon}
-                {layer.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={fitMapToActiveItems}
-              className="inline-flex h-9 items-center gap-1.5 rounded border border-cad-line bg-white px-2.5 text-xs font-black text-cad-blue shadow-sm transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-950 dark:text-blue-100 dark:hover:bg-slate-800"
-            >
-              <MapPin size={14} />
-              Fit
-            </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-            <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Available</span>
-            <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-amber-400" /> En Route</span>
-            <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Busy</span>
-            <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> You</span>
-          </div>
-        </div>
-
-        <div className="absolute right-4 top-20 z-10 flex flex-col items-end gap-3">
+        <div className="hidden">
           <OverlayPanel
             title="Active Calls"
             subtitle={`${incidents.length} open incidents`}
