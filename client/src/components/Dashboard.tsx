@@ -2001,35 +2001,53 @@ export const Dashboard: React.FC = () => {
           : activeCallTab === 'closed'
             ? 'No recent closed calls.'
             : 'No calls are in the queue.';
+    const activeCount = incidents.filter((incident) => !isClosedCall(incident)).length;
+    const pendingCount = incidents.filter((incident) => incident.status === 'Pending').length;
+    const assignedCount = incidents.filter((incident) => incident.units.length > 0 && !isClosedCall(incident)).length;
+    const selectedUnitSummary = selectedIncident?.units.length ? `${selectedIncident.units.length} assigned` : 'No units assigned';
 
     return (
-    <div className={`grid h-[min(72vh,720px)] min-h-[540px] overflow-hidden rounded-md border border-cad-line dark:border-slate-700 ${showCallList ? 'md:grid-cols-[340px_1fr]' : ''}`}>
+    <div className={`grid h-[min(74vh,760px)] min-h-[560px] overflow-hidden rounded-lg border border-cad-line bg-white text-cad-ink dark:border-slate-700 dark:bg-slate-900 dark:text-white ${showCallList ? 'lg:grid-cols-[360px_1fr]' : ''}`}>
       {showCallList && (
         <div className="flex min-h-0 flex-col border-r border-cad-line bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
           <div className="shrink-0 border-b border-cad-line p-3 dark:border-slate-700">
+            <div className="mb-3 grid grid-cols-3 gap-2">
+              <div className="rounded-md border border-cad-line bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Active</p>
+                <p className="mt-1 text-lg font-black text-cad-blue dark:text-blue-100">{activeCount}</p>
+              </div>
+              <div className="rounded-md border border-cad-line bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Pending</p>
+                <p className="mt-1 text-lg font-black text-amber-700 dark:text-amber-200">{pendingCount}</p>
+              </div>
+              <div className="rounded-md border border-cad-line bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Assigned</p>
+                <p className="mt-1 text-lg font-black text-emerald-700 dark:text-emerald-200">{assignedCount}</p>
+              </div>
+            </div>
             <label className="relative mb-3 block">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
               <input
                 value={callSearch}
                 onChange={(event) => setCallSearch(event.target.value)}
                 placeholder="Search calls"
-                className="h-9 w-full rounded border border-cad-line bg-white pl-9 pr-3 text-sm outline-none focus:border-cad-accent focus:ring-4 focus:ring-cad-accent/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                className="h-10 w-full rounded-md border border-cad-line bg-white pl-9 pr-3 text-sm outline-none focus:border-cad-accent focus:ring-4 focus:ring-cad-accent/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
               />
             </label>
-            <div className="grid grid-cols-2 gap-1">
+            <div className="grid grid-cols-2 gap-1.5">
               {callTabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveCallTab(tab.id)}
-                  className={`rounded border px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.08em] transition ${
+                  className={`rounded-md border px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.08em] transition ${
                     activeCallTab === tab.id
-                      ? 'border-cad-accent bg-white text-cad-blue shadow-sm dark:bg-slate-900 dark:text-blue-100'
+                      ? 'border-cad-accent bg-white text-cad-blue shadow-sm dark:border-cad-accent dark:bg-slate-900 dark:text-blue-100'
                       : 'border-cad-line bg-white text-slate-600 hover:border-cad-accent/60 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
                   }`}
                 >
                   <span className="flex items-center gap-1.5 truncate">{tab.icon}{tab.label}</span>
-                  <span className="mt-0.5 block text-xs opacity-80">{tab.calls.length}</span>
+                  <span className="mt-0.5 block text-xs opacity-80">{tab.calls.length} calls</span>
                 </button>
               ))}
             </div>
@@ -2047,20 +2065,25 @@ export const Dashboard: React.FC = () => {
                     : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800'
                 }`}
               >
-                <p className="truncate text-sm font-bold">{incident.callNumber} · {incident.type}</p>
-                <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-300">{incident.address}</p>
-                <p className="mt-1 truncate text-xs font-semibold text-cad-blue dark:text-blue-200">
-                  {[incident.district, incident.beat].filter(Boolean).join(' / ') || 'No district assigned'}
-                </p>
-                <div className="mt-3 flex items-center justify-between">
-                  <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${incidentPriorityStyles[incident.priority]}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-950 dark:text-white">{incident.callNumber}</p>
+                    <p className="mt-0.5 truncate text-sm font-semibold text-cad-blue dark:text-blue-100">{incident.type}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${incidentPriorityStyles[incident.priority]}`}>
                     {incident.priority}
                   </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">{incident.units.length} units</span>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                  <MapPin size={13} className="mt-0.5 shrink-0" />
+                  <span className="line-clamp-2">{incident.address}</span>
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${incidentStatusStyles[incident.status]}`}>
                     {incident.status}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    {incident.units.length} unit{incident.units.length === 1 ? '' : 's'}
                   </span>
                   {incident.units.length === 0 ? (
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
@@ -2074,6 +2097,9 @@ export const Dashboard: React.FC = () => {
                     ))
                   )}
                 </div>
+                <p className="mt-2 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {[incident.district, incident.beat].filter(Boolean).join(' / ') || 'No district assigned'}
+                </p>
               </button>
             ))}
           </div>
@@ -2082,21 +2108,49 @@ export const Dashboard: React.FC = () => {
       <div className="min-h-0 overflow-y-auto bg-white p-4 dark:bg-slate-900">
         {selectedIncident ? (
           <div className="space-y-4">
-            <dl className="grid gap-3 text-sm">
-              <Detail label="Call" value={selectedIncident.callNumber} />
-              <Detail label="Type" value={selectedIncident.type} />
-              <Detail label="Priority" value={selectedIncident.priority} />
-              <Detail label="Status" value={selectedIncident.status} />
-              <Detail label="Address" value={selectedIncident.address} />
-              <Detail label="District" value={selectedIncident.district || 'Unassigned'} />
-              <Detail label="Beat" value={selectedIncident.beat || 'Unassigned'} />
-              <Detail label="Caller" value={selectedIncident.callerName || 'Unknown'} />
-              <Detail label="Phone" value={selectedIncident.callerPhone || 'Unknown'} />
-            </dl>
-            {selectedIncident.description && <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-950 dark:text-slate-200">{selectedIncident.description}</p>}
-            {selectedIncident.disposition && <Detail label="Disposition" value={selectedIncident.disposition} />}
-            <div>
-              <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Assigned Units</h3>
+            <div className="rounded-lg border border-cad-line bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Selected Call</p>
+                  <h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">{selectedIncident.callNumber}</h2>
+                  <p className="mt-1 text-sm font-semibold text-cad-blue dark:text-blue-100">{selectedIncident.type}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className={`rounded-full px-3 py-1 text-xs font-black ${incidentPriorityStyles[selectedIncident.priority]}`}>
+                    {selectedIncident.priority}
+                  </span>
+                  <span className={`rounded-full px-3 py-1 text-xs font-black ring-1 ${incidentStatusStyles[selectedIncident.status]}`}>
+                    {selectedIncident.status}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <CallInfoTile label="Address" value={selectedIncident.address} />
+                <CallInfoTile label="District / Beat" value={[selectedIncident.district, selectedIncident.beat].filter(Boolean).join(' / ') || 'Unassigned'} />
+                <CallInfoTile label="Caller" value={selectedIncident.callerName || 'Unknown'} />
+                <CallInfoTile label="Phone" value={selectedIncident.callerPhone || 'Unknown'} />
+              </div>
+              {selectedIncident.description && (
+                <div className="mt-4 rounded-md border border-cad-line bg-white p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                  {selectedIncident.description}
+                </div>
+              )}
+              {selectedIncident.disposition && (
+                <div className="mt-3 rounded-md border border-cad-line bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Disposition</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">{selectedIncident.disposition}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Assigned Units</h3>
+                  <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">{selectedUnitSummary}</p>
+                </div>
+                <Radio size={18} className="text-cad-blue dark:text-blue-100" />
+              </div>
               <div className="mt-2 space-y-2">
                 {selectedIncident.units.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No units assigned.</p>}
                 {selectedIncident.units.map((assignedUnit) => (
@@ -2126,15 +2180,15 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
             {recommendedUnits.length > 0 && (
-              <div>
-                <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Recommended Units</h3>
+              <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+                <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Recommended Units</h3>
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
                   {recommendedUnits.map(({ unit }) => (
                     <button
                       key={unit.id}
                       type="button"
                       onClick={() => assignRecommendedUnit(unit.id)}
-                      className="rounded-md border border-slate-200 px-3 py-2 text-left text-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800"
+                      className="rounded-md border border-cad-line bg-slate-50 px-3 py-2 text-left text-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
                     >
                       <span className="flex items-center justify-between gap-2">
                         <span className="font-bold">{displayCadUnitNumber(unit)}</span>
@@ -2143,36 +2197,43 @@ export const Dashboard: React.FC = () => {
                         </span>
                       </span>
                       <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-                        {incidentDistanceLabel(unit, selectedIncident)} · {unit.district || 'No district'}
+                        {incidentDistanceLabel(unit, selectedIncident)} - {unit.district || 'No district'}
                       </span>
                     </button>
                   ))}
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <select value={assignmentUnitId} onChange={(event) => setAssignmentUnitId(event.target.value)} className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+            <div className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+              <select value={assignmentUnitId} onChange={(event) => setAssignmentUnitId(event.target.value)} className="min-w-0 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
                 <option value="">Select unit</option>
                 {[...recommendedUnits.map((item) => item.unit), ...units.filter((unit) => !recommendedUnits.some((item) => item.unit.id === unit.id))].map((unit) => (
-                  <option key={unit.id} value={unit.id}>{displayCadUnitNumber(unit)} · {unit.name}</option>
+                  <option key={unit.id} value={unit.id}>{displayCadUnitNumber(unit)} - {unit.name}</option>
                 ))}
               </select>
-              <button type="button" onClick={assignIncidentUnit} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">Assign</button>
+              <button type="button" onClick={assignIncidentUnit} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">Assign</button>
             </div>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+              <h3 className="mb-3 text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Update Call</h3>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
               {(['Dispatched', 'En Route', 'On Scene', 'Closed', 'Canceled'] as IncidentStatus[]).map((status) => (
-                <button key={status} type="button" onClick={() => updateIncidentStatus(status)} className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                <button key={status} type="button" onClick={() => updateIncidentStatus(status)} className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
+                  selectedIncident.status === status
+                    ? 'border-cad-blue bg-blue-50 text-cad-blue dark:border-blue-500 dark:bg-blue-950 dark:text-blue-100'
+                    : 'border-cad-line text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
+                }`}>
                   {status}
                 </button>
               ))}
+              </div>
+              <input value={incidentDisposition} onChange={(event) => setIncidentDisposition(event.target.value)} placeholder="Disposition for closing or canceling" className="mt-3 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
             </div>
-            <input value={incidentDisposition} onChange={(event) => setIncidentDisposition(event.target.value)} placeholder="Close/cancel disposition" className="w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-            <div className="rounded-md border border-cad-line p-3 dark:border-slate-700">
-              <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Call Timeline</h3>
+            <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+              <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Call Timeline</h3>
               <div className="mt-3 max-h-48 space-y-2 overflow-y-auto">
                 {(selectedIncident.notes || []).length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No notes yet.</p>}
                 {(selectedIncident.notes || []).map((note) => (
-                  <div key={note.id} className="rounded-md bg-slate-50 p-2 text-sm dark:bg-slate-950">
+                  <div key={note.id} className="rounded-md border border-cad-line bg-slate-50 p-2 text-sm dark:border-slate-800 dark:bg-slate-900">
                     <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-500">
                       <span>{note.noteType} {note.userName ? `by ${note.userName}` : ''}</span>
                       <span>{formatDateTime(note.createdAt)}</span>
@@ -2182,8 +2243,8 @@ export const Dashboard: React.FC = () => {
                 ))}
               </div>
               <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                <input value={incidentNoteBody} onChange={(event) => setIncidentNoteBody(event.target.value)} placeholder="Add call note" className="min-w-0 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-                <button type="button" onClick={addIncidentNote} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">Add</button>
+                <input value={incidentNoteBody} onChange={(event) => setIncidentNoteBody(event.target.value)} placeholder="Add call note" className="min-w-0 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                <button type="button" onClick={addIncidentNote} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">Add</button>
               </div>
             </div>
           </div>
@@ -3241,6 +3302,13 @@ const OverlayPanel: React.FC<{
         <div className="p-3">{children}</div>
       </div>
     </div>
+  </div>
+);
+
+const CallInfoTile: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
+  <div className="rounded-md border border-cad-line bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{label}</p>
+    <p className="mt-1 break-words text-sm font-semibold text-slate-900 dark:text-slate-100">{value}</p>
   </div>
 );
 
