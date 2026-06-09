@@ -3,8 +3,6 @@ import { Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import {
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   Bell,
   ClipboardList,
@@ -143,6 +141,7 @@ type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
 type UnitBoardSortKey = 'status' | 'unit' | 'name' | 'cadUnit' | 'district';
 type SortDirection = 'asc' | 'desc';
+type UnitBoardUser = User & Partial<Pick<TrackedUnit, 'lat' | 'lon'>>;
 
 const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.ReactNode }> = [
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
@@ -495,7 +494,6 @@ const addGooglePulseMarker = ({
 export const Dashboard: React.FC = () => {
   const { user, logout, hasPermission } = useAuth();
   const [appSidebarCollapsed, setAppSidebarCollapsed] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [locationClock, setLocationClock] = useState(() => Date.now());
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
@@ -506,7 +504,6 @@ export const Dashboard: React.FC = () => {
   const [passwordMessage, setPasswordMessage] = useState('');
   const [callsOverlayOpen, setCallsOverlayOpen] = useState(true);
   const [callDetailOpen, setCallDetailOpen] = useState(true);
-  const [unitDetailOpen, setUnitDetailOpen] = useState(true);
   const [units, setUnits] = useState<TrackedUnit[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<string>('');
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
@@ -575,9 +572,6 @@ export const Dashboard: React.FC = () => {
     key: 'status',
     direction: 'asc'
   });
-  const [destinationLat, setDestinationLat] = useState('');
-  const [destinationLon, setDestinationLon] = useState('');
-  const [destinationLabel, setDestinationLabel] = useState('');
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
   const mapOverlaysRef = useRef<GoogleOverlayViewInstance[]>([]);
@@ -593,7 +587,6 @@ export const Dashboard: React.FC = () => {
   const initialIncidentsLoadedRef = useRef(false);
 
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
-  const selectedIsCurrentUser = selectedUnit?.id === user?.id;
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || incidents[0] || null;
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
   const configuredUnitStatuses = useMemo(() => unitStatusesFromConfig(adminConfig), [adminConfig]);
@@ -635,7 +628,12 @@ export const Dashboard: React.FC = () => {
       ),
     [locationClock, units]
   );
-  const unitBoardUnits = useMemo(() => units.filter((unit) => unit.id !== user?.id), [units, user?.id]);
+  const unitBoardUnits = useMemo<UnitBoardUser[]>(() => {
+    const trackedById = new Map(units.map((unit) => [unit.id, unit]));
+    return directory
+      .filter((item) => item.id !== user?.id && onlineUserIds.includes(item.id))
+      .map((item) => ({ ...item, ...trackedById.get(item.id) }));
+  }, [directory, onlineUserIds, units, user?.id]);
   const unitBoardStatuses = useMemo(
     () => Array.from(new Set(unitBoardUnits.map((unit) => displayStatus(unit)))).sort((first, second) => first.localeCompare(second)),
     [unitBoardUnits]
@@ -715,19 +713,6 @@ export const Dashboard: React.FC = () => {
       .sort((first, second) => first.score - second.score)
       .slice(0, 5);
   }, [selectedIncident, units]);
-
-  useEffect(() => {
-    if (!selectedUnit) {
-      setDestinationLat('');
-      setDestinationLon('');
-      setDestinationLabel('');
-      return;
-    }
-
-    setDestinationLat(selectedUnit.destinationLat?.toString() || '');
-    setDestinationLon(selectedUnit.destinationLon?.toString() || '');
-    setDestinationLabel(selectedUnit.destinationLabel || '');
-  }, [selectedUnit]);
 
   useEffect(() => {
     loadUnits();
@@ -1277,28 +1262,6 @@ export const Dashboard: React.FC = () => {
     document.head.appendChild(script);
   }, [center.lat, center.lon, currentLocation, incidents, locationClock, theme, units, user?.id]);
 
-  const saveDestination = async () => {
-    if (!selectedIsCurrentUser) return;
-    const lat = Number(destinationLat);
-    const lon = Number(destinationLon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      return;
-    }
-
-    const updatedUser = await authClient.updateDestination(lat, lon, destinationLabel);
-    if (isTrackedUnit(updatedUser)) {
-      setUnits((currentUnits) => [updatedUser, ...currentUnits.filter((unit) => unit.id !== updatedUser.id)]);
-    }
-  };
-
-  const clearDestination = async () => {
-    if (!selectedIsCurrentUser) return;
-    const updatedUser = await authClient.updateDestination(null, null, null);
-    if (isTrackedUnit(updatedUser)) {
-      setUnits((currentUnits) => [updatedUser, ...currentUnits.filter((unit) => unit.id !== updatedUser.id)]);
-    }
-  };
-
   const recenterToCurrentLocation = () => {
     const target = currentLocation || center;
     mapInstanceRef.current?.setCenter({ lat: target.lat, lng: target.lon });
@@ -1337,19 +1300,19 @@ export const Dashboard: React.FC = () => {
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
   const sidebarItems: ShieldSidebarItem[] = [
     { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveQuickModal('inquiries') },
-    { id: 'unit-status', label: 'UNIT STATUS', icon: Users, iconClassName: 'text-indigo-700', onClick: () => setActiveQuickModal('units') },
-    { id: 'calls', label: 'CALLS', icon: ClipboardList, badge: callBadgeCount, iconClassName: 'text-amber-700', onClick: () => setActiveQuickModal('calls') },
-    { id: 'messages', label: 'MESSAGES', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openQuickLaunch('messages') },
-    { id: 'protect', label: 'PROTECT ORD', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveQuickModal('inquiries') }
+    { id: 'unit-status', label: 'Unit Status', icon: Users, iconClassName: 'text-indigo-700', onClick: () => setActiveQuickModal('units') },
+    { id: 'calls', label: 'Calls', icon: ClipboardList, badge: callBadgeCount, iconClassName: 'text-amber-700', onClick: () => setActiveQuickModal('calls') },
+    { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openQuickLaunch('messages') },
+    { id: 'protect', label: 'Protect Ord', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveQuickModal('inquiries') }
   ];
   const sidebarFooterItems: ShieldSidebarItem[] = [
     ...(user?.role === UserRole.ADMIN
-      ? [{ id: 'officer-side', label: 'OFFICER SIDE', icon: Radio, iconClassName: 'text-blue-700', onClick: () => { window.location.href = '/officer'; } }]
+      ? [{ id: 'officer-side', label: 'Officer Side', icon: Radio, iconClassName: 'text-blue-700', onClick: () => { window.location.href = '/officer'; } }]
       : []),
     ...(hasPermission('manage_system')
-      ? [{ id: 'admin', label: 'ADMIN', icon: SlidersHorizontal, iconClassName: 'text-zinc-700', onClick: () => { window.location.href = '/admin/configuration'; } }]
+      ? [{ id: 'admin', label: 'Admin', icon: SlidersHorizontal, iconClassName: 'text-zinc-700', onClick: () => { window.location.href = '/admin/configuration'; } }]
       : []),
-    { id: 'settings', label: 'SETTINGS', icon: Settings, iconClassName: 'text-zinc-700', onClick: () => setSettingsOpen((value) => !value) },
+    { id: 'settings', label: 'Settings', icon: Settings, iconClassName: 'text-zinc-700', onClick: () => setSettingsOpen((value) => !value) },
     { id: 'sign-out', label: '10-42', icon: LogOut, iconClassName: 'text-red-700', onClick: logout }
   ];
 
@@ -2196,12 +2159,12 @@ export const Dashboard: React.FC = () => {
               value={unitBoardSearch}
               onChange={(event) => setUnitBoardSearch(event.target.value)}
               placeholder="Search units, names, CAD units, districts"
-              className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              className="unit-board-control rounded-md border border-cad-line bg-white text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
             />
             <select
               value={unitBoardStatusFilter}
               onChange={(event) => setUnitBoardStatusFilter(event.target.value as UnitStatus | 'all')}
-              className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              className="unit-board-control rounded-md border border-cad-line bg-white text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
             >
               <option value="all">All Statuses</option>
               {unitBoardStatuses.map((status) => (
@@ -2211,7 +2174,7 @@ export const Dashboard: React.FC = () => {
             <select
               value={unitBoardDistrictFilter}
               onChange={(event) => setUnitBoardDistrictFilter(event.target.value)}
-              className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              className="unit-board-control rounded-md border border-cad-line bg-white text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
             >
               <option value="all">All Districts</option>
               {unitBoardDistricts.map((district) => (
@@ -2225,7 +2188,7 @@ export const Dashboard: React.FC = () => {
                 setUnitBoardStatusFilter('all');
                 setUnitBoardDistrictFilter('all');
               }}
-              className="rounded-md border border-cad-line px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="unit-board-control rounded-md border border-cad-line px-3 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Clear
             </button>
@@ -2465,77 +2428,6 @@ export const Dashboard: React.FC = () => {
           <MapPin size={18} />
         </button>
 
-        <button
-          type="button"
-          onClick={() => setSidebarOpen((value) => !value)}
-          className="absolute top-1/2 z-20 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-cad-line bg-white/95 text-cad-blue shadow-xl transition-all duration-300 ease-out hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
-          style={{ left: sidebarOpen ? 'calc(min(22rem, calc(100vw - 2rem)) + 1rem)' : '0' }}
-          aria-label={sidebarOpen ? 'Collapse units' : 'Open units'}
-        >
-          {sidebarOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
-        </button>
-
-        <div
-          className={`absolute bottom-24 left-4 top-20 z-10 flex w-[min(22rem,calc(100vw-2rem))] flex-col rounded-lg border border-cad-line bg-white/95 shadow-2xl transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
-            sidebarOpen ? 'translate-x-0 opacity-100' : '-translate-x-[calc(100%+2rem)] opacity-0'
-          }`}
-        >
-            <div className="flex items-center justify-between border-b border-cad-line p-3">
-              <div>
-                <h2 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">Units</h2>
-                <p className="text-xs text-slate-600">{units.length} tracked units</p>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {units.length === 0 && (
-                <div className="p-4 text-sm text-slate-600">
-                  {unitLoadError || 'No users have shared a live location yet.'}
-                </div>
-              )}
-              {units.map((unit) => (
-                <button
-                  key={unit.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedUnitId(unit.id);
-                    setUnitDetailOpen(true);
-                  }}
-                  className={`w-full border-b border-slate-100 p-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800 ${
-                    selectedUnit?.id === unit.id ? 'bg-blue-50 dark:bg-blue-950/50' : 'bg-white/70 dark:bg-slate-900/70'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold">{displayCadUnitNumber(unit)}</p>
-                      <p className="truncate text-xs text-slate-600">{unit.name}</p>
-                      <p
-                        className={`mt-1 truncate text-xs font-semibold ${
-                          locationReliability(unit, locationClock) === 'live'
-                            ? 'text-emerald-600 dark:text-emerald-300'
-                            : locationReliability(unit, locationClock) === 'stale'
-                              ? 'text-amber-600 dark:text-amber-300'
-                              : 'text-slate-500 dark:text-slate-400'
-                        }`}
-                      >
-                        {locationReliabilityText(unit, locationClock)}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      <span className={`rounded-full px-2 py-1 text-[11px] font-bold ring-1 ${statusStyles[displayStatus(unit)]}`}>
-                        {displayStatus(unit)}
-                      </span>
-                      {locationReliability(unit, locationClock) !== 'live' && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
-                          {locationReliability(unit, locationClock)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-        </div>
-
         <div className="absolute right-4 top-20 z-10 flex flex-col items-end gap-3">
           <OverlayPanel
             title="Active Calls"
@@ -2727,51 +2619,6 @@ export const Dashboard: React.FC = () => {
               <p className="text-sm text-slate-600 dark:text-slate-300">Create or select a call to manage assignments.</p>
             )}
           </OverlayPanel>
-
-          <OverlayPanel
-            title="Unit Detail"
-            subtitle={selectedUnit ? displayCadUnitNumber(selectedUnit) : 'No tracked unit selected'}
-            open={unitDetailOpen}
-            onToggle={() => setUnitDetailOpen((value) => !value)}
-            className="w-[min(28rem,calc(100vw-2rem))]"
-          >
-            {selectedUnit ? (
-              <div className="max-h-[42vh] space-y-4 overflow-y-auto pr-1">
-                <dl className="grid gap-3 text-sm">
-                  <Detail label="Unit Number" value={displayUnitNumber(selectedUnit)} />
-                  <Detail label="First Name" value={splitName(selectedUnit.name).firstName || 'N/A'} />
-                  <Detail label="Last Name" value={splitName(selectedUnit.name).lastName || 'N/A'} />
-                  <Detail label="CAD Unit Number" value={displayCadUnitNumber(selectedUnit)} />
-                  <Detail label="Status" value={displayStatus(selectedUnit)} />
-                  <Detail label="Tracking" value={locationReliabilityText(selectedUnit, locationClock)} />
-                  <Detail label="Group" value={selectedUnit.group || 'Unassigned'} />
-                  <Detail label="District" value={selectedUnit.district || 'Unassigned'} />
-                  <Detail label="Lat" value={selectedUnit.lat.toFixed(6)} />
-                  <Detail label="Lon" value={selectedUnit.lon.toFixed(6)} />
-                  <Detail label="Speed" value={`${(selectedUnit.speedMph || 0).toFixed(1)} mph`} />
-                  <Detail label="ETA" value={etaText(selectedUnit)} />
-                </dl>
-                {selectedIsCurrentUser && displayStatus(selectedUnit) === 'En Route' && (
-                  <div className="border-t border-cad-line pt-4">
-                    <h3 className="text-sm font-bold uppercase tracking-[0.16em] text-slate-500">Destination</h3>
-                    <div className="mt-3 grid gap-3">
-                      <input value={destinationLabel} onChange={(event) => setDestinationLabel(event.target.value)} placeholder="Destination label" className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100" />
-                      <div className="grid grid-cols-2 gap-3">
-                        <input value={destinationLat} onChange={(event) => setDestinationLat(event.target.value)} placeholder="Destination lat" className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100" />
-                        <input value={destinationLon} onChange={(event) => setDestinationLon(event.target.value)} placeholder="Destination lon" className="rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100" />
-                      </div>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={saveDestination} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">Pin Destination</button>
-                        <button type="button" onClick={clearDestination} className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700">Clear</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-600">When a real user signs in and allows location access, they will appear here.</p>
-            )}
-          </OverlayPanel>
         </div>
       </div>
 
@@ -2878,7 +2725,7 @@ const SortHeader: React.FC<{
   </button>
 );
 
-const UnitProfileCard: React.FC<{ unit: TrackedUnit | null; locationClock: number }> = ({ unit, locationClock }) => {
+const UnitProfileCard: React.FC<{ unit: UnitBoardUser | null; locationClock: number }> = ({ unit, locationClock }) => {
   if (!unit) {
     return (
       <aside className="flex min-h-0 items-center justify-center rounded-md border border-cad-line bg-white p-4 text-center text-sm font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-950">
@@ -2916,10 +2763,10 @@ const UnitProfileCard: React.FC<{ unit: TrackedUnit | null; locationClock: numbe
         <Detail label="District" value={unit.district || 'Unassigned'} />
         <Detail label="Group" value={unit.group || 'Unassigned'} />
         <Detail label="Tracking" value={locationReliabilityText(unit, locationClock)} />
-        <Detail label="Latitude" value={unit.lat.toFixed(6)} />
-        <Detail label="Longitude" value={unit.lon.toFixed(6)} />
+        <Detail label="Latitude" value={typeof unit.lat === 'number' ? unit.lat.toFixed(6) : 'Unavailable'} />
+        <Detail label="Longitude" value={typeof unit.lon === 'number' ? unit.lon.toFixed(6) : 'Unavailable'} />
         <Detail label="Speed" value={`${(unit.speedMph || 0).toFixed(1)} mph`} />
-        <Detail label="ETA" value={etaText(unit)} />
+        <Detail label="ETA" value={typeof unit.lat === 'number' && typeof unit.lon === 'number' ? etaText(unit as TrackedUnit) : 'Unavailable'} />
       </dl>
     </aside>
   );

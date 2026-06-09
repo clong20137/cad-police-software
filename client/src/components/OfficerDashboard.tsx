@@ -459,16 +459,16 @@ export const OfficerDashboard: React.FC = () => {
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
   const sidebarItems: ShieldSidebarItem[] = [
     { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveDockItem('inquiries') },
-    { id: 'unit-status', label: 'UNIT STATUS', icon: Radio, iconClassName: 'text-indigo-700', onClick: () => setActiveDockItem('status') },
-    { id: 'calls', label: 'MY CASE', icon: ClipboardList, iconClassName: 'text-amber-700', onClick: () => setActiveDockItem('calls') },
-    { id: 'messages', label: 'MESSAGES', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openDockItem('messages') },
-    { id: 'protect', label: 'PROTECT ORD', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveDockItem('inquiries') }
+    { id: 'unit-status', label: 'Unit Status', icon: Radio, iconClassName: 'text-indigo-700', onClick: () => setActiveDockItem('status') },
+    { id: 'calls', label: 'My Case', icon: ClipboardList, iconClassName: 'text-amber-700', onClick: () => setActiveDockItem('calls') },
+    { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openDockItem('messages') },
+    { id: 'protect', label: 'Protect Ord', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveDockItem('inquiries') }
   ];
   const sidebarFooterItems: ShieldSidebarItem[] = [
     ...(user?.role === UserRole.ADMIN
-      ? [{ id: 'dispatch-side', label: 'DISPATCH SIDE', icon: ClipboardList, iconClassName: 'text-blue-700', onClick: () => { window.location.href = '/dashboard'; } }]
+      ? [{ id: 'dispatch-side', label: 'Dispatch Side', icon: ClipboardList, iconClassName: 'text-blue-700', onClick: () => { window.location.href = '/dashboard'; } }]
       : []),
-    { id: 'settings', label: 'SETTINGS', icon: Settings, iconClassName: 'text-zinc-700', onClick: () => setSettingsOpen((value) => !value) },
+    { id: 'settings', label: 'Settings', icon: Settings, iconClassName: 'text-zinc-700', onClick: () => setSettingsOpen((value) => !value) },
     { id: 'sign-out', label: '10-42', icon: LogOut, iconClassName: 'text-red-700', onClick: logout }
   ];
 

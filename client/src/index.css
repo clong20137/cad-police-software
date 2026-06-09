@@ -84,6 +84,17 @@
     background-clip: content-box;
   }
 
+  .unit-board-control.unit-board-control {
+    height: 2.125rem;
+    min-height: 2.125rem;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+
+  select.unit-board-control.unit-board-control {
+    padding-right: 2rem !important;
+  }
+
   @keyframes location-pulse {
     0% {
       opacity: 0.75;
