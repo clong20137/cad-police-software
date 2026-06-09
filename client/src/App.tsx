@@ -64,7 +64,7 @@ const App: React.FC = () => {
           <Route
             path="/officer"
             element={
-              <ProtectedRoute allowedRoles={[UserRole.OFFICER]}>
+              <ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.OFFICER]}>
                 <OfficerDashboard />
               </ProtectedRoute>
             }

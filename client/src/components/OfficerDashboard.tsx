@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import {
   AlertTriangle,
@@ -14,6 +15,7 @@ import {
   Navigation,
   Paperclip,
   Radio,
+  Search,
   Send,
   Settings,
   Shield,
@@ -25,14 +27,15 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
-import { AdminConfigurationItem, ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, User } from '../types/auth';
+import { AdminConfigurationItem, ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, User, UserRole } from '../types/auth';
 import { ChangePasswordModal } from './common/ChangePasswordModal';
 import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
+import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
 import { callTypesFromConfig } from '../utils/adminConfig';
 
-type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'location' | 'settings' | 'navigation' | 'status';
+type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'location' | 'settings' | 'navigation' | 'status';
 type DockSlot = QuickLaunchSlot<DockItem>;
 
 interface OfficerGoogleMaps {
@@ -100,12 +103,13 @@ const dockItems: Array<{ id: DockItem; label: string; icon: React.ReactNode }> =
   { id: 'call-detail', label: 'Detail', icon: <Shield size={18} /> },
   { id: 'notes', label: 'Notes', icon: <Send size={18} /> },
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
+  { id: 'inquiries', label: 'Inquiries', icon: <Search size={18} /> },
   { id: 'location', label: 'Location', icon: <MapPin size={18} /> },
   { id: 'navigation', label: 'Navigate', icon: <Navigation size={18} /> },
   { id: 'status', label: 'Status', icon: <Radio size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
 ];
-const defaultDockSlots: DockSlot[] = ['calls', 'call-detail', 'notes', 'messages', 'location', 'navigation', 'status', 'settings'];
+const defaultDockSlots: DockSlot[] = ['calls', 'call-detail', 'notes', 'messages', 'inquiries', 'location', 'status', 'settings'];
 const emojiCatalog = (() => {
   const priorityEmoji = ['😀', '😂', '👍', '🙏', '🚓', '🚑', '🚒', '📍', '✅', '⚠', '❗'];
   const ranges = [
@@ -930,6 +934,31 @@ export const OfficerDashboard: React.FC = () => {
     }
   };
 
+  const submitInquiry = async (submission: InquirySubmission) => {
+    setBusy(true);
+    setMessage('');
+    try {
+      const incident = await authClient.createOfficerEvent({
+        type: submission.title,
+        priority: 'Normal',
+        description: submission.description,
+        lat: currentLocation?.lat ?? null,
+        lon: currentLocation?.lon ?? null,
+        address: currentLocation
+          ? `${submission.type} inquiry at ${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}`
+          : `${submission.type} ${submission.kind.toUpperCase()} inquiry`
+      });
+      setIncidents((current) => (current.some((item) => item.id === incident.id) ? current : [incident, ...current]));
+      setSelectedIncidentId(incident.id);
+      setMessage(`${submission.type} submitted.`);
+      setActiveDockItem('call-detail');
+    } catch {
+      setMessage('Unable to submit inquiry.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const sendMessage = async () => {
     if (!selectedMessageUserId || (!messageBody.trim() && pendingAttachments.length === 0)) return;
     const tempId = `pending-${Date.now()}`;
@@ -1013,6 +1042,15 @@ export const OfficerDashboard: React.FC = () => {
           </span>
           <button
             type="button"
+            onClick={() => setActiveDockItem('inquiries')}
+            className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20"
+            aria-label="Open inquiries"
+            title="Inquiries"
+          >
+            <Search size={19} />
+          </button>
+          <button
+            type="button"
             onClick={() => setSettingsOpen((value) => !value)}
             className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20"
             aria-label="Settings"
@@ -1037,6 +1075,16 @@ export const OfficerDashboard: React.FC = () => {
                 <Lock size={16} />
                 Change password
               </button>
+              {user?.role === UserRole.ADMIN && (
+                <Link
+                  to="/dashboard"
+                  onClick={() => setSettingsOpen(false)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <Shield size={16} />
+                  Dispatch Side
+                </Link>
+              )}
               <button
                 type="button"
                 onClick={logout}
@@ -1208,6 +1256,8 @@ export const OfficerDashboard: React.FC = () => {
                 onLogout={logout}
                 setOfficerEvent={setOfficerEvent}
                 onCreateOfficerEvent={createOfficerEvent}
+                onSubmitInquiry={submitInquiry}
+                inquiryOfficers={directory.filter((item) => item.role === UserRole.OFFICER || item.role === UserRole.ADMIN)}
                 directory={messageThreads}
                 messageThreadByUser={messageThreadByUser}
                 onlineUserIds={onlineUserIds}
@@ -1298,6 +1348,8 @@ const DockContent: React.FC<{
   onLogout: () => void;
   setOfficerEvent: React.Dispatch<React.SetStateAction<{ type: string; priority: IncidentPriority; description: string }>>;
   onCreateOfficerEvent: () => void;
+  onSubmitInquiry: (submission: InquirySubmission) => void;
+  inquiryOfficers: User[];
   directory: User[];
   messageThreadByUser: Record<string, MessageThread>;
   onlineUserIds: string[];
@@ -1345,6 +1397,8 @@ const DockContent: React.FC<{
   onLogout,
   setOfficerEvent,
   onCreateOfficerEvent,
+  onSubmitInquiry,
+  inquiryOfficers,
   directory,
   messageThreadByUser,
   onlineUserIds,
@@ -1482,6 +1536,18 @@ const DockContent: React.FC<{
         <Metric label="Speed" value={currentSpeed === null ? '--' : `${Math.round(currentSpeed)} mph`} />
         <Metric label="Position" value={currentLocation ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'Waiting'} />
       </div>
+    );
+  }
+
+  if (activeItem === 'inquiries') {
+    return (
+      <InquiryPanel
+        officers={inquiryOfficers}
+        defaultOfficerId={currentUserId}
+        busy={busy}
+        message={message}
+        onSubmit={onSubmitInquiry}
+      />
     );
   }
 

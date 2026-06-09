@@ -17,6 +17,7 @@ import {
   Radio,
   Send,
   Settings,
+  Search,
   Shield,
   SlidersHorizontal,
   CheckCheck,
@@ -40,12 +41,14 @@ import {
   MessageThread,
   SendMessageAttachment,
   UnitStatus,
-  User
+  User,
+  UserRole
 } from '../types/auth';
 import { ChangePasswordModal } from './common/ChangePasswordModal';
 import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock } from './common/QuickLaunchDock';
+import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
 import { callTypesFromConfig, defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
 
 declare global {
@@ -131,7 +134,7 @@ interface GoogleAutocompleteService {
 }
 
 type TrackedUnit = User & { lat: number; lon: number };
-type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'map' | 'settings';
+type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'inquiries' | 'map' | 'settings';
 type QuickLaunchSlot = QuickLaunchId | null;
 type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
@@ -143,6 +146,7 @@ const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.
   { id: 'units', label: 'Units', icon: <Users size={18} /> },
   { id: 'unit-detail', label: 'Unit', icon: <Radio size={18} /> },
   { id: 'call-detail', label: 'Call', icon: <Shield size={18} /> },
+  { id: 'inquiries', label: 'Inquiries', icon: <Search size={18} /> },
   { id: 'map', label: 'Map', icon: <MapPin size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
 ];
@@ -154,8 +158,8 @@ const defaultQuickLaunchSlots: QuickLaunchSlot[] = [
   'units',
   'unit-detail',
   'call-detail',
-  'map',
-  'settings'
+  'inquiries',
+  'map'
 ];
 
 const liveLocationHeartbeatMs = 5000;
@@ -1373,6 +1377,32 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const submitInquiry = async (submission: InquirySubmission) => {
+    try {
+      const incident = await authClient.createIncident({
+        type: submission.title,
+        priority: 'Normal',
+        address: `${submission.type} ${submission.kind.toUpperCase()} inquiry`,
+        description: submission.description,
+        callerName: user?.name,
+        callerPhone: ''
+      });
+      setIncidents((current) => [incident, ...current.filter((item) => item.id !== incident.id)]);
+      setSelectedIncidentId(incident.id);
+      setActiveQuickModal('call-detail');
+      setIncidentError('');
+    } catch (error) {
+      const apiMessage =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response?: { data?: { error?: unknown } } }).response?.data?.error === 'string'
+          ? (error as { response: { data: { error: string } } }).response.data.error
+          : '';
+      setIncidentError(apiMessage || 'Unable to submit inquiry.');
+    }
+  };
+
   const updateIncidentStatus = async (status: IncidentStatus) => {
     if (!selectedIncident) return;
     const disposition = status === 'Closed' || status === 'Canceled' ? incidentDisposition : undefined;
@@ -1945,6 +1975,17 @@ export const Dashboard: React.FC = () => {
       );
     }
 
+    if (activeQuickModal === 'inquiries') {
+      return (
+        <InquiryPanel
+          officers={directory.filter((item) => item.role === UserRole.OFFICER || item.role === UserRole.ADMIN)}
+          defaultOfficerId={user?.id}
+          message={incidentError}
+          onSubmit={submitInquiry}
+        />
+      );
+    }
+
     if (activeQuickModal === 'units') {
       return (
         <div className="max-h-[70vh] space-y-2 overflow-y-auto">
@@ -2040,6 +2081,15 @@ export const Dashboard: React.FC = () => {
           </button>
           <button
             type="button"
+            onClick={() => setActiveQuickModal('inquiries')}
+            className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20"
+            aria-label="Open inquiries"
+            title="Inquiries"
+          >
+            <Search size={19} />
+          </button>
+          <button
+            type="button"
             onClick={() => setSettingsOpen((value) => !value)}
             className="rounded-md border border-white/15 bg-white/10 p-2 transition hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/20"
             aria-label="Settings"
@@ -2072,6 +2122,16 @@ export const Dashboard: React.FC = () => {
                 >
                   <SlidersHorizontal size={16} />
                   Admin
+                </Link>
+              )}
+              {user?.role === UserRole.ADMIN && (
+                <Link
+                  to="/officer"
+                  onClick={() => setSettingsOpen(false)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <Shield size={16} />
+                  Officer Side
                 </Link>
               )}
               <button

@@ -43,8 +43,8 @@ router.post(
   requirePermission('view_dispatch'),
   async (req: Request<{}, {}, OfficerEventRequest>, res: Response): Promise<void> => {
     try {
-      if (req.user?.role !== UserRole.OFFICER) {
-        res.status(403).json({ error: 'Officer access required' });
+      if (req.user?.role !== UserRole.OFFICER && req.user?.role !== UserRole.ADMIN) {
+        res.status(403).json({ error: 'Officer or admin access required' });
         return;
       }
 
@@ -170,8 +170,8 @@ router.patch(
     res: Response
   ): Promise<void> => {
     try {
-      if (req.user?.role !== UserRole.OFFICER) {
-        res.status(403).json({ error: 'Officer access required' });
+      if (req.user?.role !== UserRole.OFFICER && req.user?.role !== UserRole.ADMIN) {
+        res.status(403).json({ error: 'Officer or admin access required' });
         return;
       }
 
@@ -200,8 +200,8 @@ router.post(
   requirePermission('view_dispatch'),
   async (req: Request<{ id: string }, {}, AddIncidentNoteRequest>, res: Response): Promise<void> => {
     try {
-      if (req.user?.role !== UserRole.OFFICER) {
-        res.status(403).json({ error: 'Officer access required' });
+      if (req.user?.role !== UserRole.OFFICER && req.user?.role !== UserRole.ADMIN) {
+        res.status(403).json({ error: 'Officer or admin access required' });
         return;
       }
 
