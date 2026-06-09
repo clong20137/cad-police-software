@@ -40,6 +40,7 @@ import { callTypesFromConfig } from '../utils/adminConfig';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'location' | 'settings' | 'navigation' | 'status';
 type DockSlot = QuickLaunchSlot<DockItem>;
+type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
 
 interface OfficerGoogleMaps {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
@@ -429,10 +430,10 @@ export const OfficerDashboard: React.FC = () => {
           : 'Connecting';
   const realtimeStatusClass =
     realtimeState === 'live'
-      ? 'bg-emerald-500/20 text-emerald-100 ring-emerald-300/30'
+      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-100 dark:ring-emerald-300/30'
       : realtimeState === 'offline'
-        ? 'bg-red-500/20 text-red-100 ring-red-300/30'
-        : 'bg-amber-500/20 text-amber-100 ring-amber-300/30';
+        ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/20 dark:text-red-100 dark:ring-red-300/30'
+        : 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/30';
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
   const messageThreadByUser = useMemo(
     () =>
@@ -467,14 +468,6 @@ export const OfficerDashboard: React.FC = () => {
     { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openDockItem('messages') },
     { id: 'protect', label: 'Protect Ord', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveDockItem('inquiries') }
   ];
-  const sidebarFooterItems: ShieldSidebarItem[] = [
-    ...(user?.role === UserRole.ADMIN
-      ? [{ id: 'dispatch-side', label: 'Dispatch Side', icon: ClipboardList, iconClassName: 'text-blue-700', onClick: () => { window.location.href = '/dashboard'; } }]
-      : []),
-    { id: 'settings', label: 'Settings', icon: Settings, iconClassName: 'text-zinc-700', onClick: () => setSettingsOpen((value) => !value) },
-    { id: 'sign-out', label: '10-42', icon: LogOut, iconClassName: 'text-red-700', onClick: logout }
-  ];
-
   useEffect(() => {
     localStorage.setItem('cad_officer_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
   }, [pinnedMessageThreadIds]);
@@ -540,7 +533,7 @@ export const OfficerDashboard: React.FC = () => {
 
   const focusDockItem = useCallback((item: DockItem) => {
     dockZCounterRef.current += 1;
-    focusDockItem(item);
+    setActiveDockItem(item);
     setDockZOrder((current) => ({ ...current, [item]: dockZCounterRef.current }));
   }, []);
 
@@ -621,9 +614,12 @@ export const OfficerDashboard: React.FC = () => {
     socket.io.on('reconnect_failed', () => setRealtimeState('offline'));
     socket.on('disconnect', () => setRealtimeState('offline'));
     socket.on('connect_error', () => setRealtimeState('reconnecting'));
-    socket.on('realtime:ready', () => {
+    socket.on('realtime:ready', (payload: RealtimeReadyPayload = {}) => {
       setRealtimeState('live');
       setLastRealtimeSync(new Date());
+      if (payload.onlineUserIds) {
+        setOnlineUserIds(payload.onlineUserIds);
+      }
     });
     socket.on('realtime:resynced', () => {
       setRealtimeState('live');
@@ -1104,7 +1100,6 @@ export const OfficerDashboard: React.FC = () => {
         collapsed={appSidebarCollapsed}
         onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}
         items={sidebarItems}
-        footerItems={sidebarFooterItems}
         onProfile={() => setSettingsOpen(true)}
       />
       <div className="relative min-w-0 flex-1 overflow-hidden bg-slate-950">

@@ -142,6 +142,7 @@ type UnitLocationReliability = 'live' | 'stale' | 'offline';
 type UnitBoardSortKey = 'status' | 'unit' | 'name' | 'cadUnit' | 'district';
 type SortDirection = 'asc' | 'desc';
 type UnitBoardUser = User & Partial<Pick<TrackedUnit, 'lat' | 'lon'>>;
+type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
 
 const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.ReactNode }> = [
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
@@ -962,9 +963,11 @@ export const Dashboard: React.FC = () => {
   }, [incidentForm.address]);
 
   useEffect(() => {
+    const token = authClient.getAccessToken();
     const socket = io(realtimeUrl, {
       transports: ['websocket', 'polling'],
       withCredentials: true,
+      auth: token ? { token } : undefined,
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -999,9 +1002,12 @@ export const Dashboard: React.FC = () => {
     socket.on('disconnect', () => {
       setRealtimeState('offline');
     });
-    socket.on('realtime:ready', () => {
+    socket.on('realtime:ready', (payload: RealtimeReadyPayload = {}) => {
       setRealtimeState('live');
       setLastRealtimeSync(new Date());
+      if (payload.onlineUserIds) {
+        setOnlineUserIds(payload.onlineUserIds);
+      }
     });
     socket.on('realtime:resynced', () => {
       setRealtimeState('live');
@@ -1338,17 +1344,6 @@ export const Dashboard: React.FC = () => {
     { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openQuickLaunch('messages') },
     { id: 'protect', label: 'Protect Ord', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveQuickModal('inquiries') }
   ];
-  const sidebarFooterItems: ShieldSidebarItem[] = [
-    ...(user?.role === UserRole.ADMIN
-      ? [{ id: 'officer-side', label: 'Officer Side', icon: Radio, iconClassName: 'text-blue-700', onClick: () => { window.location.href = '/officer'; } }]
-      : []),
-    ...(hasPermission('manage_system')
-      ? [{ id: 'admin', label: 'Admin', icon: SlidersHorizontal, iconClassName: 'text-zinc-700', onClick: () => { window.location.href = '/admin/configuration'; } }]
-      : []),
-    { id: 'settings', label: 'Settings', icon: Settings, iconClassName: 'text-zinc-700', onClick: () => setSettingsOpen((value) => !value) },
-    { id: 'sign-out', label: '10-42', icon: LogOut, iconClassName: 'text-red-700', onClick: logout }
-  ];
-
   useEffect(() => {
     localStorage.setItem('cad_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
   }, [pinnedMessageThreadIds]);
@@ -1646,10 +1641,10 @@ export const Dashboard: React.FC = () => {
           : 'Connecting';
   const realtimeStatusClass =
     realtimeState === 'live'
-      ? 'bg-emerald-500/20 text-emerald-100 ring-emerald-300/30'
+      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-100 dark:ring-emerald-300/30'
       : realtimeState === 'offline'
-        ? 'bg-red-500/20 text-red-100 ring-red-300/30'
-        : 'bg-amber-500/20 text-amber-100 ring-amber-300/30';
+        ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/20 dark:text-red-100 dark:ring-red-300/30'
+        : 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/30';
 
   const renderNewCallForm = () => (
     <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
@@ -2335,7 +2330,6 @@ export const Dashboard: React.FC = () => {
         collapsed={appSidebarCollapsed}
         onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}
         items={sidebarItems}
-        footerItems={sidebarFooterItems}
         onProfile={() => setSettingsOpen(true)}
       />
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
