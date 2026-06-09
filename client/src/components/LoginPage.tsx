@@ -83,7 +83,7 @@ export const LoginPage: React.FC = () => {
 
   return (
     <main
-      className={`min-h-screen overflow-hidden ${
+      className={`relative min-h-screen overflow-hidden ${
         theme === 'dark'
           ? 'dark bg-slate-950 text-slate-100'
           : 'bg-[linear-gradient(180deg,#f8fafc_0%,#edf2f7_100%)] text-cad-ink'
@@ -100,56 +100,24 @@ export const LoginPage: React.FC = () => {
         {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
       </button>
 
-      <section className="relative z-10 mx-auto grid min-h-screen w-full max-w-6xl items-center gap-6 px-4 py-16 lg:grid-cols-[0.95fr_1.05fr]">
-        <aside className="hidden min-h-[36rem] overflow-hidden rounded-lg border border-cad-line bg-cad-navy text-white shadow-shield dark:border-slate-800 lg:flex lg:flex-col">
-          <div className="flex flex-1 flex-col justify-between p-8">
-            <div>
-              <div className="mb-8 flex items-center gap-3">
-                <span className="flex h-12 w-12 items-center justify-center rounded-md bg-white text-cad-blue">
-                  <Shield size={25} />
-                </span>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-cad-accent">Secure CAD</p>
-                  <h1 className="text-2xl font-black">{APP_NAME}</h1>
-                </div>
-              </div>
-
-              <div className="max-w-md">
-                <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-100">Agency Access</p>
-                <h2 className="mt-3 text-4xl font-black leading-tight">Fast entry for dispatch and field units.</h2>
-                <p className="mt-4 text-sm leading-6 text-slate-300">{APP_DESCRIPTION}</p>
-              </div>
+      <section className="relative z-10 flex min-h-screen w-full items-center justify-center px-4 py-12">
+        <section className={`mx-auto w-full rounded-lg border border-cad-line bg-white/95 shadow-shield dark:border-slate-800 dark:bg-slate-900/95 ${isRegistering ? 'max-w-xl' : 'max-w-sm'}`}>
+          <div className="border-b border-cad-line p-5 text-center dark:border-slate-800 sm:p-6">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-cad-blue text-white shadow-control">
+              <Shield size={24} />
             </div>
+            <p className="mt-4 text-xs font-black uppercase tracking-[0.22em] text-cad-accent">Secure CAD</p>
+            <h1 className="mt-1 text-2xl font-black text-cad-blue dark:text-blue-100">{APP_NAME}</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{APP_DESCRIPTION}</p>
+            <div className="mx-auto mt-4 h-1 w-16 rounded-full bg-cad-accent" />
 
-            <div className="grid gap-3 text-sm">
-              <SignalRow icon={<Radio size={16} />} label="Live unit status" value="Available" />
-              <SignalRow icon={<Building2 size={16} />} label="District and beat aware" value="Enabled" />
-              <SignalRow icon={<LockKeyhole size={16} />} label="Session protection" value="Active" />
-            </div>
-          </div>
-        </aside>
-
-        <section className="mx-auto w-full max-w-xl rounded-lg border border-cad-line bg-white/95 shadow-shield dark:border-slate-800 dark:bg-slate-900/95">
-          <div className="border-b border-cad-line p-5 dark:border-slate-800 sm:p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="mb-4 flex items-center gap-3 lg:hidden">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-md bg-cad-blue text-white">
-                    <Shield size={22} />
-                  </span>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.2em] text-cad-accent">Secure CAD</p>
-                    <h1 className="text-xl font-black text-cad-blue dark:text-blue-100">{APP_NAME}</h1>
-                  </div>
-                </div>
-                <p className="text-xs font-black uppercase tracking-[0.22em] text-cad-accent">Secure Access</p>
-                <h2 className="mt-2 text-2xl font-black text-cad-blue dark:text-blue-100">
-                  {isRegistering ? 'Create agency account' : 'Welcome back'}
-                </h2>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                  {isRegistering ? 'Request access with your unit details.' : 'Sign in to continue your CAD session.'}
-                </p>
-              </div>
+            <div className="mt-6">
+              <h2 className="text-xl font-black text-slate-900 dark:text-white">
+                {isRegistering ? 'Create agency account' : 'Welcome back'}
+              </h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                {isRegistering ? 'Request access with your unit details.' : 'Sign in to continue.'}
+              </p>
             </div>
 
             <div className="mt-5 grid grid-cols-2 rounded-md border border-cad-line bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-950">
@@ -298,14 +266,4 @@ const TextField: React.FC<{
       />
     </div>
   </label>
-);
-
-const SignalRow: React.FC<{ icon: React.ReactNode; label: string; value: string }> = ({ icon, label, value }) => (
-  <div className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-white/5 px-3 py-2">
-    <span className="flex min-w-0 items-center gap-2 text-slate-200">
-      <span className="text-cad-accent">{icon}</span>
-      <span className="truncate font-semibold">{label}</span>
-    </span>
-    <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-xs font-black text-cad-blue">{value}</span>
-  </div>
 );
