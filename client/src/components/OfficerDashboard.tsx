@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronUp,
   ClipboardList,
+  Clock,
   Lock,
   LogOut,
   MapPin,
@@ -248,6 +249,18 @@ const formatMessageTime = (value?: Date | string): string => {
     return `Yesterday ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
   }
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+const elapsedTimeLabel = (from?: Date | string, now = Date.now()): string => {
+  if (!from) return '--';
+  const timestamp = new Date(from).getTime();
+  if (!Number.isFinite(timestamp)) return '--';
+  const totalSeconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 };
 
 const escapeHtml = (value: string): string =>
@@ -1929,6 +1942,11 @@ const DockContent: React.FC<{
 }) => {
   const [activeCallTab, setActiveCallTab] = useState<CallTabId>('all');
   const [callSearch, setCallSearch] = useState('');
+  const [timerNow, setTimerNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setTimerNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   const isClosedCall = (incident: Incident) => incident.status === 'Closed' || incident.status === 'Canceled';
   const isMyCall = (incident: Incident) =>
     incident.units.some((unit) => unit.userId === currentUserId && unit.status !== 'Cleared') || incident.createdBy === currentUserId;
@@ -2023,6 +2041,8 @@ const DockContent: React.FC<{
 
   if (activeItem === 'call-detail' || activeItem === 'navigation') {
     if (!selectedIncident) return <p className="text-sm text-slate-600 dark:text-slate-300">No call selected.</p>;
+    const myAssignment = selectedIncident.units.find((unit) => unit.userId === currentUserId);
+    const currentStatusStartedAt = myAssignment?.statusUpdatedAt || myAssignment?.assignedAt;
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2046,6 +2066,11 @@ const DockContent: React.FC<{
               Clear Call
             </button>
           </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Metric label="Call Timer" value={elapsedTimeLabel(selectedIncident.createdAt, timerNow)} icon={<Clock size={16} />} />
+          <Metric label="Assigned" value={elapsedTimeLabel(myAssignment?.assignedAt, timerNow)} />
+          <Metric label={selectedStatus ? `${selectedStatus} Time` : 'Status Time'} value={elapsedTimeLabel(currentStatusStartedAt, timerNow)} />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Metric label="ETA" value={etaText(currentLocation, selectedIncident, currentSpeed)} />
@@ -2511,9 +2536,12 @@ const OfficerMessages: React.FC<{
   </div>
 );
 
-const Metric: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+const Metric: React.FC<{ label: string; value: string; icon?: React.ReactNode }> = ({ label, value, icon }) => (
   <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-950">
-    <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
+    <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      {icon}
+      {label}
+    </p>
     <p className="mt-1 break-words text-lg font-black text-slate-950 dark:text-white">{value}</p>
   </div>
 );
