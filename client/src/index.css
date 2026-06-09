@@ -136,14 +136,14 @@
 
   @keyframes location-pulse {
     0% {
-      opacity: 0.75;
+      opacity: 0.38;
       transform: scale(1);
     }
 
     70%,
     100% {
       opacity: 0;
-      transform: scale(2.8);
+      transform: scale(2.15);
     }
   }
 

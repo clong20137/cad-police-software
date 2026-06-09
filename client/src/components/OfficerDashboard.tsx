@@ -54,6 +54,7 @@ interface OfficerGoogleMaps {
   InfoWindow: new (options: { content: string }) => GoogleInfoWindowInstance;
   DirectionsService: new () => GoogleDirectionsServiceInstance;
   DirectionsRenderer: new (options: Record<string, unknown>) => GoogleDirectionsRendererInstance;
+  TrafficLayer: new () => GoogleTrafficLayerInstance;
   TravelMode: { DRIVING: string };
 }
 
@@ -104,11 +105,16 @@ interface GoogleDirectionsRendererInstance {
   setDirections: (result: unknown) => void;
 }
 
+interface GoogleTrafficLayerInstance {
+  setMap: (map: GoogleMapInstance | null) => void;
+}
+
 type NavigationSummary = {
   callNumber: string;
   distance: string;
   duration: string;
   status: 'ready' | 'loading' | 'unavailable';
+  traffic: 'clear' | 'moderate' | 'heavy' | 'unknown';
 };
 
 type WakeLockSentinel = {
@@ -195,10 +201,24 @@ const markerToneClass = {
 };
 
 const markerPulseClass = {
-  green: 'bg-emerald-400/60',
-  yellow: 'bg-amber-300/65',
-  red: 'bg-red-500/60',
-  blue: 'bg-cad-blue/50'
+  green: 'bg-emerald-300/25',
+  yellow: 'bg-amber-200/30',
+  red: 'bg-red-400/25',
+  blue: 'bg-blue-300/25'
+};
+
+const trafficIndicatorClasses: Record<NavigationSummary['traffic'], string> = {
+  clear: 'bg-blue-500 text-white',
+  moderate: 'bg-orange-500 text-white',
+  heavy: 'bg-red-600 text-white',
+  unknown: 'bg-slate-300 text-slate-700 dark:bg-slate-700 dark:text-slate-100'
+};
+
+const trafficIndicatorLabels: Record<NavigationSummary['traffic'], string> = {
+  clear: 'Clear',
+  moderate: 'Moderate',
+  heavy: 'Heavy',
+  unknown: 'Traffic'
 };
 
 const darkMapStyles = [
@@ -290,19 +310,33 @@ const fallbackNavigationSummary = (
     callNumber: incident.callNumber,
     distance: `${miles.toFixed(1)} mi`,
     duration: minutes ? `${minutes} min` : 'ETA pending',
-    status: 'unavailable'
+    status: 'unavailable',
+    traffic: 'unknown'
   };
 };
 
 const directionsNavigationSummary = (result: unknown, callNumber: string): NavigationSummary | null => {
-  const routes = (result as { routes?: Array<{ legs?: Array<{ distance?: { text?: string }; duration?: { text?: string } }> }> }).routes;
+  const routes = (result as {
+    routes?: Array<{
+      legs?: Array<{
+        distance?: { text?: string };
+        duration?: { text?: string; value?: number };
+        duration_in_traffic?: { text?: string; value?: number };
+      }>;
+    }>;
+  }).routes;
   const leg = routes?.[0]?.legs?.[0];
   if (!leg?.distance?.text || !leg?.duration?.text) return null;
+  const durationValue = leg.duration?.value;
+  const trafficDurationValue = leg.duration_in_traffic?.value;
+  const trafficRatio = durationValue && trafficDurationValue ? trafficDurationValue / durationValue : 0;
+  const traffic = trafficRatio >= 1.35 ? 'heavy' : trafficRatio >= 1.15 ? 'moderate' : trafficRatio > 0 ? 'clear' : 'unknown';
   return {
     callNumber,
     distance: leg.distance.text,
-    duration: leg.duration.text,
-    status: 'ready'
+    duration: leg.duration_in_traffic?.text || leg.duration.text,
+    status: 'ready',
+    traffic
   };
 };
 
@@ -495,6 +529,7 @@ export const OfficerDashboard: React.FC = () => {
   const trailPolylineRef = useRef<GooglePolylineInstance | null>(null);
   const routeRendererRef = useRef<GoogleDirectionsRendererInstance | null>(null);
   const routeFallbackPolylineRef = useRef<GooglePolylineInstance | null>(null);
+  const trafficLayerRef = useRef<GoogleTrafficLayerInstance | null>(null);
   const hasFitCallBoundsRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
@@ -999,6 +1034,8 @@ export const OfficerDashboard: React.FC = () => {
     routeRendererRef.current = null;
     routeFallbackPolylineRef.current?.setMap(null);
     routeFallbackPolylineRef.current = null;
+    trafficLayerRef.current?.setMap(null);
+    trafficLayerRef.current = null;
 
     const bounds = new googleMaps.LatLngBounds();
     let hasCallBounds = false;
@@ -1052,8 +1089,11 @@ export const OfficerDashboard: React.FC = () => {
         callNumber: mapRouteIncident.callNumber,
         distance: 'Calculating',
         duration: 'Calculating',
-        status: 'loading'
+        status: 'loading',
+        traffic: 'unknown'
       });
+      trafficLayerRef.current = new googleMaps.TrafficLayer();
+      trafficLayerRef.current.setMap(map);
       routeRendererRef.current = new googleMaps.DirectionsRenderer({
         map,
         suppressMarkers: true,
@@ -1069,7 +1109,11 @@ export const OfficerDashboard: React.FC = () => {
         {
           origin: { lat: currentLocation.lat, lng: currentLocation.lon },
           destination: { lat: mapRouteIncident.lat, lng: mapRouteIncident.lon },
-          travelMode: googleMaps.TravelMode.DRIVING
+          travelMode: googleMaps.TravelMode.DRIVING,
+          drivingOptions: {
+            departureTime: new Date(),
+            trafficModel: 'bestguess'
+          }
         },
         (result, status) => {
           if (status === 'OK' && routeRendererRef.current) {
@@ -1134,6 +1178,17 @@ export const OfficerDashboard: React.FC = () => {
     mapInstanceRef.current?.setZoom(15);
   };
 
+  const cancelNavigation = () => {
+    setNavigatingIncidentId(null);
+    setNavigationSummary(null);
+    routeRendererRef.current?.setMap(null);
+    routeRendererRef.current = null;
+    routeFallbackPolylineRef.current?.setMap(null);
+    routeFallbackPolylineRef.current = null;
+    trafficLayerRef.current?.setMap(null);
+    trafficLayerRef.current = null;
+  };
+
   const focusSelectedIncidentRoute = async () => {
     if (!selectedIncident) return;
     if (selectedIncident.lat === undefined || selectedIncident.lon === undefined) {
@@ -1141,7 +1196,8 @@ export const OfficerDashboard: React.FC = () => {
         callNumber: selectedIncident.callNumber,
         distance: 'No map pin',
         duration: 'Unavailable',
-        status: 'unavailable'
+        status: 'unavailable',
+        traffic: 'unknown'
       });
       return;
     }
@@ -1152,7 +1208,8 @@ export const OfficerDashboard: React.FC = () => {
       callNumber: selectedIncident.callNumber,
       distance: 'Calculating',
       duration: 'Calculating',
-      status: 'loading'
+      status: 'loading',
+      traffic: 'unknown'
     });
 
     if (!currentLocation && navigator.geolocation) {
@@ -1173,7 +1230,8 @@ export const OfficerDashboard: React.FC = () => {
           callNumber: selectedIncident.callNumber,
           distance: 'Waiting for GPS',
           duration: 'Unavailable',
-          status: 'unavailable'
+          status: 'unavailable',
+          traffic: 'unknown'
         });
       }
     }
@@ -1553,21 +1611,31 @@ export const OfficerDashboard: React.FC = () => {
         <MapPin size={19} />
       </button>
 
-      <aside className="absolute left-4 top-20 z-20 rounded-lg border border-slate-200 bg-white/95 px-4 py-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Speed</p>
-        <p className="mt-1 text-2xl font-black text-slate-950 dark:text-white">{currentSpeed === null ? '--' : Math.round(currentSpeed)} mph</p>
+      <aside className="absolute left-4 top-20 z-30 inline-flex h-9 items-center rounded-md border border-slate-200 bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95">
+        <p className="text-sm font-black text-slate-950 dark:text-white">{currentSpeed === null ? '--' : Math.round(currentSpeed)} MPH</p>
       </aside>
 
       {navigationSummary && (
-        <aside className="absolute bottom-24 left-1/2 z-30 flex w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
+        <aside className="absolute bottom-24 left-1/2 z-30 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
           <div className="min-w-0">
             <p className="truncate text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Navigating {navigationSummary.callNumber}</p>
             <p className="mt-1 text-lg font-black text-slate-950 dark:text-white">{navigationSummary.duration}</p>
           </div>
+          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${trafficIndicatorClasses[navigationSummary.traffic]}`}>
+            {trafficIndicatorLabels[navigationSummary.traffic]}
+          </span>
           <div className="text-right">
             <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Distance</p>
             <p className="mt-1 text-lg font-black text-cad-blue dark:text-blue-100">{navigationSummary.distance}</p>
           </div>
+          <button
+            type="button"
+            onClick={cancelNavigation}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-red-600 text-white shadow-sm hover:bg-red-700"
+            title="Cancel navigation"
+          >
+            <X size={17} />
+          </button>
         </aside>
       )}
 
