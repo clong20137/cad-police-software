@@ -96,15 +96,15 @@ const SidebarButton: React.FC<{ item: ShieldSidebarItem; compact: boolean }> = (
       onClick={item.onClick}
       className={`relative flex min-h-12 border border-black bg-gradient-to-b from-zinc-800 to-black text-sm font-semibold uppercase tracking-wide shadow-[inset_0_1px_rgba(255,255,255,0.12)] transition hover:from-zinc-700 hover:to-zinc-950 ${
         compact ? 'justify-center px-2' : 'items-center gap-3 px-3'
-      } ${item.active ? 'ring-1 ring-accent/70' : ''}`}
+      } ${item.active ? 'ring-1 ring-cad-signal/70' : ''}`}
       title={compact ? item.label : undefined}
     >
-      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded bg-white text-primary-500 shadow ${item.iconClassName || ''}`}>
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded bg-white text-cad-blue shadow ${item.iconClassName || ''}`}>
         <Icon size={19} />
       </span>
       {!compact && <span className="truncate">{item.label}</span>}
       {item.badge ? (
-        <span className="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">
+        <span className="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-cad-alert px-1 text-[10px] font-bold text-white">
           {item.badge > 9 ? '9+' : item.badge}
         </span>
       ) : null}

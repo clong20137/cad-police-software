@@ -5,23 +5,14 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#eef4fb',
-          500: '#1a365d',
-          600: '#132a49',
-          700: '#0f213a'
-        },
-        accent: '#9C865C',
-        danger: '#dc2626',
-        success: '#16a34a',
         cad: {
-          ink: '#1f2937',
-          panel: '#f9fafb',
-          line: '#e5e7eb',
-          blue: '#1a365d',
-          navy: '#1a365d',
-          signal: '#9C865C',
-          alert: '#dc2626'
+          ink: '#172033',
+          panel: '#f8fafc',
+          line: '#d8dee9',
+          blue: '#1d4ed8',
+          navy: '#0f172a',
+          signal: '#0f766e',
+          alert: '#b42318'
         }
       },
       boxShadow: {
