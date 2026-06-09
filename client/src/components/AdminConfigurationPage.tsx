@@ -509,7 +509,7 @@ export const AdminConfigurationPage: React.FC = () => {
 
           {activeSection === 'security' && (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <NumberSetting label="Idle timeout minutes" value={security.idleTimeoutMinutes} min={5} onChange={(value) => updateSecurity('idleTimeoutMinutes', 'IDLE_TIMEOUT_MINUTES', value)} />
+              <NumberSetting label="Idle timeout minutes" value={security.idleTimeoutMinutes} min={1} onChange={(value) => updateSecurity('idleTimeoutMinutes', 'IDLE_TIMEOUT_MINUTES', value)} />
               <NumberSetting label="Location stale seconds" value={security.locationStaleSeconds} min={10} onChange={(value) => updateSecurity('locationStaleSeconds', 'LOCATION_STALE_SECONDS', value)} />
               <NumberSetting label="Websocket heartbeat seconds" value={security.websocketHeartbeatSeconds} min={5} onChange={(value) => updateSecurity('websocketHeartbeatSeconds', 'WEBSOCKET_HEARTBEAT_SECONDS', value)} />
               <ToggleSetting label="Require HTTPS" checked={security.requireHttps} onChange={(value) => updateSecurity('requireHttps', 'REQUIRE_HTTPS', value)} />

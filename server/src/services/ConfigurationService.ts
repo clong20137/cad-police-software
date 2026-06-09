@@ -50,7 +50,7 @@ const defaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'updatedAt'>> =
   { id: 'status-enroute', section: 'statuses', name: 'En Route', code: 'ENR', agency: 'All', category: 'Unit', active: true, sortOrder: 20, metadata: { color: 'yellow' } },
   { id: 'status-onscene', section: 'statuses', name: 'On Scene', code: 'ONS', agency: 'All', category: 'Unit', active: true, sortOrder: 30, metadata: { color: 'red' } },
   { id: 'status-clear', section: 'statuses', name: 'Cleared', code: 'CLR', agency: 'All', category: 'Disposition', active: true, sortOrder: 40, metadata: { color: 'gray' } },
-  { id: 'security-idle-timeout', section: 'security', name: 'Idle timeout minutes', code: 'IDLE_TIMEOUT_MINUTES', agency: 'All', category: 'Session', active: true, sortOrder: 10, metadata: { value: 30, type: 'number', min: 5 } },
+  { id: 'security-idle-timeout', section: 'security', name: 'Idle timeout minutes', code: 'IDLE_TIMEOUT_MINUTES', agency: 'All', category: 'Session', active: true, sortOrder: 10, metadata: { value: 30, type: 'number', min: 1 } },
   { id: 'security-location-stale', section: 'security', name: 'Location stale seconds', code: 'LOCATION_STALE_SECONDS', agency: 'All', category: 'Realtime', active: true, sortOrder: 20, metadata: { value: 45, type: 'number', min: 10 } },
   { id: 'security-heartbeat', section: 'security', name: 'Websocket heartbeat seconds', code: 'WEBSOCKET_HEARTBEAT_SECONDS', agency: 'All', category: 'Realtime', active: true, sortOrder: 30, metadata: { value: 20, type: 'number', min: 5 } },
   { id: 'security-https', section: 'security', name: 'Require HTTPS', code: 'REQUIRE_HTTPS', agency: 'All', category: 'Transport', active: true, sortOrder: 40, metadata: { value: true, type: 'boolean' } },

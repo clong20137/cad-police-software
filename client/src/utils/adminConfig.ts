@@ -34,6 +34,17 @@ export const callTypesFromConfig = (items: AdminConfigurationItem[]) => {
   return calls.length > 0 ? calls : [{ label: '911 Call', priority: 'Normal' as IncidentPriority }];
 };
 
+export const sessionTimeoutMinutesFromConfig = (items: AdminConfigurationItem[], fallback = 30): number => {
+  const value = items.find((item) => item.section === 'security' && item.code === 'IDLE_TIMEOUT_MINUTES')?.metadata
+    ?.value;
+  const minutes = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return fallback;
+  }
+
+  return Math.min(480, Math.max(1, minutes));
+};
+
 const priorityFromMetadata = (value: unknown): IncidentPriority => {
   return value === 'Low' || value === 'Normal' || value === 'High' || value === 'Emergency' ? value : 'Normal';
 };

@@ -23,7 +23,8 @@ import {
   RegisterRequest,
   SendMessageRequest,
   UpdateUserRequest,
-  UserRole
+  UserRole,
+  VerifyPasswordRequest
 } from '../types/auth';
 
 const router = Router();
@@ -227,6 +228,41 @@ router.post(
         severity: 'warning'
       });
       res.status(400).json({ error: getErrorMessage(error, 'Unable to change password') });
+    }
+  }
+);
+
+router.post(
+  '/verify-password',
+  sensitiveRateLimiter,
+  authMiddleware,
+  requireRequestSignature,
+  async (req: Request<{}, {}, VerifyPasswordRequest>, res: Response): Promise<void> => {
+    try {
+      const { password } = req.body;
+      if (!password) {
+        res.status(400).json({ error: 'Password is required' });
+        return;
+      }
+
+      const verified = await AuthService.verifyPassword(req.user?.id || '', password);
+      if (!verified) {
+        await AuditLogService.fromRequest(req, {
+          action: 'session_unlock_failed',
+          resource: 'auth',
+          severity: 'warning'
+        });
+        res.status(401).json({ error: 'Password is incorrect' });
+        return;
+      }
+
+      await AuditLogService.fromRequest(req, {
+        action: 'session_unlocked',
+        resource: 'auth'
+      });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(400).json({ error: getErrorMessage(error, 'Unable to verify password') });
     }
   }
 );

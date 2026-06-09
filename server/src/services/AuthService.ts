@@ -194,6 +194,16 @@ export class AuthService {
     return true;
   }
 
+  static async verifyPassword(userId: string, password: string): Promise<boolean> {
+    const [rows] = await pool.execute<UserRow[]>('SELECT * FROM users WHERE id = ? LIMIT 1', [userId]);
+    const user = rows[0];
+    if (!user || !user.active || !password || this.isPasswordExpired(user.password_changed_at)) {
+      return false;
+    }
+
+    return bcrypt.compare(password, user.password_hash);
+  }
+
   static async createUser(
     email: string,
     name: string,

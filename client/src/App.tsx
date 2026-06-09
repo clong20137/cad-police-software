@@ -6,6 +6,7 @@ import { LoginPage } from './components/LoginPage';
 import { Dashboard } from './components/Dashboard';
 import { AdminConfigurationPage } from './components/AdminConfigurationPage';
 import { OfficerDashboard } from './components/OfficerDashboard';
+import { SessionLockGuard } from './components/common/SessionLockGuard';
 import { APP_NAME } from './constants/branding';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: UserRole[] }> = ({ children, allowedRoles }) => {
@@ -36,42 +37,44 @@ const App: React.FC = () => {
   return (
     <BrowserRouter basename={basename}>
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.DISPATCHER]}>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
-                <Navigate to="/admin/configuration" replace />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/configuration"
-            element={
-              <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
-                <AdminConfigurationPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/officer"
-            element={
-              <ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.OFFICER]}>
-                <OfficerDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/" element={<RoleHome />} />
-        </Routes>
+        <SessionLockGuard>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.DISPATCHER]}>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
+                  <Navigate to="/admin/configuration" replace />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/configuration"
+              element={
+                <ProtectedRoute allowedRoles={[UserRole.ADMIN]}>
+                  <AdminConfigurationPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/officer"
+              element={
+                <ProtectedRoute allowedRoles={[UserRole.ADMIN, UserRole.OFFICER]}>
+                  <OfficerDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/" element={<RoleHome />} />
+          </Routes>
+        </SessionLockGuard>
       </AuthProvider>
     </BrowserRouter>
   );

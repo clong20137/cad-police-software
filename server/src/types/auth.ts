@@ -131,6 +131,10 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
+export interface VerifyPasswordRequest {
+  password: string;
+}
+
 export type AuditSeverity = 'info' | 'warning' | 'error' | 'critical';
 
 export interface AuditLogEntry {

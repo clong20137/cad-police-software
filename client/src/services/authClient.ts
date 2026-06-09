@@ -28,6 +28,7 @@ import { runtimeConfig } from '../config/runtimeConfig';
 const API_URL = runtimeConfig.apiUrl;
 const SIGNED_REQUESTS = [
   { method: 'POST', pathPattern: /^\/api\/auth\/change-password$/ },
+  { method: 'POST', pathPattern: /^\/api\/auth\/verify-password$/ },
   { method: 'POST', pathPattern: /^\/api\/auth\/users$/ },
   { method: 'PATCH', pathPattern: /^\/api\/auth\/users\/[^/]+$/ },
   { method: 'POST', pathPattern: /^\/api\/auth\/users\/[^/]+\/reset-password$/ },
@@ -214,6 +215,10 @@ class AuthClient {
     await this.api.post('/auth/change-password', input);
   }
 
+  async verifyPassword(password: string): Promise<void> {
+    await this.api.post('/auth/verify-password', { password });
+  }
+
   async getIncidents(): Promise<Incident[]> {
     const response = await this.api.get<Incident[]>('/incidents');
     return response.data;
@@ -329,6 +334,7 @@ class AuthClient {
     }
     this.auth = null;
     localStorage.removeItem('cad_auth');
+    localStorage.removeItem('cad_session_locked');
   }
 
   getAuth(): StoredAuth | null {
