@@ -338,8 +338,21 @@ const escapeHtml = (value: string): string =>
 const officerMapLabel = (officer: User): string =>
   officer.cadUnitNumber || officer.unitNumber || officer.badge || officer.name.split(' ')[0] || 'Unit';
 
+const officerMapDisplayLabel = (officer: User): string => {
+  const unit = officerMapLabel(officer);
+  const lastName = officer.name.trim().split(/\s+/).filter(Boolean).slice(-1)[0] || officer.name;
+  return `${unit} ${lastName}`.trim();
+};
+
 const officerMapStatus = (officer: User, currentUserId?: string, selectedStatus?: IncidentUnitStatus | null): string =>
   officer.id === currentUserId && selectedStatus ? selectedStatus : officer.status || 'Available';
+
+const officerMapTone = (status: string, isCurrentUser: boolean): keyof typeof markerToneClass => {
+  if (isCurrentUser) return 'blue';
+  if (status === 'En Route') return 'yellow';
+  if (['On Scene', 'Traffic Stop', 'Transporting', 'Dispatched', 'Busy', 'At Hospital', 'Staged'].includes(status)) return 'red';
+  return 'green';
+};
 
 const distanceMiles = (fromLat: number, fromLon: number, toLat: number, toLon: number): number => {
   const earthRadiusMiles = 3958.8;
@@ -1220,16 +1233,13 @@ export const OfficerDashboard: React.FC = () => {
       if (officer.lat === undefined || officer.lon === undefined) return;
       const status = officerMapStatus(officer, user?.id, selectedStatus);
       const isCurrentUser = officer.id === user?.id;
-      const tone = status === 'En Route' ? 'yellow' : status === 'On Scene' || status === 'Traffic Stop' ? 'red' : 'green';
-      const label =
-        isCurrentUser && officer.speedMph !== undefined && officer.speedMph !== null
-          ? `${Math.round(officer.speedMph)} mph`
-          : officerMapLabel(officer);
+      const tone = officerMapTone(status, isCurrentUser);
+      const label = officerMapDisplayLabel(officer);
       const infoWindow = new googleMaps.InfoWindow({
         content: `
           <div style="min-width:190px;font-family:Arial,sans-serif;color:#0f172a">
-            <div style="font-weight:700;margin-bottom:2px">${escapeHtml(officerMapLabel(officer))}</div>
-            <div>${escapeHtml(officer.name)}</div>
+            <div style="font-weight:700;margin-bottom:2px">${escapeHtml(officer.name)}</div>
+            <div>Unit ${escapeHtml(officerMapLabel(officer))}</div>
             <div style="margin-top:4px;font-size:12px;color:#475569">${escapeHtml(status)}</div>
             <div style="font-size:12px;color:#475569">${officer.lat.toFixed(5)}, ${officer.lon.toFixed(5)}</div>
           </div>
@@ -1732,33 +1742,33 @@ export const OfficerDashboard: React.FC = () => {
     const myAssignment = incident.units.find((unit) => unit.userId === user?.id);
     const status = myAssignment?.status || 'Assigned';
     return (
-      <section className="rounded border border-white/10 bg-white p-2.5 text-cad-ink shadow-inner dark:bg-slate-900 dark:text-white">
+      <section className="rounded border border-white/10 bg-white p-2.5 text-cad-ink shadow-inner">
         <button
           type="button"
           onClick={() => openMyActiveCall(incident)}
-          className="w-full rounded text-left transition hover:bg-blue-50 dark:hover:bg-slate-800"
+          className="w-full rounded text-left transition hover:bg-blue-50"
         >
           <span className="flex items-start justify-between gap-2">
             <span className="min-w-0">
-              <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">My Active Call</span>
-              <span className="mt-1 block truncate text-sm font-black text-slate-950 dark:text-white">{incident.callNumber}</span>
-              <span className="block truncate text-xs font-bold text-cad-blue dark:text-blue-100">{incident.type}</span>
+              <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">My Active Call</span>
+              <span className="mt-1 block truncate text-sm font-black text-slate-950">{incident.callNumber}</span>
+              <span className="block truncate text-xs font-bold text-cad-blue">{incident.type}</span>
             </span>
             <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${priorityClasses[incident.priority]}`}>
               {incident.priority}
             </span>
           </span>
           <span className="mt-2 grid grid-cols-2 gap-1.5">
-            <span className="rounded bg-slate-100 px-2 py-1 dark:bg-slate-800">
-              <span className="block text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">Timer</span>
+            <span className="rounded bg-slate-100 px-2 py-1">
+              <span className="block text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Timer</span>
               <span className="block text-xs font-black">{elapsedTimeLabel(incident.createdAt, sidebarNow)}</span>
             </span>
-            <span className="rounded bg-slate-100 px-2 py-1 dark:bg-slate-800">
-              <span className="block text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">Status</span>
+            <span className="rounded bg-slate-100 px-2 py-1">
+              <span className="block text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Status</span>
               <span className="block truncate text-xs font-black">{status}</span>
             </span>
           </span>
-          <span className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+          <span className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
             <MapPin size={11} />
             <span className="truncate">{incident.address || 'Address pending'}</span>
           </span>
@@ -1827,23 +1837,23 @@ export const OfficerDashboard: React.FC = () => {
               className={`pending-call-feed-item overflow-hidden rounded border text-left shadow-sm transition-all duration-300 ease-out ${
                 exiting
                   ? 'max-h-0 -translate-y-1 border-transparent bg-white/0 px-3 py-0 opacity-0'
-                  : 'max-h-24 translate-y-0 border-white/10 bg-white px-3 py-2 opacity-100 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800'
+                  : 'max-h-24 translate-y-0 border-white/10 bg-white px-3 py-2 opacity-100 hover:bg-blue-50'
               }`}
             >
               <span className="flex items-center justify-between gap-2">
-                <span className="truncate text-xs font-black text-cad-ink dark:text-white">{incident.callNumber}</span>
+                <span className="truncate text-xs font-black text-cad-ink">{incident.callNumber}</span>
                 <span
                   className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${
                     incident.priority === 'Emergency' || incident.priority === 'High'
                       ? 'bg-red-600 text-white'
-                      : 'bg-amber-100 text-amber-800 dark:bg-amber-400 dark:text-slate-950'
+                      : 'bg-amber-100 text-amber-800'
                   }`}
                 >
                   {incident.priority}
                 </span>
               </span>
-              <span className="mt-1 block truncate text-xs font-bold text-slate-700 dark:text-slate-200">{incident.type}</span>
-              <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              <span className="mt-1 block truncate text-xs font-bold text-slate-700">{incident.type}</span>
+              <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
                 <MapPin size={11} />
                 <span className="truncate">{incident.address || 'Address pending'}</span>
               </span>
@@ -2117,6 +2127,7 @@ export const OfficerDashboard: React.FC = () => {
                 onCreateOfficerEvent={createOfficerEvent}
                 onSubmitInquiry={submitInquiry}
                 inquiryOfficers={directory.filter((item) => item.role === UserRole.OFFICER || item.role === UserRole.ADMIN)}
+                activeUnits={trackedOfficers}
                 directory={messageThreads}
                 messageThreadByUser={messageThreadByUser}
                 onlineUserIds={onlineUserIds}
@@ -2237,6 +2248,7 @@ const DockContent: React.FC<{
   onCreateOfficerEvent: () => void;
   onSubmitInquiry: (submission: InquirySubmission) => void;
   inquiryOfficers: User[];
+  activeUnits: User[];
   directory: User[];
   messageThreadByUser: Record<string, MessageThread>;
   onlineUserIds: string[];
@@ -2297,6 +2309,7 @@ const DockContent: React.FC<{
   onCreateOfficerEvent,
   onSubmitInquiry,
   inquiryOfficers,
+  activeUnits,
   directory,
   messageThreadByUser,
   onlineUserIds,
@@ -2376,6 +2389,23 @@ const DockContent: React.FC<{
     { id: 'pending', label: 'Pending Calls', icon: <Siren size={14} />, calls: tabIncidents('pending') },
     { id: 'closed', label: 'Closed Calls', icon: <CheckCircle2 size={14} />, calls: tabIncidents('closed') }
   ];
+  const activeUnitRows = activeUnits
+    .map((unit) => {
+      const status = officerMapStatus(unit, currentUserId, selectedStatus);
+      const miles =
+        currentLocation && unit.lat !== undefined && unit.lon !== undefined
+          ? distanceMiles(currentLocation.lat, currentLocation.lon, unit.lat, unit.lon)
+          : null;
+      return { unit, status, miles };
+    })
+    .sort((first, second) => {
+      if (first.unit.id === currentUserId) return -1;
+      if (second.unit.id === currentUserId) return 1;
+      if (first.miles !== null && second.miles !== null) return first.miles - second.miles;
+      if (first.miles !== null) return -1;
+      if (second.miles !== null) return 1;
+      return officerMapLabel(first.unit).localeCompare(officerMapLabel(second.unit));
+    });
   const visibleCallTabIncidents = callTabs.find((tab) => tab.id === activeCallTab)?.calls || [];
   const callEmptyCopy =
     activeCallTab === 'my'
@@ -2481,6 +2511,50 @@ const DockContent: React.FC<{
   if (activeItem === 'status') {
     return (
       <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-black text-slate-950 dark:text-white">Active Units</h3>
+          <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            Online officers with current status and distance from your GPS.
+          </p>
+        </div>
+        <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
+          <div className="hidden grid-cols-[1fr_0.8fr_0.7fr_0.8fr] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 sm:grid">
+            <span>Unit</span>
+            <span>Status</span>
+            <span>Miles</span>
+            <span>District</span>
+          </div>
+          <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+            {activeUnitRows.length === 0 && (
+              <p className="px-3 py-4 text-sm font-semibold text-slate-500 dark:text-slate-400">No active units online.</p>
+            )}
+            {activeUnitRows.map(({ unit, status, miles }) => {
+              const tone = officerMapTone(status, unit.id === currentUserId);
+              const toneClass =
+                tone === 'blue'
+                  ? 'bg-cad-blue text-white'
+                  : tone === 'green'
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-100'
+                    : tone === 'yellow'
+                      ? 'bg-amber-100 text-amber-900 dark:bg-amber-400 dark:text-slate-950'
+                      : 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-100';
+              return (
+                <div key={unit.id} className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-[1fr_0.8fr_0.7fr_0.8fr] sm:items-center">
+                  <div className="min-w-0">
+                    <p className="truncate font-black text-slate-950 dark:text-white">
+                      {officerMapLabel(unit)}
+                      <span className="ml-2 font-semibold text-slate-500 dark:text-slate-400">{unit.name}</span>
+                    </p>
+                    <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{unit.cadUnitNumber || unit.unitNumber || unit.badge || 'No CAD unit'}</p>
+                  </div>
+                  <span className={`w-fit rounded px-2 py-1 text-xs font-black ${toneClass}`}>{status}</span>
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{miles === null ? '--' : `${miles.toFixed(1)} mi`}</span>
+                  <span className="truncate text-xs font-bold text-slate-600 dark:text-slate-300">{unit.district || 'Unassigned'}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
         <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Current status: {selectedStatus || 'No call selected'}</p>
         {assignmentWarning && (
           <p className="rounded-md bg-amber-50 p-3 text-sm font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800">
@@ -3073,13 +3147,13 @@ const FallbackOfficerMap: React.FC<{
 }> = ({ currentLocation, assignedIncidents, currentUserLabel, currentSpeed }) => (
   <div className="relative h-full w-full overflow-hidden bg-slate-900">
     <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:48px_48px]" />
-    <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500 ring-4 ring-white shadow-xl" title={currentUserLabel} />
+    <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cad-blue ring-4 ring-white shadow-xl" title={currentUserLabel} />
     {currentSpeed !== null && (
       <div className="absolute left-[calc(50%+1rem)] top-[calc(50%-1.5rem)] rounded-full bg-emerald-500 px-2 py-1 text-xs font-bold text-white ring-2 ring-white">
         {Math.round(currentSpeed)} mph
       </div>
     )}
-    <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400/40 location-pulse" />
+    <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-400/40 location-pulse" />
     {assignedIncidents.map((incident, index) => (
       <div
         key={incident.id}
@@ -3090,7 +3164,7 @@ const FallbackOfficerMap: React.FC<{
       </div>
     ))}
     <div className="absolute bottom-4 right-4 rounded-md bg-white/90 px-3 py-2 text-xs font-bold text-slate-700">
-      {currentLocation ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'Waiting for GPS'}
+      {currentLocation ? 'GPS active' : 'Waiting for GPS'}
     </div>
   </div>
 );
