@@ -839,6 +839,18 @@ export const OfficerDashboard: React.FC = () => {
     localStorage.setItem('cad_officer_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
   }, [pinnedMessageThreadIds]);
 
+  useEffect(() => {
+    if (messageThreadSummaries.length > 0) {
+      authClient.cacheMessageThreads(messageThreadSummaries);
+    }
+  }, [messageThreadSummaries]);
+
+  useEffect(() => {
+    if (selectedMessageUserId && messages.length > 0 && !messageTextSearch.trim()) {
+      authClient.cacheMessages(selectedMessageUserId, messages);
+    }
+  }, [messageTextSearch, messages, selectedMessageUserId]);
+
   const togglePinnedMessageThread = (threadId: string) => {
     setPinnedMessageThreadIds((current) =>
       current.includes(threadId) ? current.filter((id) => id !== threadId) : [threadId, ...current]
@@ -846,8 +858,12 @@ export const OfficerDashboard: React.FC = () => {
   };
 
   const loadIncidents = useCallback(async () => {
-    const activeIncidents = await authClient.getIncidents();
-    setIncidents(activeIncidents);
+    try {
+      const activeIncidents = await authClient.getIncidents();
+      setIncidents(activeIncidents);
+    } catch {
+      // Keep last-known calls visible while offline.
+    }
   }, []);
 
   const loadMessageThreads = useCallback(async () => {
@@ -856,7 +872,7 @@ export const OfficerDashboard: React.FC = () => {
       setMessageThreadSummaries(threads);
       setMessageBadgeCount(threads.reduce((count, thread) => count + thread.unreadCount, 0));
     } catch {
-      setMessageThreadSummaries([]);
+      // Keep the existing thread list during transient offline periods.
     }
   }, []);
 
@@ -864,7 +880,7 @@ export const OfficerDashboard: React.FC = () => {
     try {
       setUrgentAlerts(await authClient.getUrgentAlerts());
     } catch {
-      setUrgentAlerts([]);
+      // Keep any cached/in-memory alerts visible if the network drops.
     }
   }, []);
 
@@ -881,7 +897,7 @@ export const OfficerDashboard: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setSidebarNow(Date.now()), 1000);
+    const timer = window.setInterval(() => setSidebarNow(Date.now()), 5000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -916,7 +932,7 @@ export const OfficerDashboard: React.FC = () => {
   );
 
   useEffect(() => {
-    authClient.getActiveConfiguration().then(setAdminConfig).catch(() => setAdminConfig([]));
+    authClient.getActiveConfiguration().then(setAdminConfig).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -930,7 +946,7 @@ export const OfficerDashboard: React.FC = () => {
   }, [configuredCallTypes, officerEvent.type]);
 
   useEffect(() => {
-    authClient.getDirectory().then(setDirectory).catch(() => setDirectory([]));
+    authClient.getDirectory().then(setDirectory).catch(() => undefined);
     loadMessageThreads();
   }, [loadMessageThreads]);
 
@@ -1055,16 +1071,22 @@ export const OfficerDashboard: React.FC = () => {
       setLastRealtimeSync(new Date());
     });
     socket.on('assignment:changed', () => requestResync('assignment-changed'));
-    socket.on('incidents:update', (nextIncidents: Incident[]) => setIncidents(nextIncidents));
+    socket.on('incidents:update', (nextIncidents: Incident[]) => {
+      authClient.cacheIncidents(nextIncidents || []);
+      setIncidents(nextIncidents || []);
+    });
     socket.on('urgent-alerts:update', () => {
       loadUrgentAlerts();
       setMessage('Urgent alert received.');
     });
     socket.on('presence:update', (presence: { onlineUserIds: string[]; users: User[] }) => {
       setOnlineUserIds(presence.onlineUserIds || []);
-      setDirectory(presence.users || []);
+      const users = presence.users || [];
+      authClient.cacheDirectory(users);
+      setDirectory(users);
     });
     socket.on('units:update', (units: User[]) => {
+      authClient.cacheTrackedUnits(units || []);
       const me = units.find((unit) => unit.id === user?.id);
       if (me?.speedMph !== undefined) {
         setCurrentSpeed(Number(me.speedMph));
@@ -1192,7 +1214,7 @@ export const OfficerDashboard: React.FC = () => {
             if (previous && distanceMiles(previous.lat, previous.lon, nextLocation.lat, nextLocation.lon) < 0.005) {
               return current;
             }
-            return [...current, { ...nextLocation, speedMph }].slice(-80);
+            return [...current, { ...nextLocation, speedMph }].slice(-50);
           });
         }
         setCurrentSpeed(speedMph);

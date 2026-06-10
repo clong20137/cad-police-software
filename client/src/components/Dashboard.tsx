@@ -835,7 +835,7 @@ export const Dashboard: React.FC = () => {
   }, [loadIncidents]);
 
   useEffect(() => {
-    authClient.getActiveConfiguration().then(setAdminConfig).catch(() => setAdminConfig([]));
+    authClient.getActiveConfiguration().then(setAdminConfig).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -854,7 +854,7 @@ export const Dashboard: React.FC = () => {
       setMessageThreadSummaries(threads);
       setMessageBadgeCount(threads.reduce((count, thread) => count + thread.unreadCount, 0));
     } catch {
-      setMessageThreadSummaries([]);
+      // Keep the last visible thread list during transient offline periods.
     }
   }, []);
 
@@ -862,16 +862,21 @@ export const Dashboard: React.FC = () => {
     try {
       setUrgentAlerts(await authClient.getUrgentAlerts());
     } catch {
-      setUrgentAlerts([]);
+      // Keep any cached/in-memory alerts visible if the network drops.
     }
   }, []);
 
   const loadDirectory = useCallback(async () => {
-    const users = await authClient.getDirectory();
-    setDirectory(users);
-    setSelectedMessageUserId((current) => current || users.find((item) => item.id !== user?.id)?.id || '');
-    loadMessageThreads();
-    loadUrgentAlerts();
+    try {
+      const users = await authClient.getDirectory();
+      setDirectory(users);
+      setSelectedMessageUserId((current) => current || users.find((item) => item.id !== user?.id)?.id || '');
+      loadMessageThreads();
+      loadUrgentAlerts();
+    } catch {
+      loadMessageThreads();
+      loadUrgentAlerts();
+    }
   }, [loadMessageThreads, loadUrgentAlerts, user?.id]);
 
   useEffect(() => {
@@ -1117,6 +1122,7 @@ export const Dashboard: React.FC = () => {
     });
     socket.on('units:update', (nextUnits: User[]) => {
       const trackedUnits = nextUnits.filter(isTrackedUnit);
+      authClient.cacheTrackedUnits(trackedUnits);
       setUnits(trackedUnits);
       setUnitLoadError('');
       setSelectedUnitId((current) => {
@@ -1132,10 +1138,13 @@ export const Dashboard: React.FC = () => {
     });
     socket.on('presence:update', (presence: { onlineUserIds: string[]; users: User[] }) => {
       setOnlineUserIds(presence.onlineUserIds || []);
-      setDirectory(presence.users || []);
+      const users = presence.users || [];
+      authClient.cacheDirectory(users);
+      setDirectory(users);
     });
     socket.on('incidents:update', (nextIncidents: Incident[]) => {
       const incoming = nextIncidents || [];
+      authClient.cacheIncidents(incoming);
       if (initialIncidentsLoadedRef.current) {
         const newIncidents = incoming.filter((incident) => !knownIncidentIdsRef.current.has(incident.id));
         if (newIncidents.length > 0) {
@@ -1542,6 +1551,18 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('cad_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
   }, [pinnedMessageThreadIds]);
+
+  useEffect(() => {
+    if (messageThreadSummaries.length > 0) {
+      authClient.cacheMessageThreads(messageThreadSummaries);
+    }
+  }, [messageThreadSummaries]);
+
+  useEffect(() => {
+    if (selectedMessageUserId && messages.length > 0 && !messageTextSearch.trim()) {
+      authClient.cacheMessages(selectedMessageUserId, messages);
+    }
+  }, [messageTextSearch, messages, selectedMessageUserId]);
 
   const togglePinnedMessageThread = (threadId: string) => {
     setPinnedMessageThreadIds((current) =>

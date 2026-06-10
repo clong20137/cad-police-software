@@ -39,6 +39,9 @@ import {
 import { runtimeConfig } from '../config/runtimeConfig';
 
 const API_URL = runtimeConfig.apiUrl;
+const OFFLINE_CACHE_PREFIX = 'cad_offline_v1:';
+const OFFLINE_CACHE_MAX_ENTRIES = 24;
+const OFFLINE_CACHE_MAX_CHARS = 2_500_000;
 const SIGNED_REQUESTS = [
   { method: 'POST', pathPattern: /^\/api\/auth\/change-password$/ },
   { method: 'POST', pathPattern: /^\/api\/auth\/verify-password$/ },
@@ -55,6 +58,11 @@ interface StoredAuth {
   permissions: Permission[];
   tokens: TokenPair;
   expiresAt: number;
+}
+
+interface OfflineCacheEnvelope<T> {
+  value: T;
+  savedAt: number;
 }
 
 class AuthClient {
@@ -131,13 +139,17 @@ class AuthClient {
   }
 
   async getTrackedUnits(): Promise<User[]> {
-    const response = await this.api.get<User[]>('/auth/units');
-    return response.data;
+    return this.cachedGet('tracked-units', async () => {
+      const response = await this.api.get<User[]>('/auth/units');
+      return response.data;
+    }, (units) => units.slice(0, 300));
   }
 
   async getDirectory(): Promise<User[]> {
-    const response = await this.api.get<User[]>('/auth/directory');
-    return response.data;
+    return this.cachedGet('directory', async () => {
+      const response = await this.api.get<User[]>('/auth/directory');
+      return response.data;
+    }, (users) => users.slice(0, 600));
   }
 
   async getUsers(): Promise<User[]> {
@@ -165,13 +177,17 @@ class AuthClient {
   }
 
   async getAdminConfiguration(): Promise<AdminConfigurationItem[]> {
-    const response = await this.api.get<AdminConfigurationItem[]>('/configuration');
-    return response.data;
+    return this.cachedGet('admin-configuration', async () => {
+      const response = await this.api.get<AdminConfigurationItem[]>('/configuration');
+      return response.data;
+    });
   }
 
   async getActiveConfiguration(): Promise<AdminConfigurationItem[]> {
-    const response = await this.api.get<AdminConfigurationItem[]>('/configuration/active');
-    return response.data;
+    return this.cachedGet('active-configuration', async () => {
+      const response = await this.api.get<AdminConfigurationItem[]>('/configuration/active');
+      return response.data;
+    });
   }
 
   async getPublicAuthSettings(): Promise<PublicAuthSettings> {
@@ -216,15 +232,33 @@ class AuthClient {
   }
 
   async getMessages(userId: string, search = ''): Promise<ChatMessage[]> {
-    const response = await this.api.get<ChatMessage[]>(`/auth/messages/${userId}`, {
-      params: search.trim() ? { q: search.trim() } : undefined
-    });
-    return response.data;
+    const searchKey = search.trim().toLowerCase();
+    try {
+      return await this.cachedGet(`messages:${userId}:${searchKey || 'all'}`, async () => {
+        const response = await this.api.get<ChatMessage[]>(`/auth/messages/${userId}`, {
+          params: searchKey ? { q: search.trim() } : undefined
+        });
+        return response.data;
+      }, (messages) => messages.slice(-150));
+    } catch (error) {
+      if (searchKey && this.isOfflineError(error)) {
+        const cachedAll = this.getCached<ChatMessage[]>(`messages:${userId}:all`);
+        if (cachedAll) {
+          return cachedAll.filter((message) =>
+            message.body.toLowerCase().includes(searchKey) ||
+            message.attachments.some((attachment) => attachment.fileName.toLowerCase().includes(searchKey))
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   async getMessageThreads(): Promise<MessageThread[]> {
-    const response = await this.api.get<MessageThread[]>('/auth/messages/threads');
-    return response.data;
+    return this.cachedGet('message-threads', async () => {
+      const response = await this.api.get<MessageThread[]>('/auth/messages/threads');
+      return response.data;
+    }, (threads) => threads.slice(0, 120));
   }
 
   async markMessagesRead(userId: string): Promise<string[]> {
@@ -269,23 +303,28 @@ class AuthClient {
   }
 
   async getIncidents(): Promise<Incident[]> {
-    const response = await this.api.get<Incident[]>('/incidents');
-    return response.data;
+    return this.cachedGet('incidents', async () => {
+      const response = await this.api.get<Incident[]>('/incidents');
+      return response.data;
+    }, (incidents) => incidents.slice(0, 300));
   }
 
   async createIncident(input: CreateIncidentRequest): Promise<Incident> {
     const response = await this.api.post<Incident>('/incidents', input);
+    this.mergeCachedIncident(response.data);
     return response.data;
   }
 
   async updateIncidentStatus(incidentId: string, status: IncidentStatus, disposition?: string): Promise<Incident> {
     const input: UpdateIncidentStatusRequest = { status, disposition };
     const response = await this.api.patch<Incident>(`/incidents/${incidentId}/status`, input);
+    this.mergeCachedIncident(response.data);
     return response.data;
   }
 
   async reopenIncident(incidentId: string): Promise<Incident> {
     const response = await this.api.post<Incident>(`/incidents/${incidentId}/reopen`);
+    this.mergeCachedIncident(response.data);
     return response.data;
   }
 
@@ -303,21 +342,25 @@ class AuthClient {
       userId,
       status
     });
+    this.mergeCachedIncident(response.data);
     return response.data;
   }
 
   async assignMeToIncident(incidentId: string, status: IncidentUnitStatus = 'Assigned'): Promise<Incident> {
     const response = await this.api.post<Incident>(`/incidents/${incidentId}/assign-me`, { status });
+    this.mergeCachedIncident(response.data);
     return response.data;
   }
 
   async updateMyIncidentStatus(incidentId: string, status: IncidentUnitStatus): Promise<Incident> {
     const response = await this.api.patch<Incident>(`/incidents/${incidentId}/my-status`, { status });
+    this.mergeCachedIncident(response.data);
     return response.data;
   }
 
   async createOfficerEvent(input: OfficerEventRequest): Promise<Incident> {
     const response = await this.api.post<Incident>('/incidents/officer-events', input);
+    this.mergeCachedIncident(response.data);
     return response.data;
   }
 
@@ -340,13 +383,17 @@ class AuthClient {
   }
 
   async getUrgentAlerts(): Promise<UrgentAlert[]> {
-    const response = await this.api.get<UrgentAlert[]>('/urgent-alerts');
-    return response.data;
+    return this.cachedGet('urgent-alerts', async () => {
+      const response = await this.api.get<UrgentAlert[]>('/urgent-alerts');
+      return response.data;
+    }, (alerts) => alerts.slice(0, 100));
   }
 
   async getRecentUrgentAlerts(): Promise<UrgentAlert[]> {
-    const response = await this.api.get<UrgentAlert[]>('/urgent-alerts/recent');
-    return response.data;
+    return this.cachedGet('recent-urgent-alerts', async () => {
+      const response = await this.api.get<UrgentAlert[]>('/urgent-alerts/recent');
+      return response.data;
+    }, (alerts) => alerts.slice(0, 50));
   }
 
   async createUrgentAlert(input: CreateUrgentAlertRequest): Promise<UrgentAlert> {
@@ -361,6 +408,30 @@ class AuthClient {
 
   async acknowledgeUrgentAlert(alertId: string): Promise<void> {
     await this.api.put(`/urgent-alerts/${alertId}/acknowledge`);
+  }
+
+  cacheIncidents(incidents: Incident[]): void {
+    this.setCached('incidents', incidents.slice(0, 300));
+  }
+
+  cacheTrackedUnits(units: User[]): void {
+    this.setCached('tracked-units', units.slice(0, 300));
+  }
+
+  cacheDirectory(users: User[]): void {
+    this.setCached('directory', users.slice(0, 600));
+  }
+
+  cacheUrgentAlerts(alerts: UrgentAlert[]): void {
+    this.setCached('urgent-alerts', alerts.slice(0, 100));
+  }
+
+  cacheMessageThreads(threads: MessageThread[]): void {
+    this.setCached('message-threads', threads.slice(0, 120));
+  }
+
+  cacheMessages(userId: string, messages: ChatMessage[]): void {
+    this.setCached(`messages:${userId}:all`, messages.slice(-150));
   }
 
   async updateLocation(lat: number, lon: number, speedMph?: number | null): Promise<User> {
@@ -428,6 +499,7 @@ class AuthClient {
     this.auth = null;
     localStorage.removeItem('cad_auth');
     localStorage.removeItem('cad_session_locked');
+    this.clearOfflineCache();
   }
 
   getAuth(): StoredAuth | null {
@@ -463,6 +535,102 @@ class AuthClient {
         localStorage.removeItem('cad_auth');
       }
     }
+  }
+
+  private async cachedGet<T>(key: string, request: () => Promise<T>, trim?: (value: T) => T): Promise<T> {
+    try {
+      const value = await request();
+      const cachedValue = trim ? trim(value) : value;
+      this.setCached(key, cachedValue);
+      return value;
+    } catch (error) {
+      if (this.isOfflineError(error)) {
+        const cached = this.getCached<T>(key);
+        if (cached !== null) return cached;
+      }
+      throw error;
+    }
+  }
+
+  private cacheKey(key: string): string {
+    const userId = this.auth?.user.id || 'public';
+    return `${OFFLINE_CACHE_PREFIX}${userId}:${key}`;
+  }
+
+  private getCached<T>(key: string): T | null {
+    try {
+      const stored = localStorage.getItem(this.cacheKey(key));
+      if (!stored) return null;
+      const envelope = JSON.parse(stored) as OfflineCacheEnvelope<T>;
+      return envelope.value;
+    } catch {
+      return null;
+    }
+  }
+
+  private setCached<T>(key: string, value: T): void {
+    try {
+      const envelope: OfflineCacheEnvelope<T> = { value, savedAt: Date.now() };
+      localStorage.setItem(this.cacheKey(key), JSON.stringify(envelope));
+      this.pruneOfflineCache();
+    } catch {
+      this.pruneOfflineCache(true);
+      try {
+        const envelope: OfflineCacheEnvelope<T> = { value, savedAt: Date.now() };
+        localStorage.setItem(this.cacheKey(key), JSON.stringify(envelope));
+      } catch {
+        // Offline cache is best-effort only.
+      }
+    }
+  }
+
+  private mergeCachedIncident(incident: Incident): void {
+    const cached = this.getCached<Incident[]>('incidents') || [];
+    this.setCached('incidents', [incident, ...cached.filter((item) => item.id !== incident.id)].slice(0, 300));
+  }
+
+  private pruneOfflineCache(force = false): void {
+    const entries = this.offlineCacheKeys()
+      .map((key) => {
+        try {
+          const envelope = JSON.parse(localStorage.getItem(key) || '{}') as Partial<OfflineCacheEnvelope<unknown>>;
+          return { key, savedAt: Number(envelope.savedAt || 0), size: localStorage.getItem(key)?.length || 0 };
+        } catch {
+          return { key, savedAt: 0, size: localStorage.getItem(key)?.length || 0 };
+        }
+      })
+      .sort((first, second) => first.savedAt - second.savedAt);
+    let totalSize = entries.reduce((sum, entry) => sum + entry.size, 0);
+    while (entries.length > 0 && (force || entries.length > OFFLINE_CACHE_MAX_ENTRIES || totalSize > OFFLINE_CACHE_MAX_CHARS)) {
+      const oldest = entries.shift();
+      if (!oldest) break;
+      localStorage.removeItem(oldest.key);
+      totalSize -= oldest.size;
+      force = false;
+    }
+  }
+
+  private clearOfflineCache(): void {
+    this.offlineCacheKeys().forEach((key) => localStorage.removeItem(key));
+  }
+
+  private offlineCacheKeys(): string[] {
+    const keys: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(OFFLINE_CACHE_PREFIX)) {
+        keys.push(key);
+      }
+    }
+    return keys;
+  }
+
+  private isOfflineError(error: unknown): boolean {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+    if (axios.isAxiosError(error)) {
+      return !error.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED';
+    }
+    return false;
   }
 
   private needsSignature(config: InternalAxiosRequestConfig): boolean {
