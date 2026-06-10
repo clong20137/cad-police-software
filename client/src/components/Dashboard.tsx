@@ -196,7 +196,7 @@ const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.
   { id: 'unit-detail', label: 'Unit', icon: <Radio size={18} /> },
   { id: 'call-detail', label: 'Call', icon: <Shield size={18} /> },
   { id: 'inquiries', label: 'Inquiries', icon: <Search size={18} /> },
-  { id: 'protective-orders', label: 'Protect Ord', icon: <Search size={18} /> },
+  { id: 'protective-orders', label: 'Protective Orders', icon: <Search size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
 ];
 
@@ -1537,7 +1537,7 @@ export const Dashboard: React.FC = () => {
     { id: 'unit-status', label: 'Unit Status', icon: Users, iconClassName: 'text-indigo-700', onClick: () => setActiveQuickModal('units') },
     { id: 'calls', label: 'Calls', icon: ClipboardList, badge: callBadgeCount, iconClassName: 'text-amber-700', onClick: () => setActiveQuickModal('calls') },
     { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openQuickLaunch('messages') },
-    { id: 'protect', label: 'Protect Ord', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveQuickModal('protective-orders') }
+    { id: 'protect', label: 'Protective Orders', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveQuickModal('protective-orders') }
   ];
   useEffect(() => {
     localStorage.setItem('cad_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));

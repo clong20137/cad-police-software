@@ -2147,11 +2147,11 @@ export const OfficerDashboard: React.FC = () => {
       </div>
 
       <div className="pointer-events-none fixed right-3 top-[4.75rem] z-30 flex w-[min(20rem,calc(100vw-1.5rem))] flex-col gap-2 sm:right-5 sm:top-[5.25rem]">
-        <aside className="pointer-events-auto overflow-hidden rounded-lg border border-white/40 bg-white/75 text-cad-ink opacity-90 shadow-xl transition-all duration-300 ease-out dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-white">
+        <aside className="pointer-events-auto overflow-hidden rounded-lg border border-slate-200 bg-white/95 text-cad-ink shadow-2xl transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 dark:text-white">
           <button
             type="button"
             onClick={() => setLiveFeedOpen((value) => !value)}
-            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-white/70 dark:hover:bg-slate-900/70"
+            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
             aria-label={liveFeedOpen ? 'Collapse live feed' : 'Expand live feed'}
             title={liveFeedOpen ? 'Collapse live feed' : 'Expand live feed'}
           >
@@ -2162,7 +2162,7 @@ export const OfficerDashboard: React.FC = () => {
               </span>
             </span>
             <span
-              className="pointer-events-none flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white/80 text-slate-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300"
+              className="pointer-events-none flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
               aria-hidden="true"
             >
               <ChevronUp className={`transition-transform duration-300 ${liveFeedOpen ? '' : 'rotate-180'}`} size={14} />
@@ -2174,9 +2174,9 @@ export const OfficerDashboard: React.FC = () => {
             }`}
           >
             <div className="min-h-0 overflow-hidden">
-              <div className="grid max-h-56 gap-1 overflow-hidden border-t border-white/40 p-2 dark:border-slate-700/70">
+              <div className="grid max-h-56 gap-1 overflow-hidden border-t border-slate-200 p-2 dark:border-slate-700">
                 {liveFeedItems.length === 0 && (
-                  <div className="rounded bg-white/70 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
+                  <div className="rounded bg-white px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-950 dark:text-slate-400">
                     Waiting for live CAD activity.
                   </div>
                 )}
@@ -2192,7 +2192,7 @@ export const OfficerDashboard: React.FC = () => {
                             ? 'bg-cad-blue'
                             : 'bg-slate-400';
                   return (
-                    <div key={item.id} className="grid grid-cols-[auto_1fr] gap-2 rounded border border-white/50 bg-white/70 px-3 py-2 text-xs shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
+                    <div key={item.id} className="grid grid-cols-[auto_1fr] gap-2 rounded border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm dark:border-slate-800 dark:bg-slate-950">
                       <span className={`mt-1 h-2.5 w-2.5 rounded-full ${toneClass}`} />
                       <p className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
                         <strong className="font-black text-slate-950 dark:text-white">{item.actor}</strong>{' '}

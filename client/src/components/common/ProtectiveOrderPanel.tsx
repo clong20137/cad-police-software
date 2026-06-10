@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ExternalLink, RefreshCw, Search, ShieldAlert } from 'lucide-react';
+import { ExternalLink, Search, ShieldAlert } from 'lucide-react';
 import { authClient } from '../../services/authClient';
 
 const courtPortalUrl = 'https://public.courts.in.gov/';
@@ -24,31 +24,30 @@ export const ProtectiveOrderPanel: React.FC = () => {
   const [reason, setReason] = useState('Protective order / court record check');
   const [message, setMessage] = useState('');
   const sourceUrl = useMemo(() => buildCourtSearchUrl(mode, name, dob, caseNumber), [caseNumber, dob, mode, name]);
-  const [embeddedUrl, setEmbeddedUrl] = useState(courtPortalUrl);
-  const [frameKey, setFrameKey] = useState(0);
   const title = mode === 'mycase' ? 'MyCase' : 'Protective Orders';
 
-  const loadInCad = async (nextMode = mode) => {
+  const auditLookup = async (nextMode = mode, nextUrl = sourceUrl) => {
+    await authClient.auditCourtLookup({
+      mode: nextMode,
+      reason: reason.trim(),
+      name: name.trim() || undefined,
+      dob: dob || undefined,
+      caseNumber: caseNumber.trim() || undefined,
+      sourceUrl: nextUrl
+    });
+  };
+
+  const launchPortal = (nextMode = mode) => {
     const nextUrl = buildCourtSearchUrl(nextMode, name, dob, caseNumber);
     if (!reason.trim()) {
       setMessage('Court lookup reason is required.');
       return;
     }
-    setEmbeddedUrl(nextUrl);
-    setFrameKey((value) => value + 1);
-    try {
-      await authClient.auditCourtLookup({
-        mode: nextMode,
-        reason: reason.trim(),
-        name: name.trim() || undefined,
-        dob: dob || undefined,
-        caseNumber: caseNumber.trim() || undefined,
-        sourceUrl: nextUrl
-      });
-      setMessage('Court lookup audited.');
-    } catch {
-      setMessage('Court lookup opened, but audit logging failed.');
-    }
+    window.open(nextUrl, '_blank', 'noopener,noreferrer');
+    setMessage(`${nextMode === 'mycase' ? 'MyCase' : 'Protective Orders'} opened in a new tab. Court lookup audit pending.`);
+    auditLookup(nextMode, nextUrl)
+      .then(() => setMessage(`${nextMode === 'mycase' ? 'MyCase' : 'Protective Orders'} opened and court lookup was audited.`))
+      .catch(() => setMessage('Court lookup opened, but audit logging failed.'));
   };
 
   return (
@@ -72,7 +71,6 @@ export const ProtectiveOrderPanel: React.FC = () => {
             type="button"
             onClick={() => {
               setMode(tabId);
-              loadInCad(tabId);
             }}
             className={`h-10 text-sm font-black transition ${
               mode === tabId
@@ -127,49 +125,29 @@ export const ProtectiveOrderPanel: React.FC = () => {
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => loadInCad()}
+          onClick={() => launchPortal()}
           disabled={!reason.trim()}
           className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-blue-800 disabled:opacity-50"
         >
           <Search size={16} />
-          Search In CAD
-        </button>
-        <button
-          type="button"
-          onClick={() => setFrameKey((value) => value + 1)}
-          className="inline-flex items-center gap-2 rounded-md border border-cad-line px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-        >
-          <RefreshCw size={15} />
-          Reload
-        </button>
-        <a
-          href={sourceUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-2 rounded-md border border-cad-line px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-        >
           Open {title}
           <ExternalLink size={15} />
-        </a>
+        </button>
       </div>
       {message && <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{message}</p>}
 
-      <div className="overflow-hidden rounded-lg border border-cad-line bg-white shadow-inner dark:border-slate-700 dark:bg-slate-950">
-        <div className="border-b border-cad-line bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-          <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{title}</p>
-          <p className="truncate text-xs font-semibold text-slate-600 dark:text-slate-300">Source: {embeddedUrl}</p>
+      <div className="grid gap-3 rounded-lg border border-cad-line bg-white p-4 shadow-inner dark:border-slate-700 dark:bg-slate-950">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Official Source</p>
+          <p className="mt-1 break-all text-sm font-semibold text-slate-700 dark:text-slate-200">{sourceUrl}</p>
         </div>
-        <iframe
-          key={frameKey}
-          src={embeddedUrl}
-          title={`${title} court lookup`}
-          className="h-[min(58vh,34rem)] w-full bg-white"
-          sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
-        />
+        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+          Indiana court portals block embedded display in CAD. Use Open {title} to launch the official source directly while CAD records the lookup audit.
+        </p>
       </div>
 
       <div className="rounded-md border border-cad-line bg-slate-50 p-3 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-        Data source: Indiana public courts portal at public.courts.in.gov and MyCase at public.courts.in.gov/mycase. If the court portal blocks embedded display, use Open {title}. A direct data pull can be added when Indiana provides an approved endpoint or integration credentials.
+        Data source: Indiana public courts portal at public.courts.in.gov and MyCase at public.courts.in.gov/mycase. A direct data pull can be added when Indiana provides an approved endpoint or integration credentials.
       </div>
     </div>
   );
