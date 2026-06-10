@@ -278,6 +278,38 @@ export interface BmvInquiryResponse {
   record?: Record<string, unknown>;
 }
 
+export type IdacsInquiryKind = 'driver-license' | 'vehicle-registration';
+export type IdacsInquiryStatus = 'not_configured' | 'submitted' | 'error';
+
+export interface IdacsInquiryRequest {
+  kind: IdacsInquiryKind;
+  reason: string;
+  officerId?: string;
+  driver?: {
+    name: string;
+    dob: string;
+    sex: string;
+    state: string;
+    imageRequested: boolean;
+  };
+  vehicle?: {
+    plate?: string;
+    vin?: string;
+    year?: string;
+    state: string;
+    avq?: string;
+  };
+}
+
+export interface IdacsInquiryResponse {
+  id: string;
+  status: IdacsInquiryStatus;
+  source: 'IDACS';
+  message: string;
+  requestedAt: Date;
+  record?: Record<string, unknown>;
+}
+
 export type UrgentAlertSeverity = 'Advisory' | 'Important' | 'Urgent' | 'Critical';
 export type UrgentAlertAudienceType = 'everyone' | 'district' | 'users';
 

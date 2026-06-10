@@ -5,6 +5,7 @@ import cors from 'cors';
 import authRoutes from './routes/auth';
 import bmvRoutes from './routes/bmv';
 import configurationRoutes from './routes/configuration';
+import idacsRoutes from './routes/idacs';
 import incidentRoutes from './routes/incidents';
 import urgentAlertRoutes from './routes/urgentAlerts';
 import { cspMiddleware } from './middleware/auth';
@@ -35,6 +36,7 @@ app.use(requestLogger);
 app.use('/api/auth', authRoutes);
 app.use('/api/bmv', bmvRoutes);
 app.use('/api/configuration', configurationRoutes);
+app.use('/api/idacs', idacsRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/urgent-alerts', urgentAlertRoutes);
 

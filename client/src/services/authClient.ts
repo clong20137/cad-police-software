@@ -11,6 +11,8 @@ import {
   IncidentNote,
   IncidentStatus,
   IncidentUnitStatus,
+  IdacsInquiryRequest,
+  IdacsInquiryResponse,
   LoginResponse,
   Permission,
   PublicAuthSettings,
@@ -287,6 +289,11 @@ class AuthClient {
 
   async submitBmvInquiry(input: BmvInquiryRequest): Promise<BmvInquiryResponse> {
     const response = await this.api.post<BmvInquiryResponse>('/bmv/inquiries', input);
+    return response.data;
+  }
+
+  async submitIdacsInquiry(input: IdacsInquiryRequest): Promise<IdacsInquiryResponse> {
+    const response = await this.api.post<IdacsInquiryResponse>('/idacs/inquiries', input);
     return response.data;
   }
 

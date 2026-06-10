@@ -1659,20 +1659,28 @@ export const OfficerDashboard: React.FC = () => {
     setBusy(true);
     setMessage('');
     try {
-      const bmvResponse = await authClient.submitBmvInquiry(submission.bmvRequest);
-      const bmvSummary = [
+      const [bmvResponse, idacsResponse] = await Promise.all([
+        authClient.submitBmvInquiry(submission.bmvRequest),
+        authClient.submitIdacsInquiry(submission.idacsRequest)
+      ]);
+      const integrationSummary = [
         submission.description,
         '',
         'BMV Integration:',
         `Status: ${bmvResponse.status}`,
         `Message: ${bmvResponse.message}`,
-        `Request ID: ${bmvResponse.id}`
+        `Request ID: ${bmvResponse.id}`,
+        '',
+        'IDACS Integration:',
+        `Status: ${idacsResponse.status}`,
+        `Message: ${idacsResponse.message}`,
+        `Request ID: ${idacsResponse.id}`
       ].join('\n');
       const geofenceAssignment = geofenceAssignmentForPoint(currentLocation, configuredGeofences);
       const incident = await authClient.createOfficerEvent({
         type: submission.title,
         priority: 'Normal',
-        description: bmvSummary,
+        description: integrationSummary,
         district: geofenceAssignment.district || null,
         beat: geofenceAssignment.beat || null,
         lat: currentLocation?.lat ?? null,
@@ -1683,7 +1691,7 @@ export const OfficerDashboard: React.FC = () => {
       });
       setIncidents((current) => (current.some((item) => item.id === incident.id) ? current : [incident, ...current]));
       setSelectedIncidentId(incident.id);
-      setMessage(`${submission.type} submitted. BMV: ${bmvResponse.status}.`);
+      setMessage(`${submission.type} submitted. BMV: ${bmvResponse.status}. IDACS: ${idacsResponse.status}.`);
       setActiveDockItem('call-detail');
     } catch {
       setMessage('Unable to submit inquiry.');
