@@ -9,6 +9,7 @@ import {
   ChevronUp,
   ClipboardList,
   Clock,
+  Layers,
   Lock,
   LogOut,
   MapPin,
@@ -53,6 +54,13 @@ type DockSlot = QuickLaunchSlot<DockItem>;
 type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
 type PendingCallFeedRow = { incident: Incident; exiting: boolean };
 type CallTabId = 'all' | 'my' | 'pending' | 'closed';
+type OfficerMapLayers = {
+  units: boolean;
+  calls: boolean;
+  districts: boolean;
+  traffic: boolean;
+  trails: boolean;
+};
 type LiveFeedItem = {
   id: string;
   at: Date | string;
@@ -175,13 +183,13 @@ const dockItems: Array<{ id: DockItem; label: string; icon: React.ReactNode }> =
   { id: 'notes', label: 'Notes', icon: <Send size={18} /> },
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
   { id: 'inquiries', label: 'Inquiries', icon: <Search size={18} /> },
-  { id: 'protective-orders', label: 'Protect Ord', icon: <Search size={18} /> },
+  { id: 'protective-orders', label: 'Protective Orders', icon: <Search size={18} /> },
   { id: 'location', label: 'Location', icon: <MapPin size={18} /> },
   { id: 'navigation', label: 'Navigate', icon: <Navigation size={18} /> },
   { id: 'status', label: 'Status', icon: <Radio size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
 ];
-const defaultDockSlots: DockSlot[] = ['calls', 'call-detail', 'notes', 'messages', 'inquiries', 'location', 'status', 'settings'];
+const defaultDockSlots: DockSlot[] = ['calls', 'call-detail', 'notes', 'messages', 'inquiries', 'protective-orders', 'status', 'settings'];
 const emojiCatalog = (() => {
   const priorityEmoji = ['😀', '😂', '👍', '🙏', '🚓', '🚑', '🚒', '📍', '✅', '⚠', '❗'];
   const ranges = [
@@ -593,6 +601,14 @@ export const OfficerDashboard: React.FC = () => {
   const [navigationSummary, setNavigationSummary] = useState<NavigationSummary | null>(null);
   const [rightOpen, setRightOpen] = useState(true);
   const [liveFeedOpen, setLiveFeedOpen] = useState(() => localStorage.getItem('cad_officer_live_feed_open') !== 'false');
+  const [mapLayerMenuOpen, setMapLayerMenuOpen] = useState(false);
+  const [mapLayers, setMapLayers] = useState<OfficerMapLayers>({
+    units: true,
+    calls: true,
+    districts: true,
+    traffic: true,
+    trails: true
+  });
   const [activeDockItem, setActiveDockItem] = useState<DockItem | null>(null);
   const [openDockItems, setOpenDockItems] = useState<DockItem[]>([]);
   const [dockZOrder, setDockZOrder] = useState<Record<DockItem, number>>({} as Record<DockItem, number>);
@@ -832,8 +848,7 @@ export const OfficerDashboard: React.FC = () => {
     { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveDockItem('inquiries') },
     { id: 'unit-status', label: 'Unit Status', icon: Radio, iconClassName: 'text-indigo-700', onClick: () => setActiveDockItem('status') },
     { id: 'calls', label: 'My Case', icon: ClipboardList, iconClassName: 'text-amber-700', onClick: () => setActiveDockItem('calls') },
-    { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openDockItem('messages') },
-    { id: 'protect', label: 'Protect Ord', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveDockItem('protective-orders') }
+    { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openDockItem('messages') }
   ];
   useEffect(() => {
     localStorage.setItem('cad_officer_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
@@ -1312,52 +1327,61 @@ export const OfficerDashboard: React.FC = () => {
     const bounds = new googleMaps.LatLngBounds();
     let hasCallBounds = false;
 
-    configuredGeofences.forEach((geofence) => {
-      if (!googleMaps.Polygon) return;
-      geofence.rings.forEach((ring) => {
-        const polygon = new googleMaps.Polygon({
-          paths: ring.map((point) => ({ lat: point.lat, lng: point.lon })),
-          strokeColor: geofence.color,
-          strokeOpacity: geofence.kind === 'beat' ? 0.85 : 0.7,
-          strokeWeight: geofence.kind === 'beat' ? 2 : 3,
-          fillColor: geofence.color,
-          fillOpacity: geofence.kind === 'beat' ? 0.08 : 0.05,
-          map
-        });
-        mapPolygonsRef.current.push(polygon);
-      });
-    });
+    if (mapLayers.traffic && googleMaps.TrafficLayer) {
+      trafficLayerRef.current = new googleMaps.TrafficLayer();
+      trafficLayerRef.current.setMap(map);
+    }
 
-    trackedOfficers.forEach((officer) => {
-      if (officer.lat === undefined || officer.lon === undefined) return;
-      const status = officerMapStatus(officer, user?.id, selectedStatus);
-      const isCurrentUser = officer.id === user?.id;
-      const tone = officerMapTone(status, isCurrentUser);
-      const label = officerMapDisplayLabel(officer);
-      const infoWindow = new googleMaps.InfoWindow({
-        content: `
-          <div style="min-width:190px;font-family:Arial,sans-serif;color:#0f172a">
-            <div style="font-weight:700;margin-bottom:2px">${escapeHtml(officer.name)}</div>
-            <div>Unit ${escapeHtml(officerMapLabel(officer))}</div>
-            <div style="margin-top:4px;font-size:12px;color:#475569">${escapeHtml(status)}</div>
-            <div style="font-size:12px;color:#475569">${officer.lat.toFixed(5)}, ${officer.lon.toFixed(5)}</div>
-          </div>
-        `
+    if (mapLayers.districts) {
+      configuredGeofences.forEach((geofence) => {
+        if (!googleMaps.Polygon) return;
+        geofence.rings.forEach((ring) => {
+          const polygon = new googleMaps.Polygon({
+            paths: ring.map((point) => ({ lat: point.lat, lng: point.lon })),
+            strokeColor: geofence.color,
+            strokeOpacity: geofence.kind === 'beat' ? 0.85 : 0.7,
+            strokeWeight: geofence.kind === 'beat' ? 2 : 3,
+            fillColor: geofence.color,
+            fillOpacity: geofence.kind === 'beat' ? 0.08 : 0.05,
+            map
+          });
+          mapPolygonsRef.current.push(polygon);
+        });
       });
-      const overlay = addOfficerOverlay({
-        map,
-        lat: officer.lat,
-        lon: officer.lon,
-        label,
-        tone,
-        onClick: () => infoWindow.open({ map, position: { lat: officer.lat as number, lng: officer.lon as number } })
+    }
+
+    if (mapLayers.units) {
+      trackedOfficers.forEach((officer) => {
+        if (officer.lat === undefined || officer.lon === undefined) return;
+        const status = officerMapStatus(officer, user?.id, selectedStatus);
+        const isCurrentUser = officer.id === user?.id;
+        const tone = officerMapTone(status, isCurrentUser);
+        const label = officerMapDisplayLabel(officer);
+        const infoWindow = new googleMaps.InfoWindow({
+          content: `
+            <div style="min-width:190px;font-family:Arial,sans-serif;color:#0f172a">
+              <div style="font-weight:700;margin-bottom:2px">${escapeHtml(officer.name)}</div>
+              <div>Unit ${escapeHtml(officerMapLabel(officer))}</div>
+              <div style="margin-top:4px;font-size:12px;color:#475569">${escapeHtml(status)}</div>
+              <div style="font-size:12px;color:#475569">${officer.lat.toFixed(5)}, ${officer.lon.toFixed(5)}</div>
+            </div>
+          `
+        });
+        const overlay = addOfficerOverlay({
+          map,
+          lat: officer.lat,
+          lon: officer.lon,
+          label,
+          tone,
+          onClick: () => infoWindow.open({ map, position: { lat: officer.lat as number, lng: officer.lon as number } })
+        });
+        if (overlay) mapOverlaysRef.current.push(overlay);
       });
-      if (overlay) mapOverlaysRef.current.push(overlay);
-    });
+    }
 
     if (currentLocation) {
       const selectedIsEnRoute = selectedStatus === 'En Route';
-      if (selectedIsEnRoute && locationTrail.length > 1) {
+      if (mapLayers.trails && selectedIsEnRoute && locationTrail.length > 1) {
         trailPolylineRef.current = new googleMaps.Polyline({
           path: locationTrail.map((point) => ({ lat: point.lat, lng: point.lon })),
           geodesic: true,
@@ -1377,8 +1401,6 @@ export const OfficerDashboard: React.FC = () => {
         status: 'loading',
         traffic: 'unknown'
       });
-      trafficLayerRef.current = new googleMaps.TrafficLayer();
-      trafficLayerRef.current.setMap(map);
       routeRendererRef.current = new googleMaps.DirectionsRenderer({
         map,
         suppressMarkers: true,
@@ -1424,35 +1446,37 @@ export const OfficerDashboard: React.FC = () => {
       setNavigationSummary(null);
     }
 
-    assignedIncidents.forEach((incident) => {
-      if (incident.lat === undefined || incident.lon === undefined) return;
-      const location = { lat: incident.lat, lng: incident.lon };
-      bounds.extend(location);
-      hasCallBounds = true;
-      mapOverlaysRef.current.push(
-        ...[
-          addOfficerOverlay({
-            map,
-            lat: incident.lat,
-            lon: incident.lon,
-            label: incident.callNumber,
-            tone: incident.priority === 'Emergency' ? 'red' : 'blue',
-            sublabel: etaText(currentLocation, incident, currentSpeed),
-            onClick: () => {
-              setSelectedIncidentId(incident.id);
-              setActiveDockItem('call-detail');
-            }
-          })
-        ].filter(Boolean) as GoogleOverlayViewInstance[]
-      );
-    });
+    if (mapLayers.calls) {
+      assignedIncidents.forEach((incident) => {
+        if (incident.lat === undefined || incident.lon === undefined) return;
+        const location = { lat: incident.lat, lng: incident.lon };
+        bounds.extend(location);
+        hasCallBounds = true;
+        mapOverlaysRef.current.push(
+          ...[
+            addOfficerOverlay({
+              map,
+              lat: incident.lat,
+              lon: incident.lon,
+              label: incident.callNumber,
+              tone: incident.priority === 'Emergency' ? 'red' : 'blue',
+              sublabel: etaText(currentLocation, incident, currentSpeed),
+              onClick: () => {
+                setSelectedIncidentId(incident.id);
+                setActiveDockItem('call-detail');
+              }
+            })
+          ].filter(Boolean) as GoogleOverlayViewInstance[]
+        );
+      });
+    }
 
     if (hasCallBounds && !hasFitCallBoundsRef.current) {
       if (currentLocation) bounds.extend({ lat: currentLocation.lat, lng: currentLocation.lon });
       map.fitBounds(bounds);
       hasFitCallBoundsRef.current = true;
     }
-  }, [assignedIncidents, configuredGeofences, currentLocation, currentSpeed, locationTrail, mapRouteIncident, selectedStatus, theme, trackedOfficers, user?.id]);
+  }, [assignedIncidents, configuredGeofences, currentLocation, currentSpeed, locationTrail, mapLayers, mapRouteIncident, selectedStatus, theme, trackedOfficers, user?.id]);
 
   const recenterMap = () => {
     if (!currentLocation) return;
@@ -2011,17 +2035,6 @@ export const OfficerDashboard: React.FC = () => {
       <div className="pointer-events-auto fixed right-3 top-3 z-40 flex select-none items-center gap-1.5 rounded-2xl border border-cad-line bg-white/90 p-2 text-cad-ink shadow-[0_16px_45px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950/85 dark:text-white sm:right-5 sm:top-4 sm:gap-2">
           <button
             type="button"
-            onClick={() => setLiveFeedOpen((value) => !value)}
-            className={`relative flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700 ${
-              liveFeedOpen ? 'ring-2 ring-cad-accent/40' : ''
-            }`}
-            aria-label={liveFeedOpen ? 'Hide live feed' : 'Show live feed'}
-            title={liveFeedOpen ? 'Hide live feed' : 'Show live feed'}
-          >
-            <ChevronUp className={`transition-transform duration-300 ${liveFeedOpen ? '' : 'rotate-180'}`} size={19} />
-          </button>
-          <button
-            type="button"
             onClick={sendOfficerEmergency}
             disabled={busy}
             className="flex h-10 w-10 items-center justify-center rounded border border-red-700 bg-red-600 text-white shadow-sm hover:bg-red-700 disabled:opacity-60"
@@ -2030,6 +2043,44 @@ export const OfficerDashboard: React.FC = () => {
           >
             <AlertTriangle size={19} />
           </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMapLayerMenuOpen((value) => !value)}
+              className={`flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700 ${
+                mapLayerMenuOpen ? 'ring-2 ring-cad-accent/40' : ''
+              }`}
+              aria-label="Map layers"
+              title="Map layers"
+            >
+              <Layers size={19} />
+            </button>
+            {mapLayerMenuOpen && (
+              <div className="absolute right-0 top-12 z-50 w-56 rounded border border-slate-200 bg-white p-2 text-slate-950 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                <p className="px-2 pb-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Map Layers</p>
+                {([
+                  ['units', 'Units'],
+                  ['calls', 'Calls'],
+                  ['districts', 'Districts / Beats'],
+                  ['traffic', 'Traffic'],
+                  ['trails', 'Route Trails']
+                ] as Array<[keyof OfficerMapLayers, string]>).map(([layer, label]) => (
+                  <button
+                    key={layer}
+                    type="button"
+                    onClick={() => setMapLayers((current) => ({ ...current, [layer]: !current[layer] }))}
+                    className="flex w-full items-center justify-between gap-3 rounded px-2 py-2 text-left text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800"
+                    aria-pressed={mapLayers[layer]}
+                  >
+                    <span>{label}</span>
+                    <span className={`flex h-5 w-5 items-center justify-center rounded border ${mapLayers[layer] ? 'border-cad-blue bg-cad-blue text-white' : 'border-slate-300 text-transparent dark:border-slate-600'}`}>
+                      <Check size={13} />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => setTheme((value) => (value === 'dark' ? 'light' : 'dark'))}
@@ -2095,53 +2146,64 @@ export const OfficerDashboard: React.FC = () => {
           )}
       </div>
 
-      <div className="pointer-events-none fixed bottom-[6.75rem] right-3 z-30 flex w-[min(20rem,calc(100vw-1.5rem))] flex-col gap-2 sm:right-5 md:bottom-28">
-        <aside
-          className={`pointer-events-auto overflow-hidden rounded-lg border border-white/40 bg-white/75 text-cad-ink shadow-xl transition-all duration-300 ease-out dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-white ${
-            liveFeedOpen ? 'max-h-80 translate-y-0 p-2 opacity-90' : 'max-h-0 translate-y-2 border-transparent p-0 opacity-0'
-          }`}
-          aria-hidden={!liveFeedOpen}
-        >
-          <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
-            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Live Feed</span>
-            <button
-              type="button"
-              onClick={() => setLiveFeedOpen(false)}
-              className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white/80 text-slate-500 hover:bg-white hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-800"
-              aria-label="Collapse live feed"
-              title="Collapse live feed"
+      <div className="pointer-events-none fixed right-3 top-[4.75rem] z-30 flex w-[min(20rem,calc(100vw-1.5rem))] flex-col gap-2 sm:right-5 sm:top-[5.25rem]">
+        <aside className="pointer-events-auto overflow-hidden rounded-lg border border-white/40 bg-white/75 text-cad-ink opacity-90 shadow-xl transition-all duration-300 ease-out dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-white">
+          <button
+            type="button"
+            onClick={() => setLiveFeedOpen((value) => !value)}
+            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-white/70 dark:hover:bg-slate-900/70"
+            aria-label={liveFeedOpen ? 'Collapse live feed' : 'Expand live feed'}
+            title={liveFeedOpen ? 'Collapse live feed' : 'Expand live feed'}
+          >
+            <span className="min-w-0">
+              <span className="block text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Live Feed</span>
+              <span className="mt-0.5 block truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {liveFeedItems.length} updates
+              </span>
+            </span>
+            <span
+              className="pointer-events-none flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white/80 text-slate-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300"
+              aria-hidden="true"
             >
-              <ChevronUp size={14} />
-            </button>
-          </div>
-          <div className="grid max-h-56 gap-1 overflow-hidden">
-            {liveFeedItems.length === 0 && (
-              <div className="rounded bg-white/70 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
-                Waiting for live CAD activity.
+              <ChevronUp className={`transition-transform duration-300 ${liveFeedOpen ? '' : 'rotate-180'}`} size={14} />
+            </span>
+          </button>
+          <div
+            className={`grid transition-all duration-300 ease-out ${
+              liveFeedOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+            }`}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="grid max-h-56 gap-1 overflow-hidden border-t border-white/40 p-2 dark:border-slate-700/70">
+                {liveFeedItems.length === 0 && (
+                  <div className="rounded bg-white/70 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
+                    Waiting for live CAD activity.
+                  </div>
+                )}
+                {liveFeedItems.map((item) => {
+                  const toneClass =
+                    item.tone === 'red'
+                      ? 'bg-red-500'
+                      : item.tone === 'yellow'
+                        ? 'bg-amber-400'
+                        : item.tone === 'green'
+                          ? 'bg-emerald-500'
+                          : item.tone === 'blue'
+                            ? 'bg-cad-blue'
+                            : 'bg-slate-400';
+                  return (
+                    <div key={item.id} className="grid grid-cols-[auto_1fr] gap-2 rounded border border-white/50 bg-white/70 px-3 py-2 text-xs shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
+                      <span className={`mt-1 h-2.5 w-2.5 rounded-full ${toneClass}`} />
+                      <p className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
+                        <strong className="font-black text-slate-950 dark:text-white">{item.actor}</strong>{' '}
+                        <strong className="font-black text-cad-blue dark:text-blue-100">{item.action}</strong>{' '}
+                        <span className="text-slate-600 dark:text-slate-300">{item.detail}</span>
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
-            )}
-            {liveFeedItems.map((item) => {
-              const toneClass =
-                item.tone === 'red'
-                  ? 'bg-red-500'
-                  : item.tone === 'yellow'
-                    ? 'bg-amber-400'
-                    : item.tone === 'green'
-                      ? 'bg-emerald-500'
-                      : item.tone === 'blue'
-                        ? 'bg-cad-blue'
-                        : 'bg-slate-400';
-              return (
-                <div key={item.id} className="grid grid-cols-[auto_1fr] gap-2 rounded border border-white/50 bg-white/70 px-3 py-2 text-xs shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
-                  <span className={`mt-1 h-2.5 w-2.5 rounded-full ${toneClass}`} />
-                  <p className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
-                    <strong className="font-black text-slate-950 dark:text-white">{item.actor}</strong>{' '}
-                    <strong className="font-black text-cad-blue dark:text-blue-100">{item.action}</strong>{' '}
-                    <span className="text-slate-600 dark:text-slate-300">{item.detail}</span>
-                  </p>
-                </div>
-              );
-            })}
+            </div>
           </div>
         </aside>
 
