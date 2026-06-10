@@ -3556,7 +3556,7 @@ export const Dashboard: React.FC = () => {
             value={mapCommand}
             onChange={(event) => setMapCommand(event.target.value)}
             placeholder="Command"
-            className="min-w-0 flex-1 bg-transparent text-sm font-medium text-cad-ink outline-none placeholder:text-slate-400 dark:text-white"
+            className="min-w-0 flex-1 appearance-none bg-transparent text-sm font-medium text-cad-ink outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-white"
             aria-label="Dispatch command line"
           />
         </form>
@@ -3767,6 +3767,7 @@ export const Dashboard: React.FC = () => {
         activeItem={activeQuickModal}
         customizingSlot={customizingSlot}
         sidebarCollapsed={appSidebarCollapsed}
+        desktopLeftClass={appSidebarCollapsed ? 'left-[25rem]' : 'left-[36rem]'}
         badges={{
           messages: messageBadgeCount,
           calls: callBadgeCount,
