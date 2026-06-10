@@ -44,6 +44,7 @@ import {
   IncidentUnitStatus,
   MessageThread,
   SendMessageAttachment,
+  UrgentAlert,
   UnitStatus,
   User,
   UserRole
@@ -54,6 +55,7 @@ import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot as DockSlotValue } from './common/QuickLaunchDock';
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
 import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
+import { UrgentAlertOverlay } from './common/UrgentAlertOverlay';
 import { callTypesFromConfig } from '../utils/adminConfig';
 import { geofenceAssignmentForPoint, geofencesFromConfig, MapGeofence } from '../utils/mapGeofences';
 import { APP_NAME } from '../constants/branding';
@@ -616,6 +618,7 @@ export const Dashboard: React.FC = () => {
   const [typingByThread, setTypingByThread] = useState<Record<string, { name: string; expiresAt: number }>>({});
   const [messagePendingDelete, setMessagePendingDelete] = useState<ChatMessage | null>(null);
   const [threadPendingDeleteUserId, setThreadPendingDeleteUserId] = useState<string | null>(null);
+  const [urgentAlerts, setUrgentAlerts] = useState<UrgentAlert[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [adminConfig, setAdminConfig] = useState<AdminConfigurationItem[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
@@ -853,12 +856,21 @@ export const Dashboard: React.FC = () => {
     }
   }, []);
 
+  const loadUrgentAlerts = useCallback(async () => {
+    try {
+      setUrgentAlerts(await authClient.getUrgentAlerts());
+    } catch {
+      setUrgentAlerts([]);
+    }
+  }, []);
+
   const loadDirectory = useCallback(async () => {
     const users = await authClient.getDirectory();
     setDirectory(users);
     setSelectedMessageUserId((current) => current || users.find((item) => item.id !== user?.id)?.id || '');
     loadMessageThreads();
-  }, [loadMessageThreads, user?.id]);
+    loadUrgentAlerts();
+  }, [loadMessageThreads, loadUrgentAlerts, user?.id]);
 
   useEffect(() => {
     loadDirectory();
@@ -1145,6 +1157,10 @@ export const Dashboard: React.FC = () => {
         return incoming[0]?.id || '';
       });
     });
+    socket.on('urgent-alerts:update', () => {
+      loadUrgentAlerts();
+      playAlert('call');
+    });
     socket.on('message:new', (message: ChatMessage) => {
       const incomingForMe = message.recipientId === user?.id && message.senderId !== user?.id;
       const otherUserId = message.senderId === user?.id ? message.recipientId : message.senderId;
@@ -1230,7 +1246,7 @@ export const Dashboard: React.FC = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [loadMessageThreads, playAlert, pushToast, user?.id]);
+  }, [loadMessageThreads, loadUrgentAlerts, playAlert, pushToast, user?.id]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -1787,6 +1803,15 @@ export const Dashboard: React.FC = () => {
           ? (error as { response: { data: { error: string } } }).response.data.error
           : '';
       setIncidentError(apiMessage || 'Unable to submit inquiry.');
+    }
+  };
+
+  const acknowledgeUrgentAlert = async (alertId: string) => {
+    try {
+      await authClient.acknowledgeUrgentAlert(alertId);
+      setUrgentAlerts((current) => current.filter((alert) => alert.id !== alertId));
+    } catch {
+      pushToast({ title: 'Alert acknowledgement failed', message: 'Try again in a moment.', tone: 'warning' });
     }
   };
 
@@ -3339,6 +3364,8 @@ export const Dashboard: React.FC = () => {
           </div>
         ))}
       </div>
+
+      <UrgentAlertOverlay alerts={urgentAlerts} onAcknowledge={acknowledgeUrgentAlert} />
 
       <ChangePasswordModal
         open={changePasswordOpen}

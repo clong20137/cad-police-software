@@ -178,3 +178,18 @@ export const broadcastOfficerAssignment = async (officerId: string): Promise<voi
     serverTime: new Date().toISOString()
   });
 };
+
+export const broadcastUrgentAlerts = (recipientIds?: string[]): void => {
+  if (!io) {
+    return;
+  }
+
+  if (!recipientIds || recipientIds.length === 0) {
+    io.emit('urgent-alerts:update', { serverTime: new Date().toISOString() });
+    return;
+  }
+
+  recipientIds.forEach((recipientId) => {
+    io?.to(`user:${recipientId}`).emit('urgent-alerts:update', { serverTime: new Date().toISOString() });
+  });
+};

@@ -4,6 +4,7 @@ import {
   ChangePasswordRequest,
   AdminConfigurationItem,
   CreateIncidentRequest,
+  CreateUrgentAlertRequest,
   Incident,
   IncidentNote,
   IncidentStatus,
@@ -21,6 +22,7 @@ import {
   TokenPair,
   UpdateIncidentStatusRequest,
   UpdateUserRequest,
+  UrgentAlert,
   UpsertConfigurationItemRequest,
   User
 } from '../types/auth';
@@ -279,6 +281,30 @@ class AuthClient {
       noteType: 'note'
     });
     return response.data;
+  }
+
+  async getUrgentAlerts(): Promise<UrgentAlert[]> {
+    const response = await this.api.get<UrgentAlert[]>('/urgent-alerts');
+    return response.data;
+  }
+
+  async getRecentUrgentAlerts(): Promise<UrgentAlert[]> {
+    const response = await this.api.get<UrgentAlert[]>('/urgent-alerts/recent');
+    return response.data;
+  }
+
+  async createUrgentAlert(input: CreateUrgentAlertRequest): Promise<UrgentAlert> {
+    const response = await this.api.post<UrgentAlert>('/urgent-alerts', input);
+    return response.data;
+  }
+
+  async sendOfficerEmergency(lat?: number | null, lon?: number | null): Promise<UrgentAlert> {
+    const response = await this.api.post<UrgentAlert>('/urgent-alerts/officer-emergency', { lat, lon });
+    return response.data;
+  }
+
+  async acknowledgeUrgentAlert(alertId: string): Promise<void> {
+    await this.api.put(`/urgent-alerts/${alertId}/acknowledge`);
   }
 
   async updateLocation(lat: number, lon: number, speedMph?: number | null): Promise<User> {

@@ -201,6 +201,40 @@ export interface AddIncidentNoteRequest {
   noteType?: IncidentNote['noteType'];
 }
 
+export type UrgentAlertSeverity = 'Advisory' | 'Important' | 'Urgent' | 'Critical';
+export type UrgentAlertAudienceType = 'everyone' | 'district' | 'users';
+
+export interface UrgentAlert {
+  id: string;
+  title: string;
+  message: string;
+  severity: UrgentAlertSeverity;
+  audienceType: UrgentAlertAudienceType;
+  audienceLabel?: string;
+  targetDistrict?: string;
+  targetUserIds: string[];
+  requireAcknowledgement: boolean;
+  expiresAt?: Date;
+  createdBy?: string;
+  createdByName?: string;
+  createdAt: Date;
+  acknowledgedAt?: Date;
+  deliveredAt?: Date;
+  recipientCount?: number;
+  acknowledgedCount?: number;
+}
+
+export interface CreateUrgentAlertRequest {
+  title: string;
+  message: string;
+  severity?: UrgentAlertSeverity;
+  audienceType?: UrgentAlertAudienceType;
+  targetDistrict?: string | null;
+  targetUserIds?: string[];
+  requireAcknowledgement?: boolean;
+  expiresAt?: string | null;
+}
+
 export interface UpdateIncidentStatusRequest {
   status: IncidentStatus;
   disposition?: string;

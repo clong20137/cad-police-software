@@ -35,13 +35,14 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
-import { AdminConfigurationItem, ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, User, UserRole } from '../types/auth';
+import { AdminConfigurationItem, ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, UrgentAlert, User, UserRole } from '../types/auth';
 import { ChangePasswordModal } from './common/ChangePasswordModal';
 import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
 import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
+import { UrgentAlertOverlay } from './common/UrgentAlertOverlay';
 import { callTypesFromConfig } from '../utils/adminConfig';
 import { geofenceAssignmentForPoint, geofencesFromConfig } from '../utils/mapGeofences';
 import { APP_NAME } from '../constants/branding';
@@ -153,9 +154,11 @@ type WakeLockNavigator = Navigator & {
 const liveLocationHeartbeatMs = 5000;
 const liveLocationOptions: PositionOptions = {
   enableHighAccuracy: true,
-  maximumAge: 0,
-  timeout: 10000
+  maximumAge: 1500,
+  timeout: 15000
 };
+const usableGpsAccuracyMeters = 150;
+const fallbackGpsAccuracyMeters = 300;
 
 const dockItems: Array<{ id: DockItem; label: string; icon: React.ReactNode }> = [
   { id: 'calls', label: 'Calls', icon: <ClipboardList size={18} /> },
@@ -527,6 +530,7 @@ export const OfficerDashboard: React.FC = () => {
   const [adminConfig, setAdminConfig] = useState<AdminConfigurationItem[]>([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<'starting' | 'live' | 'blocked' | 'error'>('starting');
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [realtimeState, setRealtimeState] = useState<'connecting' | 'live' | 'reconnecting' | 'offline'>('connecting');
   const [lastRealtimeSync, setLastRealtimeSync] = useState<Date | null>(null);
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null);
@@ -584,10 +588,12 @@ export const OfficerDashboard: React.FC = () => {
   const [messagePendingDelete, setMessagePendingDelete] = useState<ChatMessage | null>(null);
   const [threadPendingDeleteUserId, setThreadPendingDeleteUserId] = useState<string | null>(null);
   const [sidebarNow, setSidebarNow] = useState(() => Date.now());
+  const [urgentAlerts, setUrgentAlerts] = useState<UrgentAlert[]>([]);
   const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null } | null>(null);
+  const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null; accuracy?: number | null } | null>(null);
+  const currentLocationRef = useRef<{ lat: number; lon: number } | null>(null);
   const uploadingLocationRef = useRef(false);
   const lastLocationUploadAtRef = useRef(0);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -608,6 +614,10 @@ export const OfficerDashboard: React.FC = () => {
   const dockZCounterRef = useRef(60);
   const pendingCallFeedPreviousRef = useRef<Map<string, Incident>>(new Map());
   const pendingCallExitTimersRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    currentLocationRef.current = currentLocation;
+  }, [currentLocation]);
 
   const pendingCalls = useMemo(
     () =>
@@ -738,9 +748,21 @@ export const OfficerDashboard: React.FC = () => {
     }
   }, []);
 
+  const loadUrgentAlerts = useCallback(async () => {
+    try {
+      setUrgentAlerts(await authClient.getUrgentAlerts());
+    } catch {
+      setUrgentAlerts([]);
+    }
+  }, []);
+
   useEffect(() => {
     loadIncidents();
   }, [loadIncidents]);
+
+  useEffect(() => {
+    loadUrgentAlerts();
+  }, [loadUrgentAlerts]);
 
   useEffect(() => {
     localStorage.setItem('cad_theme', theme);
@@ -922,6 +944,10 @@ export const OfficerDashboard: React.FC = () => {
     });
     socket.on('assignment:changed', () => requestResync('assignment-changed'));
     socket.on('incidents:update', (nextIncidents: Incident[]) => setIncidents(nextIncidents));
+    socket.on('urgent-alerts:update', () => {
+      loadUrgentAlerts();
+      setMessage('Urgent alert received.');
+    });
     socket.on('presence:update', (presence: { onlineUserIds: string[]; users: User[] }) => {
       setOnlineUserIds(presence.onlineUserIds || []);
       setDirectory(presence.users || []);
@@ -1002,7 +1028,7 @@ export const OfficerDashboard: React.FC = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [loadMessageThreads, user?.id]);
+  }, [loadMessageThreads, loadUrgentAlerts, user?.id]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -1032,27 +1058,34 @@ export const OfficerDashboard: React.FC = () => {
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
+        const accuracy = position.coords.accuracy;
         const speedMph =
           position.coords.speed === null || position.coords.speed === undefined
             ? null
             : Math.max(0, position.coords.speed * 2.23694);
+        const accuracyUsable = !Number.isFinite(accuracy) || accuracy <= usableGpsAccuracyMeters;
+        const accuracyAcceptable = !Number.isFinite(accuracy) || accuracy <= fallbackGpsAccuracyMeters || !currentLocationRef.current;
         latestLocationRef.current = {
           lat: position.coords.latitude,
           lon: position.coords.longitude,
-          speedMph
+          speedMph,
+          accuracy
         };
         const nextLocation = { lat: position.coords.latitude, lon: position.coords.longitude };
-        setCurrentLocation(nextLocation);
-        setLocationTrail((current) => {
-          const previous = current[current.length - 1];
-          if (previous && distanceMiles(previous.lat, previous.lon, nextLocation.lat, nextLocation.lon) < 0.005) {
-            return current;
-          }
-          return [...current, { ...nextLocation, speedMph }].slice(-80);
-        });
+        setLocationAccuracy(Number.isFinite(accuracy) ? accuracy : null);
+        if (accuracyAcceptable) {
+          setCurrentLocation(nextLocation);
+          setLocationTrail((current) => {
+            const previous = current[current.length - 1];
+            if (previous && distanceMiles(previous.lat, previous.lon, nextLocation.lat, nextLocation.lon) < 0.005) {
+              return current;
+            }
+            return [...current, { ...nextLocation, speedMph }].slice(-80);
+          });
+        }
         setCurrentSpeed(speedMph);
-        setLocationState('live');
-        uploadLatestLocation();
+        setLocationState(accuracyUsable ? 'live' : 'starting');
+        if (accuracyUsable) uploadLatestLocation();
       },
       (error) => setLocationState(error.code === error.PERMISSION_DENIED ? 'blocked' : 'error'),
       liveLocationOptions
@@ -1496,6 +1529,28 @@ export const OfficerDashboard: React.FC = () => {
     }
   };
 
+  const sendOfficerEmergency = async () => {
+    setBusy(true);
+    setMessage('');
+    try {
+      await authClient.sendOfficerEmergency(currentLocation?.lat ?? null, currentLocation?.lon ?? null);
+      setMessage('Officer emergency alert sent.');
+    } catch {
+      setMessage('Unable to send officer emergency alert.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const acknowledgeUrgentAlert = async (alertId: string) => {
+    try {
+      await authClient.acknowledgeUrgentAlert(alertId);
+      setUrgentAlerts((current) => current.filter((alert) => alert.id !== alertId));
+    } catch {
+      setMessage('Unable to acknowledge urgent alert.');
+    }
+  };
+
   const submitInquiry = async (submission: InquirySubmission) => {
     setBusy(true);
     setMessage('');
@@ -1835,6 +1890,16 @@ export const OfficerDashboard: React.FC = () => {
           </span>
           <button
             type="button"
+            onClick={sendOfficerEmergency}
+            disabled={busy}
+            className="flex h-10 w-10 items-center justify-center rounded border border-red-700 bg-red-600 text-white shadow-sm hover:bg-red-700 disabled:opacity-60"
+            aria-label="Send officer emergency alert"
+            title="Officer emergency"
+          >
+            <AlertTriangle size={19} />
+          </button>
+          <button
+            type="button"
             onClick={() => setTheme((value) => (value === 'dark' ? 'light' : 'dark'))}
             className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
             aria-label="Toggle light dark mode"
@@ -1908,16 +1973,25 @@ export const OfficerDashboard: React.FC = () => {
       </button>
 
       <aside className="absolute left-3 top-3 z-40 grid gap-2 sm:left-5 sm:top-4">
-        <div className="inline-flex h-10 items-center rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95">
+        <div className="inline-flex h-10 items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95">
+          <Navigation size={16} className="text-cad-blue dark:text-blue-100" />
           <p className="text-sm font-black text-slate-950 dark:text-white">{currentSpeed === null ? '--' : Math.round(currentSpeed)} MPH</p>
-        </div>
-        <div className="rounded border border-cad-line bg-white/95 px-3 py-2 shadow-xl dark:border-slate-700 dark:bg-slate-900/95">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-            {locationState === 'live' ? 'My Location' : `Location ${locationState}`}
-          </p>
-          <p className="mt-1 text-xs font-black text-slate-950 dark:text-white">
-            {currentLocation ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'Waiting for GPS'}
-          </p>
+          <span
+            className={`h-3 w-3 rounded-full ring-2 ring-white dark:ring-slate-950 ${
+              locationState === 'live'
+                ? 'bg-emerald-500'
+                : locationState === 'starting'
+                  ? 'bg-amber-400'
+                  : 'bg-red-500'
+            }`}
+            title={
+              locationState === 'live'
+                ? `GPS active${locationAccuracy !== null ? ` - ${Math.round(locationAccuracy)}m accuracy` : ''}`
+                : locationState === 'starting'
+                  ? `GPS connecting${locationAccuracy !== null ? ` - ${Math.round(locationAccuracy)}m accuracy` : ''}`
+                  : 'GPS not working'
+            }
+          />
         </div>
       </aside>
 
@@ -2080,6 +2154,8 @@ export const OfficerDashboard: React.FC = () => {
               />
         </ModalShell>
       ))}
+
+      <UrgentAlertOverlay alerts={urgentAlerts} onAcknowledge={acknowledgeUrgentAlert} />
 
       <ChangePasswordModal
         open={changePasswordOpen}

@@ -111,6 +111,7 @@ export const initializeDatabase = async (): Promise<void> => {
   await initializeLocationHistoryTables();
   await initializeMessagingTables();
   await initializeIncidentTables();
+  await initializeUrgentAlertTables();
   await initializeAuditLogTables();
   await initializeAdminConfigurationTables();
 };
@@ -417,6 +418,48 @@ export const initializeAuditLogTables = async (): Promise<void> => {
       CONSTRAINT fk_audit_logs_user_id
         FOREIGN KEY (user_id) REFERENCES users(id)
         ON DELETE SET NULL
+    )
+  `);
+};
+
+export const initializeUrgentAlertTables = async (): Promise<void> => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS urgent_alerts (
+      id VARCHAR(36) PRIMARY KEY,
+      title VARCHAR(160) NOT NULL,
+      message TEXT NOT NULL,
+      severity ENUM('Advisory', 'Important', 'Urgent', 'Critical') NOT NULL DEFAULT 'Urgent',
+      audience_type ENUM('everyone', 'district', 'users') NOT NULL DEFAULT 'everyone',
+      audience_label VARCHAR(160) NULL,
+      target_district VARCHAR(120) NULL,
+      target_user_ids JSON NULL,
+      require_acknowledgement BOOLEAN NOT NULL DEFAULT TRUE,
+      expires_at DATETIME NULL,
+      created_by VARCHAR(36) NULL,
+      created_by_name VARCHAR(160) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_urgent_alerts_created (created_at),
+      INDEX idx_urgent_alerts_expires (expires_at),
+      CONSTRAINT fk_urgent_alerts_created_by
+        FOREIGN KEY (created_by) REFERENCES users(id)
+        ON DELETE SET NULL
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS urgent_alert_acknowledgements (
+      alert_id VARCHAR(36) NOT NULL,
+      user_id VARCHAR(36) NOT NULL,
+      delivered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      acknowledged_at DATETIME NULL,
+      PRIMARY KEY (alert_id, user_id),
+      INDEX idx_urgent_ack_user (user_id, acknowledged_at),
+      CONSTRAINT fk_urgent_ack_alert_id
+        FOREIGN KEY (alert_id) REFERENCES urgent_alerts(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_urgent_ack_user_id
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
     )
   `);
 };

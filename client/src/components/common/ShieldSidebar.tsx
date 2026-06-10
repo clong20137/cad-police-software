@@ -34,7 +34,7 @@ export const ShieldSidebar: React.FC<{
   <aside
     className={`relative hidden h-[100dvh] shrink-0 overflow-visible bg-cad-blue text-white shadow-xl transition-all duration-200 md:block ${
       collapsed ? 'w-20' : 'w-72'
-    } dark:bg-gray-900`}
+    }`}
   >
     <button
       type="button"

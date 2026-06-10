@@ -5,6 +5,7 @@ import cors from 'cors';
 import authRoutes from './routes/auth';
 import configurationRoutes from './routes/configuration';
 import incidentRoutes from './routes/incidents';
+import urgentAlertRoutes from './routes/urgentAlerts';
 import { cspMiddleware } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
@@ -33,6 +34,7 @@ app.use(requestLogger);
 app.use('/api/auth', authRoutes);
 app.use('/api/configuration', configurationRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/urgent-alerts', urgentAlertRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
