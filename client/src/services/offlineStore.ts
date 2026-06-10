@@ -6,8 +6,10 @@ type OfflineRecord<T> = {
 };
 
 const DB_NAME = 'blueline-cad-offline';
-const DB_VERSION = 1;
-const STORE_NAME = 'records';
+const DB_VERSION = 2;
+const LEGACY_STORE_NAME = 'records';
+const STORE_NAMES = ['incidents', 'users', 'messages', 'actions', 'config', 'alerts', 'meta'] as const;
+type StoreName = (typeof STORE_NAMES)[number];
 const FALLBACK_PREFIX = 'cad_offline_v2:';
 const MAX_RECORDS = 32;
 const MAX_TOTAL_CHARS = 3_000_000;
@@ -20,8 +22,21 @@ class OfflineStore {
     if (!db) return this.getFallback<T>(key);
 
     return new Promise((resolve) => {
-      const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(key);
-      request.onsuccess = () => resolve((request.result as OfflineRecord<T> | undefined) || null);
+      const storeName = this.storeNameForKey(key);
+      const request = db.transaction(storeName, 'readonly').objectStore(storeName).get(key);
+      request.onsuccess = () => {
+        if (request.result) {
+          resolve(request.result as OfflineRecord<T>);
+          return;
+        }
+        if (!db.objectStoreNames.contains(LEGACY_STORE_NAME)) {
+          resolve(null);
+          return;
+        }
+        const legacyRequest = db.transaction(LEGACY_STORE_NAME, 'readonly').objectStore(LEGACY_STORE_NAME).get(key);
+        legacyRequest.onsuccess = () => resolve((legacyRequest.result as OfflineRecord<T> | undefined) || null);
+        legacyRequest.onerror = () => resolve(null);
+      };
       request.onerror = () => resolve(this.getFallback<T>(key));
     });
   }
@@ -40,7 +55,8 @@ class OfflineStore {
     }
 
     await new Promise<void>((resolve) => {
-      const request = db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(record);
+      const storeName = this.storeNameForKey(key);
+      const request = db.transaction(storeName, 'readwrite').objectStore(storeName).put(record);
       request.onsuccess = () => resolve();
       request.onerror = () => {
         this.setFallback(record);
@@ -65,11 +81,18 @@ class OfflineStore {
     const db = await this.openDb();
     if (!db) return this.fallbackEntries();
 
-    return new Promise((resolve) => {
-      const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).getAll();
-      request.onsuccess = () => resolve((request.result as Array<OfflineRecord<unknown>>) || []);
-      request.onerror = () => resolve(this.fallbackEntries());
-    });
+    const stores = this.availableStores(db);
+    const records = await Promise.all(
+      stores.map(
+        (storeName) =>
+          new Promise<Array<OfflineRecord<unknown>>>((resolve) => {
+            const request = db.transaction(storeName, 'readonly').objectStore(storeName).getAll();
+            request.onsuccess = () => resolve((request.result as Array<OfflineRecord<unknown>>) || []);
+            request.onerror = () => resolve([]);
+          })
+      )
+    );
+    return records.flat();
   }
 
   private async delete(key: string): Promise<void> {
@@ -79,7 +102,8 @@ class OfflineStore {
       return;
     }
     await new Promise<void>((resolve) => {
-      const request = db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).delete(key);
+      const storeName = this.storeNameForKey(key);
+      const request = db.transaction(storeName, 'readwrite').objectStore(storeName).delete(key);
       request.onsuccess = () => resolve();
       request.onerror = () => resolve();
     });
@@ -105,8 +129,13 @@ class OfflineStore {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+        STORE_NAMES.forEach((storeName) => {
+          if (!db.objectStoreNames.contains(storeName)) {
+            db.createObjectStore(storeName, { keyPath: 'key' });
+          }
+        });
+        if (!db.objectStoreNames.contains(LEGACY_STORE_NAME)) {
+          db.createObjectStore(LEGACY_STORE_NAME, { keyPath: 'key' });
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -167,6 +196,21 @@ class OfflineStore {
         localStorage.removeItem(key);
       }
     }
+  }
+
+  private storeNameForKey(key: string): StoreName {
+    const cacheKey = key.split(':').slice(1).join(':');
+    if (cacheKey.startsWith('incidents')) return 'incidents';
+    if (cacheKey.startsWith('tracked-units') || cacheKey.startsWith('directory')) return 'users';
+    if (cacheKey.startsWith('messages') || cacheKey.startsWith('message-threads')) return 'messages';
+    if (cacheKey.startsWith('offline-actions')) return 'actions';
+    if (cacheKey.includes('configuration')) return 'config';
+    if (cacheKey.includes('urgent-alerts')) return 'alerts';
+    return 'meta';
+  }
+
+  private availableStores(db: IDBDatabase): StoreName[] {
+    return STORE_NAMES.filter((storeName) => db.objectStoreNames.contains(storeName));
   }
 
   private safeStringify(value: unknown): string {

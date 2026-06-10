@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -714,6 +714,8 @@ export const OfficerDashboard: React.FC = () => {
   const assignmentMapKey = assignedIncidents.map((incident) => incident.id).join(',');
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || incidents[0] || null;
   const mapRouteIncident = incidents.find((incident) => incident.id === navigatingIncidentId) || null;
+  const deferredCurrentLocation = useDeferredValue(currentLocation);
+  const deferredLocationTrail = useDeferredValue(locationTrail);
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
   const configuredGeofences = useMemo(() => geofencesFromConfig(adminConfig), [adminConfig]);
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
@@ -1026,7 +1028,7 @@ export const OfficerDashboard: React.FC = () => {
         setMessages(conversation);
         loadMessageThreads();
       })
-      .catch(() => setMessages([]));
+      .catch(() => undefined);
   }, [loadMessageThreads, messageTextSearch, selectedMessageUserId]);
 
   useEffect(() => {
@@ -1350,6 +1352,8 @@ export const OfficerDashboard: React.FC = () => {
     const googleMaps = window.google?.maps as unknown as OfficerGoogleMaps | undefined;
     if (!map || !googleMaps) return;
 
+    const renderCurrentLocation = deferredCurrentLocation;
+    const renderLocationTrail = deferredLocationTrail;
     map.setOptions({ styles: theme === 'dark' ? darkMapStyles : [] });
     mapOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
     mapOverlaysRef.current = [];
@@ -1419,11 +1423,11 @@ export const OfficerDashboard: React.FC = () => {
       });
     }
 
-    if (currentLocation) {
+    if (renderCurrentLocation) {
       const selectedIsEnRoute = selectedStatus === 'En Route';
-      if (mapLayers.trails && selectedIsEnRoute && locationTrail.length > 1) {
+      if (mapLayers.trails && selectedIsEnRoute && renderLocationTrail.length > 1) {
         trailPolylineRef.current = new googleMaps.Polyline({
-          path: locationTrail.map((point) => ({ lat: point.lat, lng: point.lon })),
+          path: renderLocationTrail.map((point) => ({ lat: point.lat, lng: point.lon })),
           geodesic: true,
           strokeColor: '#f59e0b',
           strokeOpacity: 0.9,
@@ -1433,7 +1437,7 @@ export const OfficerDashboard: React.FC = () => {
       }
     }
 
-    if (currentLocation && mapRouteIncident?.lat !== undefined && mapRouteIncident.lon !== undefined) {
+    if (renderCurrentLocation && mapRouteIncident?.lat !== undefined && mapRouteIncident.lon !== undefined) {
       setNavigationSummary((current) => current?.callNumber === mapRouteIncident.callNumber ? current : {
         callNumber: mapRouteIncident.callNumber,
         distance: 'Calculating',
@@ -1454,7 +1458,7 @@ export const OfficerDashboard: React.FC = () => {
       const directionsService = new googleMaps.DirectionsService();
       directionsService.route(
         {
-          origin: { lat: currentLocation.lat, lng: currentLocation.lon },
+          origin: { lat: renderCurrentLocation.lat, lng: renderCurrentLocation.lon },
           destination: { lat: mapRouteIncident.lat, lng: mapRouteIncident.lon },
           travelMode: googleMaps.TravelMode.DRIVING,
           drivingOptions: {
@@ -1465,13 +1469,13 @@ export const OfficerDashboard: React.FC = () => {
         (result, status) => {
           if (status === 'OK' && routeRendererRef.current) {
             routeRendererRef.current.setDirections(result);
-            setNavigationSummary(directionsNavigationSummary(result, mapRouteIncident.callNumber) || fallbackNavigationSummary(currentLocation, mapRouteIncident, currentSpeed));
+            setNavigationSummary(directionsNavigationSummary(result, mapRouteIncident.callNumber) || fallbackNavigationSummary(renderCurrentLocation, mapRouteIncident, currentSpeed));
             return;
           }
-          setNavigationSummary(fallbackNavigationSummary(currentLocation, mapRouteIncident, currentSpeed));
+          setNavigationSummary(fallbackNavigationSummary(renderCurrentLocation, mapRouteIncident, currentSpeed));
           routeFallbackPolylineRef.current = new googleMaps.Polyline({
             path: [
-              { lat: currentLocation.lat, lng: currentLocation.lon },
+              { lat: renderCurrentLocation.lat, lng: renderCurrentLocation.lon },
               { lat: mapRouteIncident.lat as number, lng: mapRouteIncident.lon as number }
             ],
             geodesic: true,
@@ -1500,7 +1504,7 @@ export const OfficerDashboard: React.FC = () => {
               lon: incident.lon,
               label: incident.callNumber,
               tone: incident.priority === 'Emergency' ? 'red' : 'blue',
-              sublabel: etaText(currentLocation, incident, currentSpeed),
+              sublabel: etaText(renderCurrentLocation, incident, currentSpeed),
               onClick: () => {
                 setSelectedIncidentId(incident.id);
                 setActiveDockItem('call-detail');
@@ -1512,11 +1516,11 @@ export const OfficerDashboard: React.FC = () => {
     }
 
     if (hasCallBounds && !hasFitCallBoundsRef.current) {
-      if (currentLocation) bounds.extend({ lat: currentLocation.lat, lng: currentLocation.lon });
+      if (renderCurrentLocation) bounds.extend({ lat: renderCurrentLocation.lat, lng: renderCurrentLocation.lon });
       map.fitBounds(bounds);
       hasFitCallBoundsRef.current = true;
     }
-  }, [assignedIncidents, configuredGeofences, currentLocation, currentSpeed, locationTrail, mapLayers, mapRouteIncident, selectedStatus, theme, trackedOfficers, user?.id]);
+  }, [assignedIncidents, configuredGeofences, currentSpeed, deferredCurrentLocation, deferredLocationTrail, mapLayers, mapRouteIncident, selectedStatus, theme, trackedOfficers, user?.id]);
 
   const recenterMap = () => {
     if (!currentLocation) return;

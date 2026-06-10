@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -696,6 +696,7 @@ export const Dashboard: React.FC = () => {
 
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || incidents[0] || null;
+  const deferredCurrentLocation = useDeferredValue(currentLocation);
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
   const configuredGeofences = useMemo(() => geofencesFromConfig(adminConfig), [adminConfig]);
@@ -1310,7 +1311,7 @@ export const Dashboard: React.FC = () => {
         setMessages(conversation);
         loadMessageThreads();
       })
-      .catch(() => setMessages([]));
+      .catch(() => undefined);
   }, [loadMessageThreads, messageTextSearch, selectedMessageUserId]);
 
   useEffect(() => {
@@ -1489,11 +1490,11 @@ export const Dashboard: React.FC = () => {
         }
       });
 
-      if (currentLocation && !units.some((unit) => unit.id === user?.id)) {
+      if (deferredCurrentLocation && !units.some((unit) => unit.id === user?.id)) {
         const currentLocationOverlay = addGooglePulseMarker({
           map,
-          lat: currentLocation.lat,
-          lon: currentLocation.lon,
+          lat: deferredCurrentLocation.lat,
+          lon: deferredCurrentLocation.lon,
           label: 'You',
           tone: 'blue'
         });
@@ -1528,7 +1529,7 @@ export const Dashboard: React.FC = () => {
     script.async = true;
     script.onload = initializeMap;
     document.head.appendChild(script);
-  }, [center.lat, center.lon, configuredGeofences, currentLocation, incidents, locationClock, mapLayers, theme, units, user?.id]);
+  }, [center.lat, center.lon, configuredGeofences, deferredCurrentLocation, incidents, locationClock, mapLayers, theme, units, user?.id]);
 
   const recenterToCurrentLocation = () => {
     const target = currentLocation || center;
