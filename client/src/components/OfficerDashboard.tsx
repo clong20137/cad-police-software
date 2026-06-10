@@ -2645,7 +2645,9 @@ const DockContent: React.FC<{
           <Metric label="Call Timer" value={elapsedTimeLabel(selectedIncident.createdAt, timerNow)} icon={<Clock size={16} />} />
           <Metric label="Assigned" value={elapsedTimeLabel(myAssignment?.assignedAt, timerNow)} />
           <Metric label={selectedStatus ? `${selectedStatus} Time` : 'Status Time'} value={elapsedTimeLabel(currentStatusStartedAt, timerNow)} />
+          <Metric label="Status Updated" value={formatTime(selectedIncident.statusUpdatedAt || selectedIncident.updatedAt)} />
         </div>
+        <OfficerCallWorkflow incident={selectedIncident} />
         <div className="grid gap-3 sm:grid-cols-2">
           <Metric label="ETA" value={etaText(currentLocation, selectedIncident, currentSpeed)} />
           <Metric label="Coordinates" value={selectedIncident.lat !== undefined && selectedIncident.lon !== undefined ? `${selectedIncident.lat.toFixed(5)}, ${selectedIncident.lon.toFixed(5)}` : 'No map pin'} />
@@ -3294,6 +3296,39 @@ const Metric: React.FC<{ label: string; value: string; icon?: React.ReactNode }>
     <p className="mt-1 break-words text-lg font-black text-slate-950 dark:text-white">{value}</p>
   </div>
 );
+
+const OfficerCallWorkflow: React.FC<{ incident: Incident }> = ({ incident }) => {
+  const steps: Incident['status'][] = incident.status === 'Canceled'
+    ? ['Pending', 'Dispatched', 'Canceled']
+    : ['Pending', 'Dispatched', 'En Route', 'On Scene', 'Closed'];
+  const activeIndex = Math.max(0, steps.indexOf(incident.status));
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+      <div className="flex flex-wrap items-center gap-2">
+        {steps.map((step, index) => {
+          const complete = index <= activeIndex;
+          return (
+            <React.Fragment key={step}>
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-black ${
+                  complete
+                    ? incidentStatusClasses[step]
+                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                }`}
+              >
+                {step}
+              </span>
+              {index < steps.length - 1 && (
+                <span className={`h-px w-6 ${index < activeIndex ? 'bg-cad-blue dark:bg-blue-300' : 'bg-slate-200 dark:bg-slate-700'}`} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 const FallbackOfficerMap: React.FC<{
   currentLocation: { lat: number; lon: number } | null;

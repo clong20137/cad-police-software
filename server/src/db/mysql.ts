@@ -331,6 +331,7 @@ export const initializeIncidentTables = async (): Promise<void> => {
       disposition VARCHAR(255) NULL,
       created_by VARCHAR(36) NOT NULL,
       closed_at DATETIME NULL,
+      status_updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_incidents_status_created (status, created_at),
@@ -351,7 +352,8 @@ export const initializeIncidentTables = async (): Promise<void> => {
 
   const incidentColumns = [
     'ADD COLUMN district VARCHAR(120) NULL',
-    'ADD COLUMN beat VARCHAR(120) NULL'
+    'ADD COLUMN beat VARCHAR(120) NULL',
+    'ADD COLUMN status_updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP'
   ];
   for (const column of incidentColumns) {
     try {
@@ -420,6 +422,7 @@ const ensureIncidentUnitWorkflowColumns = async (): Promise<void> => {
     "ALTER TABLE incident_units MODIFY COLUMN status ENUM('Assigned', 'Acknowledged', 'En Route', 'On Scene', 'Transporting', 'At Hospital', 'Staged', 'Loaded', 'Delivered', 'Cleared') NOT NULL DEFAULT 'Assigned'"
   );
   await pool.query('UPDATE incident_units SET status_updated_at = assigned_at WHERE status_updated_at IS NULL');
+  await pool.query('UPDATE incidents SET status_updated_at = created_at WHERE status_updated_at IS NULL');
 };
 
 export const initializeAuditLogTables = async (): Promise<void> => {
@@ -580,6 +583,7 @@ export type IncidentRow = RowDataPacket & {
   disposition: string | null;
   created_by: string;
   closed_at: Date | null;
+  status_updated_at: Date;
   created_at: Date;
   updated_at: Date;
 };

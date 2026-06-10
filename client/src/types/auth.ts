@@ -201,6 +201,7 @@ export interface Incident {
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+  statusUpdatedAt?: Date;
   closedAt?: Date;
   disposition?: string;
   units: IncidentUnit[];

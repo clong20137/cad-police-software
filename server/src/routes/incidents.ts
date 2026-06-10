@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requirePermission } from '../middleware/auth';
 import { broadcastIncidents, broadcastOfficerAssignment, broadcastTrackedUnits } from '../realtime/socket';
+import { AuditLogService } from '../services/AuditLogService';
 import { IncidentService } from '../services/IncidentService';
 import {
   AssignIncidentUnitRequest,
@@ -29,6 +30,12 @@ router.post(
   async (req: Request<{}, {}, CreateIncidentRequest>, res: Response): Promise<void> => {
     try {
       const incident = await IncidentService.createIncident(req.body, req.user?.id || '');
+      await AuditLogService.fromRequest(req, {
+        action: 'incident_created',
+        resource: 'incident',
+        resourceId: incident.id,
+        metadata: { callNumber: incident.callNumber, type: incident.type, priority: incident.priority }
+      });
       await broadcastIncidents();
       res.status(201).json(incident);
     } catch (error) {
@@ -72,6 +79,12 @@ router.post(
         req.user.id
       );
       const assigned = await IncidentService.assignUnit(incident.id, req.user.id, req.user.id, 'Acknowledged');
+      await AuditLogService.fromRequest(req, {
+        action: 'officer_event_created',
+        resource: 'incident',
+        resourceId: incident.id,
+        metadata: { callNumber: incident.callNumber, type: incident.type, priority: incident.priority }
+      });
 
       await broadcastIncidents();
       await broadcastTrackedUnits();
@@ -98,6 +111,17 @@ router.patch(
         return;
       }
 
+      await AuditLogService.fromRequest(req, {
+        action: req.body.status === 'Closed' || req.body.status === 'Canceled' ? 'incident_dispositioned' : 'incident_status_changed',
+        resource: 'incident',
+        resourceId: incident.id,
+        severity: req.body.status === 'Closed' || req.body.status === 'Canceled' ? 'warning' : 'info',
+        metadata: {
+          callNumber: incident.callNumber,
+          status: incident.status,
+          disposition: incident.disposition
+        }
+      });
       await broadcastIncidents();
       await broadcastTrackedUnits();
       await Promise.all(incident.units.map((unit) => broadcastOfficerAssignment(unit.userId)));
@@ -120,6 +144,13 @@ router.post(
         return;
       }
 
+      await AuditLogService.fromRequest(req, {
+        action: 'incident_reopened',
+        resource: 'incident',
+        resourceId: incident.id,
+        severity: 'warning',
+        metadata: { callNumber: incident.callNumber }
+      });
       await broadcastIncidents();
       await broadcastTrackedUnits();
       await Promise.all(incident.units.map((unit) => broadcastOfficerAssignment(unit.userId)));
@@ -142,6 +173,12 @@ router.post(
         return;
       }
 
+      await AuditLogService.fromRequest(req, {
+        action: 'incident_note_added',
+        resource: 'incident',
+        resourceId: req.params.id,
+        metadata: { noteType: note.noteType }
+      });
       await broadcastIncidents();
       res.status(201).json(note);
     } catch (error) {
@@ -175,6 +212,12 @@ router.post(
         return;
       }
 
+      await AuditLogService.fromRequest(req, {
+        action: 'incident_unit_assigned',
+        resource: 'incident',
+        resourceId: incident.id,
+        metadata: { callNumber: incident.callNumber, userId: req.body.userId, status: req.body.status || 'Assigned' }
+      });
       await broadcastIncidents();
       await broadcastTrackedUnits();
       await broadcastOfficerAssignment(req.body.userId);
@@ -209,6 +252,12 @@ router.patch(
         return;
       }
 
+      await AuditLogService.fromRequest(req, {
+        action: 'incident_unit_status_changed',
+        resource: 'incident',
+        resourceId: incident.id,
+        metadata: { callNumber: incident.callNumber, status: req.body.status || 'Assigned' }
+      });
       await broadcastIncidents();
       await broadcastTrackedUnits();
       res.json(incident);
@@ -235,6 +284,12 @@ router.post(
         return;
       }
 
+      await AuditLogService.fromRequest(req, {
+        action: 'incident_unit_note_added',
+        resource: 'incident',
+        resourceId: req.params.id,
+        metadata: { noteType: note.noteType }
+      });
       await broadcastIncidents();
       res.status(201).json(note);
     } catch (error) {

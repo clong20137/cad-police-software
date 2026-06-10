@@ -2260,7 +2260,10 @@ export const Dashboard: React.FC = () => {
                 <CallInfoTile label="District / Beat" value={[selectedIncident.district, selectedIncident.beat].filter(Boolean).join(' / ') || 'Unassigned'} />
                 <CallInfoTile label="Caller" value={selectedIncident.callerName || 'Unknown'} />
                 <CallInfoTile label="Phone" value={selectedIncident.callerPhone || 'Unknown'} />
+                <CallInfoTile label="Status Updated" value={formatDateTime(selectedIncident.statusUpdatedAt || selectedIncident.updatedAt)} />
+                <CallInfoTile label="Opened" value={formatDateTime(selectedIncident.createdAt)} />
               </div>
+              <CallWorkflow incident={selectedIncident} />
               {selectedIncident.description && (
                 <div className="mt-4 rounded-md border border-cad-line bg-white p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
                   {selectedIncident.description}
@@ -2364,7 +2367,13 @@ export const Dashboard: React.FC = () => {
                 <>
                   <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
                     {(['Dispatched', 'En Route', 'On Scene', 'Closed', 'Canceled'] as IncidentStatus[]).map((status) => (
-                      <button key={status} type="button" onClick={() => updateIncidentStatus(status)} className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
+                      <button
+                        key={status}
+                        type="button"
+                        disabled={(status === 'Closed' || status === 'Canceled') && !incidentDisposition.trim()}
+                        title={(status === 'Closed' || status === 'Canceled') && !incidentDisposition.trim() ? 'Enter a disposition first' : undefined}
+                        onClick={() => updateIncidentStatus(status)}
+                        className={`rounded-md border px-3 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         selectedIncident.status === status
                           ? 'border-cad-blue bg-blue-50 text-cad-blue dark:border-blue-500 dark:bg-blue-950 dark:text-blue-100'
                           : 'border-cad-line text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
@@ -3203,6 +3212,7 @@ export const Dashboard: React.FC = () => {
                   <Detail label="Type" value={selectedIncident.type} />
                   <Detail label="Priority" value={selectedIncident.priority} />
                   <Detail label="Status" value={selectedIncident.status} />
+                  <Detail label="Status Updated" value={formatDateTime(selectedIncident.statusUpdatedAt || selectedIncident.updatedAt)} />
                   <Detail label="Address" value={selectedIncident.address} />
                   <Detail label="District" value={selectedIncident.district || 'Unassigned'} />
                   <Detail label="Beat" value={selectedIncident.beat || 'Unassigned'} />
@@ -3212,6 +3222,7 @@ export const Dashboard: React.FC = () => {
                 {selectedIncident.description && (
                   <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-950 dark:text-slate-200">{selectedIncident.description}</p>
                 )}
+                <CallWorkflow incident={selectedIncident} />
                 {selectedIncident.disposition && (
                   <Detail label="Disposition" value={selectedIncident.disposition} />
                 )}
@@ -3292,8 +3303,10 @@ export const Dashboard: React.FC = () => {
                     <button
                       key={status}
                       type="button"
+                      disabled={(status === 'Closed' || status === 'Canceled') && !incidentDisposition.trim()}
+                      title={(status === 'Closed' || status === 'Canceled') && !incidentDisposition.trim() ? 'Enter a disposition first' : undefined}
                       onClick={() => updateIncidentStatus(status)}
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                      className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                     >
                       {status}
                     </button>
@@ -3524,6 +3537,39 @@ const CallInfoTile: React.FC<{ label: string; value: string | number }> = ({ lab
     <p className="mt-1 break-words text-sm font-semibold text-slate-900 dark:text-slate-100">{value}</p>
   </div>
 );
+
+const CallWorkflow: React.FC<{ incident: Incident }> = ({ incident }) => {
+  const steps: IncidentStatus[] = incident.status === 'Canceled'
+    ? ['Pending', 'Dispatched', 'Canceled']
+    : ['Pending', 'Dispatched', 'En Route', 'On Scene', 'Closed'];
+  const activeIndex = Math.max(0, steps.indexOf(incident.status));
+
+  return (
+    <div className="mt-4 rounded-md border border-cad-line bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center gap-2">
+        {steps.map((step, index) => {
+          const complete = index <= activeIndex;
+          return (
+            <React.Fragment key={step}>
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-black ${
+                  complete
+                    ? incidentStatusStyles[step]
+                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                }`}
+              >
+                {step}
+              </span>
+              {index < steps.length - 1 && (
+                <span className={`h-px w-6 ${index < activeIndex ? 'bg-cad-blue dark:bg-blue-300' : 'bg-slate-200 dark:bg-slate-700'}`} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 const Detail: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
   <div className="grid grid-cols-[140px_1fr] gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">

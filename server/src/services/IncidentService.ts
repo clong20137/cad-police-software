@@ -1,4 +1,4 @@
-import { ResultSetHeader } from 'mysql2';
+import { ResultSetHeader, RowDataPacket } from 'mysql2';
 import { v4 as uuidv4 } from 'uuid';
 import { pool, IncidentNoteRow, IncidentRow, IncidentUnitRow } from '../db/mysql';
 import { ConfigurationService } from './ConfigurationService';
@@ -89,6 +89,7 @@ const toIncident = (row: IncidentRow, units: IncidentUnit[] = [], notes: Inciden
   createdBy: row.created_by,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  statusUpdatedAt: row.status_updated_at || row.updated_at,
   closedAt: row.closed_at || undefined,
   disposition: row.disposition || undefined,
   units,
@@ -201,8 +202,16 @@ export class IncidentService {
     if (!incident) {
       throw new Error('Incident was not created');
     }
+    await this.addNote(id, createdBy, {
+      noteType: 'status',
+      body: `Call created as ${priority} priority: ${input.type.trim()} at ${input.address.trim()}`
+    });
 
-    return incident;
+    const createdIncident = await this.getIncident(id);
+    if (!createdIncident) {
+      throw new Error('Incident was not created');
+    }
+    return createdIncident;
   }
 
   static async updateStatus(id: string, status: IncidentStatus, disposition?: string, updatedBy?: string): Promise<Incident | null> {
@@ -227,6 +236,7 @@ export class IncidentService {
         SET status = ?,
             disposition = CASE WHEN ? IN ('Closed', 'Canceled') THEN ? ELSE disposition END,
             closed_at = CASE WHEN ? IN ('Closed', 'Canceled') THEN UTC_TIMESTAMP() ELSE NULL END,
+            status_updated_at = UTC_TIMESTAMP(),
             updated_at = UTC_TIMESTAMP()
         WHERE id = ?
       `,
@@ -237,8 +247,8 @@ export class IncidentService {
       noteType: status === 'Closed' || status === 'Canceled' ? 'disposition' : 'status',
       body:
         status === 'Closed' || status === 'Canceled'
-          ? `${status}${disposition?.trim() ? `: ${disposition.trim()}` : ''}`
-          : `Status changed to ${status}`
+          ? `${incident.status} to ${status}${disposition?.trim() ? `: ${disposition.trim()}` : ''}`
+          : `Status changed from ${incident.status} to ${status}`
     });
 
     if (isClosedIncidentStatus(status)) {
@@ -314,6 +324,7 @@ export class IncidentService {
         SET status = 'Pending',
             disposition = NULL,
             closed_at = NULL,
+            status_updated_at = UTC_TIMESTAMP(),
             updated_at = UTC_TIMESTAMP()
         WHERE id = ?
       `,
@@ -357,13 +368,14 @@ export class IncidentService {
       [incidentId, userId, assignedBy, status]
     );
 
+    const unitLabel = await this.unitLabel(userId);
     await this.addNote(incidentId, assignedBy, {
       noteType: 'assignment',
-      body: `Unit ${userId} set to ${status}`
+      body: `Unit ${unitLabel} set to ${status}`
     });
 
     const nextIncidentStatus = unitStatusToIncidentStatus(status);
-    await pool.execute('UPDATE incidents SET status = ? WHERE id = ? AND status = ?', [
+    await pool.execute('UPDATE incidents SET status = ?, status_updated_at = UTC_TIMESTAMP(), updated_at = UTC_TIMESTAMP() WHERE id = ? AND status = ?', [
       nextIncidentStatus,
       incidentId,
       'Pending'
@@ -440,12 +452,12 @@ export class IncidentService {
 
     await this.addNote(incidentId, userId, {
       noteType: status === 'Cleared' ? 'assignment' : 'status',
-      body: `Unit status changed to ${status}`
+      body: `Unit ${await this.unitLabel(userId)} status changed to ${status}`
     });
 
     const nextIncidentStatus = unitStatusToIncidentStatus(status);
     if (status !== 'Cleared') {
-      await pool.execute('UPDATE incidents SET status = ? WHERE id = ? AND status IN (?, ?)', [
+      await pool.execute('UPDATE incidents SET status = ?, status_updated_at = UTC_TIMESTAMP(), updated_at = UTC_TIMESTAMP() WHERE id = ? AND status IN (?, ?)', [
         nextIncidentStatus,
         incidentId,
         'Pending',
@@ -454,7 +466,7 @@ export class IncidentService {
     } else {
       const remainingActiveUnits = incident.units.filter((unit) => unit.userId !== userId && unit.status !== 'Cleared');
       if (remainingActiveUnits.length === 0) {
-        await pool.execute('UPDATE incidents SET status = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND status NOT IN (?, ?)', [
+        await pool.execute('UPDATE incidents SET status = ?, status_updated_at = UTC_TIMESTAMP(), updated_at = UTC_TIMESTAMP() WHERE id = ? AND status NOT IN (?, ?)', [
           'Pending',
           incidentId,
           'Closed',
@@ -523,6 +535,15 @@ export class IncidentService {
       [incidentId]
     );
     return rows.map(toIncidentNote);
+  }
+
+  private static async unitLabel(userId: string): Promise<string> {
+    const [rows] = await pool.execute<Array<{ name: string; cad_unit_number: string | null } & RowDataPacket>>(
+      'SELECT name, cad_unit_number FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    const row = rows[0];
+    return row ? `${row.cad_unit_number || userId} ${row.name}`.trim() : userId;
   }
 
   private static async nextCallNumber(): Promise<string> {
