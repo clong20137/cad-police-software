@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import {
   AlertTriangle,
+  Bell,
   CheckCircle2,
   Check,
   CheckCheck,
@@ -1642,7 +1643,9 @@ export const OfficerDashboard: React.FC = () => {
     setBusy(true);
     setMessage('');
     try {
-      await authClient.sendOfficerEmergency(currentLocation?.lat ?? null, currentLocation?.lon ?? null);
+      const alert = await authClient.sendOfficerEmergency(currentLocation?.lat ?? null, currentLocation?.lon ?? null);
+      setUrgentAlerts((current) => (current.some((item) => item.id === alert.id) ? current : [alert, ...current]));
+      loadUrgentAlerts();
       setMessage('Officer emergency alert sent.');
     } catch {
       setMessage('Unable to send officer emergency alert.');
@@ -2090,7 +2093,7 @@ export const OfficerDashboard: React.FC = () => {
       </div>
 
       {liveFeedOpen ? (
-        <aside className="pointer-events-auto fixed bottom-[6.75rem] right-3 z-30 w-[min(26rem,calc(100vw-1.5rem))] rounded-lg border border-white/40 bg-white/75 p-2 text-cad-ink opacity-90 shadow-xl transition-all duration-200 dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-white sm:right-5 md:bottom-28">
+        <aside className="pointer-events-auto fixed bottom-[6.75rem] right-3 z-30 w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border border-white/40 bg-white/75 p-2 text-cad-ink opacity-90 shadow-xl transition-all duration-200 dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-white sm:right-5 md:bottom-28">
           <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
             <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Live Feed</span>
             <div className="flex items-center gap-2">
@@ -2140,12 +2143,12 @@ export const OfficerDashboard: React.FC = () => {
         <button
           type="button"
           onClick={() => setLiveFeedOpen(true)}
-          className="fixed bottom-[6.75rem] right-3 z-30 inline-flex items-center gap-2 rounded-lg border border-white/40 bg-white/85 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-cad-blue shadow-xl hover:bg-white dark:border-slate-700/70 dark:bg-slate-950/85 dark:text-blue-100 dark:hover:bg-slate-900 sm:right-5 md:bottom-28"
+          className="fixed right-[4.75rem] top-20 z-30 inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white/95 text-cad-blue shadow-xl hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-100"
           aria-label="Show live feed"
           title="Show live feed"
         >
-          <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]" />
-          Live Feed
+          <Bell size={17} />
+          {liveFeedItems.length > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900" />}
         </button>
       )}
 
