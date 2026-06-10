@@ -232,6 +232,11 @@
     animation: pendingFeedIn 220ms ease-out;
   }
 
+  .live-feed-push-down {
+    animation: liveFeedPushDown 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: transform, opacity, max-height;
+  }
+
   .modal-active-pulse {
     animation: modalActivePulse 1.8s ease-in-out infinite;
   }
@@ -350,6 +355,20 @@
     }
 
     100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes liveFeedPushDown {
+    0% {
+      max-height: 0;
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+
+    100% {
+      max-height: 6rem;
       opacity: 1;
       transform: translateY(0);
     }

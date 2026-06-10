@@ -48,6 +48,14 @@ import { UrgentAlertOverlay } from './common/UrgentAlertOverlay';
 import { callTypesFromConfig } from '../utils/adminConfig';
 import { geofenceAssignmentForPoint, geofencesFromConfig } from '../utils/mapGeofences';
 import { offlineAgeLabel } from '../utils/offlineStatus';
+import {
+  AccountPreferences,
+  loadAccountPreferences,
+  notifyIfAllowed,
+  playCadAlertSound,
+  resolveThemePreference,
+  saveAccountPreferences
+} from '../utils/accountPreferences';
 import { APP_NAME } from '../constants/branding';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'protective-orders' | 'location' | 'settings' | 'navigation' | 'status';
@@ -572,6 +580,10 @@ export const OfficerDashboard: React.FC = () => {
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('cad_theme') === 'dark' ? 'dark' : 'light'
   );
+  const [accountPreferences, setAccountPreferences] = useState<AccountPreferences>(() => loadAccountPreferences());
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() =>
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
+  );
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [exitingPendingCalls, setExitingPendingCalls] = useState<Incident[]>([]);
   const [adminConfig, setAdminConfig] = useState<AdminConfigurationItem[]>([]);
@@ -676,6 +688,7 @@ export const OfficerDashboard: React.FC = () => {
   const dockZCounterRef = useRef(60);
   const pendingCallFeedPreviousRef = useRef<Map<string, Incident>>(new Map());
   const pendingCallExitTimersRef = useRef<Record<string, number>>({});
+  const liveFeedPreviousTopIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     currentLocationRef.current = currentLocation;
@@ -810,7 +823,20 @@ export const OfficerDashboard: React.FC = () => {
       ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-100 dark:ring-emerald-300/30'
       : realtimeState === 'offline'
         ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/20 dark:text-red-100 dark:ring-red-300/30'
-        : 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/30';
+      : 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/30';
+
+  useEffect(() => {
+    const topItem = liveFeedItems[0];
+    if (!topItem) return;
+    const previousTopId = liveFeedPreviousTopIdRef.current;
+    liveFeedPreviousTopIdRef.current = topItem.id;
+    if (!previousTopId || previousTopId === topItem.id) return;
+    if (topItem.id.startsWith('call-') || topItem.id.startsWith('alert-')) {
+      playCadAlertSound(accountPreferences.newCallSound, 'call');
+      notifyIfAllowed('CAD Live Feed', `${topItem.actor} ${topItem.action} ${topItem.detail}`.trim(), accountPreferences);
+    }
+  }, [accountPreferences, liveFeedItems]);
+
   const selectedMessageUser = directory.find((item) => item.id === selectedMessageUserId) || null;
   const messageThreadByUser = useMemo(
     () =>
@@ -906,6 +932,19 @@ export const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('cad_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    saveAccountPreferences(accountPreferences);
+    if (accountPreferences.themeMode === 'schedule') {
+      setTheme(resolveThemePreference(accountPreferences));
+    }
+  }, [accountPreferences]);
+
+  useEffect(() => {
+    if (accountPreferences.themeMode !== 'schedule') return;
+    const timer = window.setInterval(() => setTheme(resolveThemePreference(accountPreferences)), 60000);
+    return () => window.clearInterval(timer);
+  }, [accountPreferences]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setSidebarNow(Date.now()), 5000);
@@ -1642,9 +1681,32 @@ export const OfficerDashboard: React.FC = () => {
         newPassword: passwordForm.newPassword
       });
       setPasswordMessage('Password updated.');
+      notifyIfAllowed('Password Changed', 'Your Blueline CAD password was changed.', accountPreferences);
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch {
       setPasswordMessage('Unable to change password. Check your current password.');
+    }
+  };
+
+  const updateAccountPreferences = (preferences: AccountPreferences) => {
+    setAccountPreferences(preferences);
+    if (preferences.themeMode === 'light' || preferences.themeMode === 'dark') {
+      setTheme(preferences.themeMode);
+    } else {
+      setTheme(resolveThemePreference(preferences));
+    }
+  };
+
+  const requestBrowserNotifications = async () => {
+    if (typeof Notification === 'undefined') {
+      setNotificationPermission('unsupported');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    if (permission === 'granted') {
+      setAccountPreferences((current) => ({ ...current, pushNotifications: true }));
+      notifyIfAllowed('Notifications Enabled', 'Blueline CAD browser notifications are active.', { ...accountPreferences, pushNotifications: true });
     }
   };
 
@@ -2290,7 +2352,7 @@ export const OfficerDashboard: React.FC = () => {
                             ? 'bg-cad-blue'
                             : 'bg-slate-400';
                   return (
-                    <div key={item.id} className="grid grid-cols-[auto_1fr] gap-2 rounded border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                    <div key={item.id} className="live-feed-push-down grid grid-cols-[auto_1fr] gap-2 rounded border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm dark:border-slate-800 dark:bg-slate-950">
                       <span className={`mt-1 h-2.5 w-2.5 rounded-full ${toneClass}`} />
                       <p className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
                         <strong className="font-black text-slate-950 dark:text-white">{item.actor}</strong>{' '}
@@ -2543,6 +2605,8 @@ export const OfficerDashboard: React.FC = () => {
         twoFactorMessage={twoFactorMessage}
         twoFactorBackupCodes={twoFactorBackupCodes}
         theme={theme}
+        preferences={accountPreferences}
+        notificationPermission={notificationPermission}
         onClose={() => setAccountSettingsOpen(false)}
         onPasswordChange={setPasswordForm}
         onPasswordSubmit={changePassword}
@@ -2550,6 +2614,9 @@ export const OfficerDashboard: React.FC = () => {
         onTwoFactorCodeChange={setTwoFactorCode}
         onVerifyTwoFactorSetup={verifyTwoFactorSetup}
         onThemeChange={setTheme}
+        onPreferencesChange={updateAccountPreferences}
+        onRequestNotifications={requestBrowserNotifications}
+        onPreviewSound={() => playCadAlertSound(accountPreferences.newCallSound, 'call')}
       />
       </div>
     </main>

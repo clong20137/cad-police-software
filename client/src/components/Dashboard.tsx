@@ -60,6 +60,14 @@ import { UrgentAlertOverlay } from './common/UrgentAlertOverlay';
 import { callTypesFromConfig } from '../utils/adminConfig';
 import { geofenceAssignmentForPoint, geofencesFromConfig, MapGeofence } from '../utils/mapGeofences';
 import { offlineAgeLabel } from '../utils/offlineStatus';
+import {
+  AccountPreferences,
+  loadAccountPreferences,
+  notifyIfAllowed,
+  playCadAlertSound,
+  resolveThemePreference,
+  saveAccountPreferences
+} from '../utils/accountPreferences';
 import { APP_NAME } from '../constants/branding';
 
 declare global {
@@ -584,6 +592,10 @@ export const Dashboard: React.FC = () => {
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('cad_theme') === 'dark' ? 'dark' : 'light'
   );
+  const [accountPreferences, setAccountPreferences] = useState<AccountPreferences>(() => loadAccountPreferences());
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() =>
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
+  );
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [passwordForm, setPasswordForm] = useState<PasswordFormState>({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordMessage, setPasswordMessage] = useState('');
@@ -921,6 +933,19 @@ export const Dashboard: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
+    saveAccountPreferences(accountPreferences);
+    if (accountPreferences.themeMode === 'schedule') {
+      setTheme(resolveThemePreference(accountPreferences));
+    }
+  }, [accountPreferences]);
+
+  useEffect(() => {
+    if (accountPreferences.themeMode !== 'schedule') return;
+    const timer = window.setInterval(() => setTheme(resolveThemePreference(accountPreferences)), 60000);
+    return () => window.clearInterval(timer);
+  }, [accountPreferences]);
+
+  useEffect(() => {
     const clockId = window.setInterval(() => setLocationClock(Date.now()), 5000);
     return () => window.clearInterval(clockId);
   }, []);
@@ -1004,25 +1029,8 @@ export const Dashboard: React.FC = () => {
   }, [accountSettingsOpen, activeQuickModal, addressSuggestionsOpen, closeQuickModal, customizingSlot, emojiOpen, settingsOpen]);
 
   const playAlert = useCallback((kind: 'message' | 'call') => {
-    try {
-      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const context = new AudioContextClass();
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = kind === 'message' ? 'sine' : 'triangle';
-      oscillator.frequency.value = kind === 'message' ? 740 : 520;
-      gain.gain.setValueAtTime(0.0001, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.22);
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start();
-      oscillator.stop(context.currentTime + 0.24);
-    } catch {
-      // Browsers may block audio before user interaction.
-    }
-  }, []);
+    playCadAlertSound(accountPreferences.newCallSound, kind);
+  }, [accountPreferences.newCallSound]);
 
   const pushToast = useCallback((notice: Omit<ToastNotice, 'id'>) => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -1191,6 +1199,7 @@ export const Dashboard: React.FC = () => {
             message: `${newIncidents[0].callNumber} ${newIncidents[0].type}`,
             tone: newIncidents[0].priority === 'Emergency' || newIncidents[0].priority === 'High' ? 'warning' : 'info'
           });
+          notifyIfAllowed('New CAD Call', `${newIncidents[0].callNumber} ${newIncidents[0].type}`, accountPreferences);
         }
       }
       knownIncidentIdsRef.current = new Set(incoming.map((incident) => incident.id));
@@ -1293,7 +1302,7 @@ export const Dashboard: React.FC = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [loadMessageThreads, loadUrgentAlerts, playAlert, pushToast, user?.id]);
+  }, [accountPreferences, loadMessageThreads, loadUrgentAlerts, playAlert, pushToast, user?.id]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -1712,9 +1721,32 @@ export const Dashboard: React.FC = () => {
         newPassword: passwordForm.newPassword
       });
       setPasswordMessage('Password changed. Sign in again on other devices.');
+      notifyIfAllowed('Password Changed', 'Your Blueline CAD password was changed.', accountPreferences);
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch {
       setPasswordMessage('Unable to change password. Check your current password.');
+    }
+  };
+
+  const updateAccountPreferences = (preferences: AccountPreferences) => {
+    setAccountPreferences(preferences);
+    if (preferences.themeMode === 'light' || preferences.themeMode === 'dark') {
+      setTheme(preferences.themeMode);
+    } else {
+      setTheme(resolveThemePreference(preferences));
+    }
+  };
+
+  const requestBrowserNotifications = async () => {
+    if (typeof Notification === 'undefined') {
+      setNotificationPermission('unsupported');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    if (permission === 'granted') {
+      setAccountPreferences((current) => ({ ...current, pushNotifications: true }));
+      notifyIfAllowed('Notifications Enabled', 'Blueline CAD browser notifications are active.', { ...accountPreferences, pushNotifications: true });
     }
   };
 
@@ -3508,6 +3540,8 @@ export const Dashboard: React.FC = () => {
         twoFactorMessage={twoFactorMessage}
         twoFactorBackupCodes={twoFactorBackupCodes}
         theme={theme}
+        preferences={accountPreferences}
+        notificationPermission={notificationPermission}
         onClose={() => setAccountSettingsOpen(false)}
         onPasswordChange={setPasswordForm}
         onPasswordSubmit={changePassword}
@@ -3515,6 +3549,9 @@ export const Dashboard: React.FC = () => {
         onTwoFactorCodeChange={setTwoFactorCode}
         onVerifyTwoFactorSetup={verifyTwoFactorSetup}
         onThemeChange={setTheme}
+        onPreferencesChange={updateAccountPreferences}
+        onRequestNotifications={requestBrowserNotifications}
+        onPreviewSound={() => playCadAlertSound(accountPreferences.newCallSound, 'call')}
       />
 
       {openQuickModals.map((modalId) => (

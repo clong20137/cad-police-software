@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { CheckCircle2, KeyRound, Monitor, ShieldCheck, UserRound } from 'lucide-react';
+import { Bell, CheckCircle2, KeyRound, Monitor, ShieldCheck, UserRound, Volume2 } from 'lucide-react';
 import { User } from '../../types/auth';
+import { AccountPreferences, alertSoundOptions } from '../../utils/accountPreferences';
 import { ModalShell } from './ModalShell';
 
 export type PasswordFormState = {
@@ -28,6 +29,8 @@ export const AccountSettingsModal: React.FC<{
   twoFactorMessage: string;
   twoFactorBackupCodes: string[];
   theme: 'light' | 'dark';
+  preferences: AccountPreferences;
+  notificationPermission: NotificationPermission | 'unsupported';
   onClose: () => void;
   onPasswordChange: (form: PasswordFormState) => void;
   onPasswordSubmit: () => void;
@@ -35,6 +38,9 @@ export const AccountSettingsModal: React.FC<{
   onTwoFactorCodeChange: (value: string) => void;
   onVerifyTwoFactorSetup: () => void;
   onThemeChange: (theme: 'light' | 'dark') => void;
+  onPreferencesChange: (preferences: AccountPreferences) => void;
+  onRequestNotifications: () => void;
+  onPreviewSound: () => void;
 }> = ({
   open,
   user,
@@ -45,13 +51,18 @@ export const AccountSettingsModal: React.FC<{
   twoFactorMessage,
   twoFactorBackupCodes,
   theme,
+  preferences,
+  notificationPermission,
   onClose,
   onPasswordChange,
   onPasswordSubmit,
   onStartTwoFactorSetup,
   onTwoFactorCodeChange,
   onVerifyTwoFactorSetup,
-  onThemeChange
+  onThemeChange,
+  onPreferencesChange,
+  onRequestNotifications,
+  onPreviewSound
 }) => {
   const [activeTab, setActiveTab] = useState<AccountSettingsTab>('account');
   const initials = useMemo(
@@ -100,12 +111,12 @@ export const AccountSettingsModal: React.FC<{
             <div className="grid gap-4">
               <h3 className="text-base font-black text-slate-950 dark:text-white">Account</h3>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Info label="Name" value={user?.name || 'Unavailable'} />
-                <Info label="Email" value={user?.email || 'Unavailable'} />
-                <Info label="Role" value={user?.role || 'Unavailable'} />
-                <Info label="Badge" value={user?.badge || 'Not set'} />
-                <Info label="Unit" value={user?.cadUnitNumber || user?.unitNumber || 'Not set'} />
-                <Info label="District" value={user?.district || 'Unassigned'} />
+                <Info label="Name" value={user?.name || 'Unavailable'} disabled />
+                <Info label="Email" value={user?.email || 'Unavailable'} disabled />
+                <Info label="Role" value={user?.role || 'Unavailable'} disabled />
+                <Info label="Badge" value={user?.badge || 'Not set'} disabled />
+                <Info label="Unit" value={user?.cadUnitNumber || user?.unitNumber || 'Not set'} disabled />
+                <Info label="District" value={user?.district || 'Unassigned'} disabled />
               </div>
               <div className="rounded-md border border-cad-line bg-slate-50 p-3 text-sm font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
                 Profile identity fields are managed by an administrator so CAD unit assignments stay consistent.
@@ -155,7 +166,7 @@ export const AccountSettingsModal: React.FC<{
                     <div className="mx-auto rounded-lg border border-cad-line bg-white p-3 shadow-control dark:border-slate-700">
                       <QRCodeSVG value={twoFactorSetup.otpauthUrl} size={176} level="M" includeMargin />
                     </div>
-                    <Info label="Manual Secret" value={twoFactorSetup.secret} mono />
+                    <Info label="Manual Secret" value={twoFactorSetup.secret} mono disabled />
                     <input
                       inputMode="numeric"
                       autoComplete="one-time-code"
@@ -189,19 +200,98 @@ export const AccountSettingsModal: React.FC<{
               <h3 className="text-base font-black text-slate-950 dark:text-white">Preferences</h3>
               <div className="rounded-md border border-cad-line p-3 dark:border-slate-800">
                 <p className="text-sm font-black text-slate-950 dark:text-white">Theme</p>
-                <div className="mt-3 flex rounded-md border border-cad-line p-1 dark:border-slate-700">
-                  {(['light', 'dark'] as const).map((item) => (
+                <div className="mt-3 grid rounded-md border border-cad-line p-1 dark:border-slate-700 sm:grid-cols-3">
+                  {(['light', 'dark', 'schedule'] as const).map((item) => (
                     <button
                       key={item}
                       type="button"
-                      onClick={() => onThemeChange(item)}
+                      onClick={() => {
+                        onPreferencesChange({ ...preferences, themeMode: item });
+                        if (item !== 'schedule') onThemeChange(item);
+                      }}
                       className={`flex-1 rounded px-3 py-2 text-sm font-black capitalize ${
-                        theme === item ? 'bg-cad-blue text-white' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
+                        preferences.themeMode === item ? 'bg-cad-blue text-white' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
                       }`}
                     >
                       {item}
                     </button>
                   ))}
+                </div>
+                {preferences.themeMode === 'schedule' && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Light Mode Starts
+                      <input
+                        type="time"
+                        value={preferences.lightStart}
+                        onChange={(event) => onPreferencesChange({ ...preferences, lightStart: event.target.value })}
+                        className="h-10 rounded-md border border-cad-line bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Dark Mode Starts
+                      <input
+                        type="time"
+                        value={preferences.darkStart}
+                        onChange={(event) => onPreferencesChange({ ...preferences, darkStart: event.target.value })}
+                        className="h-10 rounded-md border border-cad-line bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-md border border-cad-line p-3 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Volume2 size={16} className="text-cad-blue" />
+                  <p className="text-sm font-black text-slate-950 dark:text-white">New Call Sound</p>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <select
+                    value={preferences.newCallSound}
+                    onChange={(event) => onPreferencesChange({ ...preferences, newCallSound: event.target.value as AccountPreferences['newCallSound'] })}
+                    className="h-10 rounded-md border border-cad-line bg-white px-3 text-sm font-semibold outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                  >
+                    {alertSoundOptions.map((option) => (
+                      <option key={option.id} value={option.id}>{option.label}</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={onPreviewSound} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-black text-white dark:bg-white dark:text-slate-950">
+                    Preview
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-cad-line p-3 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Bell size={16} className="text-cad-blue" />
+                  <p className="text-sm font-black text-slate-950 dark:text-white">Notifications</p>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  <label className="flex items-center justify-between gap-3 rounded border border-cad-line p-3 dark:border-slate-800">
+                    <span>
+                      <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">Browser push notifications</span>
+                      <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400">New calls and account security events.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={preferences.pushNotifications}
+                      onChange={(event) => onPreferencesChange({ ...preferences, pushNotifications: event.target.checked })}
+                      className="h-5 w-5"
+                    />
+                  </label>
+                  {preferences.pushNotifications && notificationPermission !== 'granted' && (
+                    <button type="button" onClick={onRequestNotifications} className="w-fit rounded-md bg-cad-blue px-4 py-2 text-sm font-black text-white">
+                      Allow Notifications
+                    </button>
+                  )}
+                  <label className="flex items-center justify-between gap-3 rounded border border-slate-200 bg-slate-50 p-3 opacity-70 dark:border-slate-800 dark:bg-slate-950">
+                    <span>
+                      <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">Authenticator push approval</span>
+                      <span className="block text-xs font-semibold text-slate-500 dark:text-slate-400">Google Authenticator does not accept third-party push approvals; use 2FA codes plus browser push.</span>
+                    </span>
+                    <input type="checkbox" disabled className="h-5 w-5" />
+                  </label>
                 </div>
               </div>
             </div>
@@ -212,13 +302,14 @@ export const AccountSettingsModal: React.FC<{
   );
 };
 
-const Info: React.FC<{ label: string; value: string; mono?: boolean }> = ({ label, value, mono }) => (
+const Info: React.FC<{ label: string; value: string; mono?: boolean; disabled?: boolean }> = ({ label, value, mono, disabled }) => (
   <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
     {label}
     <input
       value={value}
       readOnly
-      className={`h-10 rounded-md border border-cad-line bg-white px-3 text-sm font-semibold text-slate-700 outline-none dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 ${mono ? 'font-mono' : ''}`}
+      disabled={disabled}
+      className={`h-10 rounded-md border border-cad-line bg-white px-3 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:disabled:bg-slate-900 ${mono ? 'font-mono' : ''}`}
     />
   </label>
 );
