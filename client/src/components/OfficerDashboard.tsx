@@ -2010,13 +2010,18 @@ export const OfficerDashboard: React.FC = () => {
       </div>
 
       <div className="pointer-events-auto fixed right-3 top-3 z-40 flex select-none items-center gap-1.5 rounded-2xl border border-cad-line bg-white/90 p-2 text-cad-ink shadow-[0_16px_45px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950/85 dark:text-white sm:right-5 sm:top-4 sm:gap-2">
-          <span
-            className={`inline-flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white shadow-sm ring-1 transition dark:border-slate-700 dark:bg-slate-800 ${realtimeStatusClass}`}
-            title={realtimeStatusLabel}
-            aria-label={`Realtime status: ${realtimeStatusLabel}`}
+          <button
+            type="button"
+            onClick={() => setLiveFeedOpen((value) => !value)}
+            className={`relative flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700 ${
+              liveFeedOpen ? 'ring-2 ring-cad-accent/40' : ''
+            }`}
+            aria-label={liveFeedOpen ? 'Hide live feed' : 'Show live feed'}
+            title={liveFeedOpen ? 'Hide live feed' : 'Show live feed'}
           >
-            {realtimeState === 'offline' ? <WifiOff size={19} /> : <Wifi size={19} />}
-          </span>
+            <Bell size={19} />
+            {liveFeedItems.length > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-800" />}
+          </button>
           <button
             type="button"
             onClick={sendOfficerEmergency}
@@ -2139,18 +2144,7 @@ export const OfficerDashboard: React.FC = () => {
             })}
           </div>
         </aside>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setLiveFeedOpen(true)}
-          className="fixed right-[4.75rem] top-20 z-30 inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white/95 text-cad-blue shadow-xl hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-100"
-          aria-label="Show live feed"
-          title="Show live feed"
-        >
-          <Bell size={17} />
-          {liveFeedItems.length > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900" />}
-        </button>
-      )}
+      ) : null}
 
       <button
         type="button"
@@ -2186,6 +2180,13 @@ export const OfficerDashboard: React.FC = () => {
                   : 'bg-red-500'
             }`}
           />
+        </div>
+        <div
+          className={`inline-flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white/95 shadow-xl ring-1 dark:border-slate-700 dark:bg-slate-900/95 ${realtimeStatusClass}`}
+          title={realtimeStatusLabel}
+          aria-label={`Realtime status: ${realtimeStatusLabel}`}
+        >
+          {realtimeState === 'offline' ? <WifiOff size={17} /> : <Wifi size={17} />}
         </div>
       </aside>
 
