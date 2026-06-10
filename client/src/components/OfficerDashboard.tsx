@@ -833,8 +833,7 @@ export const OfficerDashboard: React.FC = () => {
   const sidebarItems: ShieldSidebarItem[] = [
     { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveDockItem('inquiries') },
     { id: 'unit-status', label: 'Unit Status', icon: Radio, iconClassName: 'text-indigo-700', onClick: () => setActiveDockItem('status') },
-    { id: 'calls', label: 'My Case', icon: ClipboardList, iconClassName: 'text-amber-700', onClick: () => setActiveDockItem('calls') },
-    { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openDockItem('messages') }
+    { id: 'calls', label: 'My Case', icon: ClipboardList, iconClassName: 'text-amber-700', onClick: () => setActiveDockItem('calls') }
   ];
   useEffect(() => {
     localStorage.setItem('cad_officer_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
@@ -1605,6 +1604,22 @@ export const OfficerDashboard: React.FC = () => {
     }
   };
 
+  const assignMeToIncident = async (incidentId: string) => {
+    setBusy(true);
+    setMessage('');
+    try {
+      const updated = await authClient.assignMeToIncident(incidentId, 'Assigned');
+      setIncidents((current) => current.map((incident) => (incident.id === updated.id ? updated : incident)));
+      setSelectedIncidentId(updated.id);
+      setMessage(`Assigned to ${updated.callNumber}.`);
+      setActiveDockItem('call-detail');
+    } catch {
+      setMessage('Unable to assign you to this call.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const addNote = async () => {
     if (!selectedIncident || !noteBody.trim()) return;
     setBusy(true);
@@ -2160,7 +2175,7 @@ export const OfficerDashboard: React.FC = () => {
             }`}
           >
             <div className="min-h-0 overflow-hidden">
-              <div className="grid max-h-56 gap-1 overflow-hidden border-t border-slate-200 p-2 dark:border-slate-700">
+              <div className="grid max-h-56 gap-1 overflow-y-auto border-t border-slate-200 p-2 pr-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent dark:border-slate-700 dark:scrollbar-thumb-slate-700">
                 {liveFeedItems.length === 0 && (
                   <div className="rounded bg-white px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-950 dark:text-slate-400">
                     Waiting for live CAD activity.
@@ -2363,6 +2378,7 @@ export const OfficerDashboard: React.FC = () => {
                 onSelectIncident={setSelectedIncidentId}
                 onNavigateToIncident={focusSelectedIncidentRoute}
                 onUpdateStatus={updateStatus}
+                onAssignMeToIncident={assignMeToIncident}
                 onAddNote={addNote}
                 onLogout={logout}
                 setOfficerEvent={setOfficerEvent}
@@ -2432,15 +2448,24 @@ const IncidentButton: React.FC<{
   incident: Incident;
   selected: boolean;
   status: IncidentUnitStatus | null;
+  canAssign: boolean;
+  busy: boolean;
   onClick: () => void;
-}> = ({ incident, selected, status, onClick }) => (
-  <button
-    type="button"
+  onAssign: () => void;
+}> = ({ incident, selected, status, canAssign, busy, onClick, onAssign }) => (
+  <div
+    role="button"
+    tabIndex={0}
     onClick={onClick}
+    onKeyDown={(event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      onClick();
+    }}
     className={`mb-2 w-full rounded-md border p-3 text-left transition ${
       selected
         ? 'border-cad-blue bg-blue-50 dark:border-blue-500 dark:bg-blue-950'
-        : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900'
+        : 'border-slate-200 bg-white hover:bg-slate-50 focus:border-cad-blue focus:outline-none focus:ring-2 focus:ring-cad-blue/20 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900'
     }`}
   >
     <div className="flex items-start justify-between gap-2">
@@ -2451,7 +2476,7 @@ const IncidentButton: React.FC<{
       <span className={`rounded-full px-2 py-1 text-xs font-bold ${priorityClasses[incident.priority]}`}>{incident.priority}</span>
     </div>
     <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{incident.address}</p>
-    <div className="mt-3 flex flex-wrap gap-1.5">
+    <div className="mt-3 flex flex-wrap items-center gap-1.5">
       <span className={`rounded-full px-2 py-1 text-xs font-bold ${incidentStatusClasses[incident.status]}`}>{incident.status}</span>
       {status && <span className={`rounded-full px-2 py-1 text-xs font-bold ring-1 ${statusClasses[status]}`}>My unit: {status}</span>}
       {incident.units.length === 0 ? (
@@ -2465,8 +2490,22 @@ const IncidentButton: React.FC<{
           </span>
         ))
       )}
+      {canAssign && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onAssign();
+          }}
+          disabled={busy}
+          className="ml-auto inline-flex items-center gap-1.5 rounded bg-cad-blue px-2.5 py-1 text-xs font-black text-white shadow-sm transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-cad-blue/30 disabled:opacity-50"
+        >
+          <Plus size={13} />
+          Assign Me
+        </button>
+      )}
     </div>
-  </button>
+  </div>
 );
 
 const DockContent: React.FC<{
@@ -2487,6 +2526,7 @@ const DockContent: React.FC<{
   onSelectIncident: (id: string) => void;
   onNavigateToIncident: () => void;
   onUpdateStatus: (status: IncidentUnitStatus) => void;
+  onAssignMeToIncident: (incidentId: string) => void;
   onAddNote: () => void;
   onLogout: () => void;
   setOfficerEvent: React.Dispatch<React.SetStateAction<{ type: string; priority: IncidentPriority; description: string }>>;
@@ -2547,6 +2587,7 @@ const DockContent: React.FC<{
   onSelectIncident,
   onNavigateToIncident,
   onUpdateStatus,
+  onAssignMeToIncident,
   onAddNote,
   onLogout,
   setOfficerEvent,
@@ -2698,7 +2739,10 @@ const DockContent: React.FC<{
               incident={incident}
               selected={selectedIncident?.id === incident.id}
               status={getMyUnitStatus(incident, currentUserId)}
+              canAssign={!isClosedCall(incident) && !getMyUnitStatus(incident, currentUserId)}
+              busy={busy}
               onClick={() => onSelectIncident(incident.id)}
+              onAssign={() => onAssignMeToIncident(incident.id)}
             />
           ))}
         </div>
@@ -2710,6 +2754,7 @@ const DockContent: React.FC<{
     if (!selectedIncident) return <p className="text-sm text-slate-600 dark:text-slate-300">No call selected.</p>;
     const myAssignment = selectedIncident.units.find((unit) => unit.userId === currentUserId);
     const currentStatusStartedAt = myAssignment?.statusUpdatedAt || myAssignment?.assignedAt;
+    const canAssignSelected = !isClosedCall(selectedIncident) && !myAssignment;
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2719,13 +2764,24 @@ const DockContent: React.FC<{
             <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{selectedIncident.callNumber} opened {formatTime(selectedIncident.createdAt)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canAssignSelected && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onAssignMeToIncident(selectedIncident.id)}
+                className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-3 text-sm font-bold text-white hover:bg-blue-800 disabled:opacity-50"
+              >
+                <Plus size={18} />
+                Assign Me
+              </button>
+            )}
             <button type="button" onClick={onNavigateToIncident} className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-3 text-sm font-bold text-white">
               <Navigation size={18} />
               Navigate
             </button>
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || !myAssignment}
               onClick={() => onUpdateStatus('Cleared')}
               className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
             >

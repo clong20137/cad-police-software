@@ -228,6 +228,44 @@ router.post(
   }
 );
 
+router.post(
+  '/:id/assign-me',
+  authMiddleware,
+  requirePermission('view_dispatch'),
+  async (req: Request<{ id: string }, {}, Partial<AssignIncidentUnitRequest>>, res: Response): Promise<void> => {
+    try {
+      if (req.user?.role !== UserRole.OFFICER && req.user?.role !== UserRole.ADMIN) {
+        res.status(403).json({ error: 'Officer or admin access required' });
+        return;
+      }
+
+      const incident = await IncidentService.assignUnit(
+        req.params.id,
+        req.user.id,
+        req.user.id,
+        req.body.status || 'Assigned'
+      );
+      if (!incident) {
+        res.status(404).json({ error: 'Incident not found' });
+        return;
+      }
+
+      await AuditLogService.fromRequest(req, {
+        action: 'incident_unit_self_assigned',
+        resource: 'incident',
+        resourceId: incident.id,
+        metadata: { callNumber: incident.callNumber, status: req.body.status || 'Assigned' }
+      });
+      await broadcastIncidents();
+      await broadcastTrackedUnits();
+      await broadcastOfficerAssignment(req.user.id);
+      res.json(incident);
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message || 'Unable to assign yourself to call' });
+    }
+  }
+);
+
 router.patch(
   '/:id/my-status',
   authMiddleware,

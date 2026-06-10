@@ -306,6 +306,11 @@ class AuthClient {
     return response.data;
   }
 
+  async assignMeToIncident(incidentId: string, status: IncidentUnitStatus = 'Assigned'): Promise<Incident> {
+    const response = await this.api.post<Incident>(`/incidents/${incidentId}/assign-me`, { status });
+    return response.data;
+  }
+
   async updateMyIncidentStatus(incidentId: string, status: IncidentUnitStatus): Promise<Incident> {
     const response = await this.api.patch<Incident>(`/incidents/${incidentId}/my-status`, { status });
     return response.data;
