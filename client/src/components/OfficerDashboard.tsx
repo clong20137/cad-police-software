@@ -41,13 +41,14 @@ import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
+import { ProtectiveOrderPanel } from './common/ProtectiveOrderPanel';
 import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { UrgentAlertOverlay } from './common/UrgentAlertOverlay';
 import { callTypesFromConfig } from '../utils/adminConfig';
 import { geofenceAssignmentForPoint, geofencesFromConfig } from '../utils/mapGeofences';
 import { APP_NAME } from '../constants/branding';
 
-type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'location' | 'settings' | 'navigation' | 'status';
+type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'protective-orders' | 'location' | 'settings' | 'navigation' | 'status';
 type DockSlot = QuickLaunchSlot<DockItem>;
 type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
 type PendingCallFeedRow = { incident: Incident; exiting: boolean };
@@ -174,6 +175,7 @@ const dockItems: Array<{ id: DockItem; label: string; icon: React.ReactNode }> =
   { id: 'notes', label: 'Notes', icon: <Send size={18} /> },
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
   { id: 'inquiries', label: 'Inquiries', icon: <Search size={18} /> },
+  { id: 'protective-orders', label: 'Protect Ord', icon: <Search size={18} /> },
   { id: 'location', label: 'Location', icon: <MapPin size={18} /> },
   { id: 'navigation', label: 'Navigate', icon: <Navigation size={18} /> },
   { id: 'status', label: 'Status', icon: <Radio size={18} /> },
@@ -826,7 +828,7 @@ export const OfficerDashboard: React.FC = () => {
     { id: 'unit-status', label: 'Unit Status', icon: Radio, iconClassName: 'text-indigo-700', onClick: () => setActiveDockItem('status') },
     { id: 'calls', label: 'My Case', icon: ClipboardList, iconClassName: 'text-amber-700', onClick: () => setActiveDockItem('calls') },
     { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openDockItem('messages') },
-    { id: 'protect', label: 'Protect Ord', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveDockItem('inquiries') }
+    { id: 'protect', label: 'Protect Ord', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveDockItem('protective-orders') }
   ];
   useEffect(() => {
     localStorage.setItem('cad_officer_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
@@ -2766,6 +2768,10 @@ const DockContent: React.FC<{
         onSubmit={onSubmitInquiry}
       />
     );
+  }
+
+  if (activeItem === 'protective-orders') {
+    return <ProtectiveOrderPanel />;
   }
 
   if (activeItem === 'settings') {

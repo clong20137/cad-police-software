@@ -54,6 +54,7 @@ import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot as DockSlotValue } from './common/QuickLaunchDock';
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
+import { ProtectiveOrderPanel } from './common/ProtectiveOrderPanel';
 import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { UrgentAlertOverlay } from './common/UrgentAlertOverlay';
 import { callTypesFromConfig } from '../utils/adminConfig';
@@ -170,7 +171,7 @@ interface GoogleAutocompleteService {
 }
 
 type TrackedUnit = User & { lat: number; lon: number };
-type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'inquiries' | 'settings';
+type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'inquiries' | 'protective-orders' | 'settings';
 type QuickLaunchSlot = DockSlotValue<QuickLaunchId>;
 type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
@@ -195,6 +196,7 @@ const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.
   { id: 'unit-detail', label: 'Unit', icon: <Radio size={18} /> },
   { id: 'call-detail', label: 'Call', icon: <Shield size={18} /> },
   { id: 'inquiries', label: 'Inquiries', icon: <Search size={18} /> },
+  { id: 'protective-orders', label: 'Protect Ord', icon: <Search size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
 ];
 
@@ -1535,7 +1537,7 @@ export const Dashboard: React.FC = () => {
     { id: 'unit-status', label: 'Unit Status', icon: Users, iconClassName: 'text-indigo-700', onClick: () => setActiveQuickModal('units') },
     { id: 'calls', label: 'Calls', icon: ClipboardList, badge: callBadgeCount, iconClassName: 'text-amber-700', onClick: () => setActiveQuickModal('calls') },
     { id: 'messages', label: 'Messages', icon: MessageCircle, badge: messageBadgeCount, iconClassName: 'text-emerald-700', onClick: () => openQuickLaunch('messages') },
-    { id: 'protect', label: 'Protect Ord', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveQuickModal('inquiries') }
+    { id: 'protect', label: 'Protect Ord', icon: Search, iconClassName: 'text-red-700', onClick: () => setActiveQuickModal('protective-orders') }
   ];
   useEffect(() => {
     localStorage.setItem('cad_pinned_message_threads', JSON.stringify(pinnedMessageThreadIds));
@@ -2769,6 +2771,10 @@ export const Dashboard: React.FC = () => {
           onSubmit={submitInquiry}
         />
       );
+    }
+
+    if (modalId === 'protective-orders') {
+      return <ProtectiveOrderPanel />;
     }
 
     if (modalId === 'units') {
