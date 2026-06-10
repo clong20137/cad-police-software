@@ -19,6 +19,13 @@ const toAuditLog = (row: AuditLogRow): AuditLogEntry => ({
   createdAt: row.created_at
 });
 
+const boundedLimit = (value: number, fallback = 200): number => {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(Math.max(Math.trunc(value), 1), 500);
+};
+
 export class AuditLogService {
   static async record(input: {
     userId?: string | null;
@@ -82,28 +89,28 @@ export class AuditLogService {
   }
 
   static async recent(limit = 200): Promise<AuditLogEntry[]> {
+    const safeLimit = boundedLimit(limit);
     const [rows] = await pool.execute<AuditLogRow[]>(
       `
         SELECT *
         FROM audit_logs
         ORDER BY created_at DESC
-        LIMIT ?
-      `,
-      [Math.min(Math.max(limit, 1), 500)]
+        LIMIT ${safeLimit}
+      `
     );
     return rows.map(toAuditLog);
   }
 
   static async sensitiveInquiryHistory(limit = 200): Promise<AuditLogEntry[]> {
+    const safeLimit = boundedLimit(limit);
     const [rows] = await pool.execute<AuditLogRow[]>(
       `
         SELECT *
         FROM audit_logs
         WHERE action IN ('bmv_inquiry', 'idacs_inquiry', 'court_lookup')
         ORDER BY created_at DESC
-        LIMIT ?
-      `,
-      [Math.min(Math.max(limit, 1), 500)]
+        LIMIT ${safeLimit}
+      `
     );
     return rows.map(toAuditLog);
   }
