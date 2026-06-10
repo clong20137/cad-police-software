@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import {
   AlertTriangle,
-  Bell,
   CheckCircle2,
   Check,
   CheckCheck,
@@ -2019,8 +2018,7 @@ export const OfficerDashboard: React.FC = () => {
             aria-label={liveFeedOpen ? 'Hide live feed' : 'Show live feed'}
             title={liveFeedOpen ? 'Hide live feed' : 'Show live feed'}
           >
-            <Bell size={19} />
-            {liveFeedItems.length > 0 && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-800" />}
+            <ChevronUp className={`transition-transform duration-300 ${liveFeedOpen ? '' : 'rotate-180'}`} size={19} />
           </button>
           <button
             type="button"
@@ -2097,22 +2095,24 @@ export const OfficerDashboard: React.FC = () => {
           )}
       </div>
 
-      {liveFeedOpen ? (
-        <aside className="pointer-events-auto fixed bottom-[6.75rem] right-3 z-30 w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border border-white/40 bg-white/75 p-2 text-cad-ink opacity-90 shadow-xl transition-all duration-200 dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-white sm:right-5 md:bottom-28">
+      <div className="pointer-events-none fixed bottom-[6.75rem] right-3 z-30 flex w-[min(20rem,calc(100vw-1.5rem))] flex-col gap-2 sm:right-5 md:bottom-28">
+        <aside
+          className={`pointer-events-auto overflow-hidden rounded-lg border border-white/40 bg-white/75 text-cad-ink shadow-xl transition-all duration-300 ease-out dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-white ${
+            liveFeedOpen ? 'max-h-80 translate-y-0 p-2 opacity-90' : 'max-h-0 translate-y-2 border-transparent p-0 opacity-0'
+          }`}
+          aria-hidden={!liveFeedOpen}
+        >
           <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
             <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Live Feed</span>
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]" />
-              <button
-                type="button"
-                onClick={() => setLiveFeedOpen(false)}
-                className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white/80 text-slate-500 hover:bg-white hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-800"
-                aria-label="Hide live feed"
-                title="Hide live feed"
-              >
-                <X size={14} />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setLiveFeedOpen(false)}
+              className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white/80 text-slate-500 hover:bg-white hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-800"
+              aria-label="Collapse live feed"
+              title="Collapse live feed"
+            >
+              <ChevronUp size={14} />
+            </button>
           </div>
           <div className="grid max-h-56 gap-1 overflow-hidden">
             {liveFeedItems.length === 0 && (
@@ -2144,7 +2144,63 @@ export const OfficerDashboard: React.FC = () => {
             })}
           </div>
         </aside>
-      ) : null}
+
+        <aside className="pointer-events-auto overflow-hidden rounded-lg border border-slate-200 bg-white/95 text-cad-ink shadow-2xl transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 dark:text-white">
+          <button
+            type="button"
+            onClick={() => setRightOpen((value) => !value)}
+            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800"
+            aria-label={rightOpen ? 'Collapse active assignments' : 'Expand active assignments'}
+            title={rightOpen ? 'Collapse active assignments' : 'Expand active assignments'}
+          >
+            <span className="min-w-0">
+              <span className="block text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Active Assignments</span>
+              <span className="mt-0.5 block truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {assignedIncidents.length} active
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="rounded-full bg-cad-blue px-2 py-1 text-xs font-bold text-white">{assignedIncidents.length}</span>
+              <ChevronUp className={`text-slate-500 transition-transform duration-300 dark:text-slate-300 ${rightOpen ? '' : 'rotate-180'}`} size={18} />
+            </span>
+          </button>
+          <div
+            className={`grid transition-all duration-300 ease-out ${
+              rightOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+            }`}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="border-t border-slate-200 p-3 dark:border-slate-700">
+                {selectedAssignmentWarning && (
+                  <p className="mb-3 rounded-md bg-amber-50 p-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800">
+                    {selectedAssignmentWarning}
+                  </p>
+                )}
+                <div className="grid max-h-64 gap-2 overflow-y-auto">
+                  {assignedIncidents.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No active assignments.</p>}
+                  {assignedIncidents.map((incident) => (
+                    <button
+                      key={incident.id}
+                      type="button"
+                      onClick={() => setSelectedIncidentId(incident.id)}
+                      className="rounded-md border border-slate-200 bg-white p-3 text-left shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-bold">{incident.callNumber}</p>
+                          <p className="text-sm text-slate-600 dark:text-slate-300">{incident.type}</p>
+                        </div>
+                        <span className={`rounded-full px-2 py-1 text-xs font-bold ${priorityClasses[incident.priority]}`}>{incident.priority}</span>
+                      </div>
+                      <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{incident.address}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
 
       <button
         type="button"
@@ -2213,51 +2269,6 @@ export const OfficerDashboard: React.FC = () => {
           </button>
         </aside>
       )}
-
-      <button
-        type="button"
-        onClick={() => setRightOpen((value) => !value)}
-        className="absolute right-4 top-20 z-30 inline-flex h-9 w-12 items-center justify-center rounded-md border border-slate-200 bg-white/95 text-slate-700 shadow-xl transition dark:border-slate-700 dark:bg-slate-900/95 dark:text-white"
-        title={rightOpen ? 'Collapse assignments' : 'Open assignments'}
-      >
-        <ChevronUp className={`transition-transform duration-300 ${rightOpen ? '' : 'rotate-180'}`} size={18} />
-      </button>
-
-      <aside
-        className={`absolute right-4 top-32 z-20 w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl transition-all duration-300 ease-out dark:border-slate-700 dark:bg-slate-900/95 ${
-          rightOpen ? 'translate-y-0 opacity-100' : '-translate-y-4 pointer-events-none opacity-0'
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Active Assignments</h2>
-          <span className="rounded-full bg-cad-blue px-2 py-1 text-xs font-bold text-white">{assignedIncidents.length}</span>
-        </div>
-        {selectedAssignmentWarning && (
-          <p className="mt-3 rounded-md bg-amber-50 p-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800">
-            {selectedAssignmentWarning}
-          </p>
-        )}
-        <div className="mt-3 grid gap-2">
-          {assignedIncidents.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No active assignments.</p>}
-          {assignedIncidents.map((incident) => (
-            <button
-              key={incident.id}
-              type="button"
-              onClick={() => setSelectedIncidentId(incident.id)}
-              className="rounded-md border border-slate-200 bg-white p-3 text-left shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-bold">{incident.callNumber}</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-300">{incident.type}</p>
-                </div>
-                <span className={`rounded-full px-2 py-1 text-xs font-bold ${priorityClasses[incident.priority]}`}>{incident.priority}</span>
-              </div>
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{incident.address}</p>
-            </button>
-          ))}
-        </div>
-      </aside>
 
       <QuickLaunchDock
         slots={dockSlots}
