@@ -107,6 +107,7 @@ interface GoogleMapInstance {
   setZoom: (zoom: number) => void;
   fitBounds: (bounds: GoogleLatLngBoundsInstance) => void;
   setOptions: (options: Record<string, unknown>) => void;
+  addListener: (eventName: string, handler: () => void) => { remove?: () => void };
 }
 
 interface GoogleOverlayViewInstance {
@@ -175,6 +176,9 @@ type NavigationSummary = {
   traffic: 'clear' | 'moderate' | 'heavy' | 'unknown';
 };
 
+type GpsConfidence = 'excellent' | 'fair' | 'poor';
+type MapFollowMode = 'me' | 'call' | 'manual';
+
 type WakeLockSentinel = {
   release: () => Promise<void>;
   addEventListener: (eventName: 'release', handler: () => void) => void;
@@ -194,6 +198,7 @@ const liveLocationOptions: PositionOptions = {
 };
 const usableGpsAccuracyMeters = 150;
 const fallbackGpsAccuracyMeters = 300;
+const staleGpsFixMs = 30000;
 
 const dockItems: Array<{ id: DockItem; label: string; icon: React.ReactNode }> = [
   { id: 'calls', label: 'Calls', icon: <ClipboardList size={18} /> },
@@ -623,6 +628,7 @@ export const OfficerDashboard: React.FC = () => {
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<'starting' | 'live' | 'blocked' | 'error'>('starting');
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
+  const [lastLocationFixAt, setLastLocationFixAt] = useState<number | null>(null);
   const [realtimeState, setRealtimeState] = useState<'connecting' | 'live' | 'reconnecting' | 'offline'>('connecting');
   const [lastRealtimeSync, setLastRealtimeSync] = useState<Date | null>(null);
   const [offlineCacheAgeMs, setOfflineCacheAgeMs] = useState<number | null>(null);
@@ -631,6 +637,7 @@ export const OfficerDashboard: React.FC = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationTrail, setLocationTrail] = useState<Array<{ lat: number; lon: number; speedMph?: number | null }>>([]);
   const [mapReady, setMapReady] = useState(false);
+  const [mapFollowMode, setMapFollowMode] = useState<MapFollowMode>('manual');
   const [navigatingIncidentId, setNavigatingIncidentId] = useState<string | null>(null);
   const [navigationSummary, setNavigationSummary] = useState<NavigationSummary | null>(null);
   const [rightOpen, setRightOpen] = useState(true);
@@ -715,6 +722,7 @@ export const OfficerDashboard: React.FC = () => {
   const routeFallbackPolylineRef = useRef<GooglePolylineInstance | null>(null);
   const trafficLayerRef = useRef<GoogleTrafficLayerInstance | null>(null);
   const hasFitCallBoundsRef = useRef(false);
+  const suppressMapInteractionRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
   const activeQuickModalRef = useRef<DockItem | null>(null);
@@ -772,6 +780,26 @@ export const OfficerDashboard: React.FC = () => {
   const mapRouteIncident = incidents.find((incident) => incident.id === navigatingIncidentId) || null;
   const deferredCurrentLocation = useDeferredValue(currentLocation);
   const deferredLocationTrail = useDeferredValue(locationTrail);
+  const locationFixAgeMs = lastLocationFixAt ? sidebarNow - lastLocationFixAt : null;
+  const gpsConfidence: GpsConfidence =
+    locationState === 'blocked' ||
+    locationState === 'error' ||
+    !lastLocationFixAt ||
+    (locationFixAgeMs !== null && locationFixAgeMs > staleGpsFixMs) ||
+    (locationAccuracy !== null && locationAccuracy > 100)
+      ? 'poor'
+      : locationState === 'starting' || locationAccuracy === null || locationAccuracy > 25
+        ? 'fair'
+        : 'excellent';
+  const gpsConfidenceLabel =
+    gpsConfidence === 'excellent' ? 'GPS high accuracy' : gpsConfidence === 'fair' ? 'GPS connecting' : 'GPS not reliable';
+  const gpsConfidenceDotClass =
+    gpsConfidence === 'excellent' ? 'bg-emerald-500' : gpsConfidence === 'fair' ? 'bg-amber-400' : 'bg-red-500';
+  const gpsConfidenceTitle = [
+    gpsConfidenceLabel,
+    locationAccuracy !== null ? `${Math.round(locationAccuracy)}m accuracy` : 'Accuracy pending',
+    locationFixAgeMs !== null ? `Updated ${Math.max(0, Math.round(locationFixAgeMs / 1000))} sec ago` : 'No GPS fix yet'
+  ].join(' - ');
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
   const configuredGeofences = useMemo(() => geofencesFromConfig(adminConfig), [adminConfig]);
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
@@ -1110,6 +1138,20 @@ export const OfficerDashboard: React.FC = () => {
     setDockZOrder((current) => ({ ...current, [item]: dockZCounterRef.current }));
   }, []);
 
+  const runMapCameraUpdate = useCallback((update: () => void) => {
+    suppressMapInteractionRef.current = true;
+    update();
+    window.setTimeout(() => {
+      suppressMapInteractionRef.current = false;
+    }, 350);
+  }, []);
+
+  const markMapManualMode = useCallback(() => {
+    if (suppressMapInteractionRef.current) return;
+    setMapFollowMode('manual');
+    hasFitCallBoundsRef.current = true;
+  }, []);
+
   const closeDockItem = useCallback((item: DockItem) => {
     setOpenDockItems((current) => current.filter((dockItem) => dockItem !== item));
     setActiveDockItem((current) => {
@@ -1343,6 +1385,7 @@ export const OfficerDashboard: React.FC = () => {
         };
         const nextLocation = { lat: position.coords.latitude, lon: position.coords.longitude };
         setLocationAccuracy(Number.isFinite(accuracy) ? accuracy : null);
+        setLastLocationFixAt(Date.now());
         if (accuracyAcceptable) {
           setCurrentLocation(nextLocation);
           setLocationTrail((current) => {
@@ -1357,7 +1400,9 @@ export const OfficerDashboard: React.FC = () => {
         setLocationState(accuracyUsable ? 'live' : 'starting');
         if (accuracyUsable) uploadLatestLocation();
       },
-      (error) => setLocationState(error.code === error.PERMISSION_DENIED ? 'blocked' : 'error'),
+      (error) => {
+        setLocationState(error.code === error.PERMISSION_DENIED ? 'blocked' : 'error');
+      },
       liveLocationOptions
     );
 
@@ -1446,7 +1491,21 @@ export const OfficerDashboard: React.FC = () => {
       fullscreenControl: false,
       styles: theme === 'dark' ? darkMapStyles : []
     });
-  }, [currentLocation, mapReady, theme]);
+    mapInstanceRef.current.addListener('dragstart', markMapManualMode);
+    mapInstanceRef.current.addListener('zoom_changed', markMapManualMode);
+  }, [currentLocation, mapReady, markMapManualMode, theme]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !currentLocation || mapFollowMode !== 'me') return;
+    runMapCameraUpdate(() => map.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon }));
+  }, [currentLocation, mapFollowMode, runMapCameraUpdate]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapRouteIncident || mapRouteIncident.lat === undefined || mapRouteIncident.lon === undefined || mapFollowMode !== 'call') return;
+    runMapCameraUpdate(() => map.setCenter({ lat: mapRouteIncident.lat as number, lng: mapRouteIncident.lon as number }));
+  }, [mapFollowMode, mapRouteIncident, runMapCameraUpdate]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -1616,21 +1675,26 @@ export const OfficerDashboard: React.FC = () => {
       });
     }
 
-    if (hasCallBounds && !hasFitCallBoundsRef.current) {
+    if (hasCallBounds && !hasFitCallBoundsRef.current && mapFollowMode !== 'manual') {
       if (renderCurrentLocation) bounds.extend({ lat: renderCurrentLocation.lat, lng: renderCurrentLocation.lon });
-      map.fitBounds(bounds);
+      runMapCameraUpdate(() => map.fitBounds(bounds));
       hasFitCallBoundsRef.current = true;
     }
-  }, [assignedIncidents, configuredGeofences, currentSpeed, deferredCurrentLocation, deferredLocationTrail, mapLayers, mapRouteIncident, selectedStatus, theme, trackedOfficers, user?.id]);
+  }, [assignedIncidents, configuredGeofences, currentSpeed, deferredCurrentLocation, deferredLocationTrail, mapFollowMode, mapLayers, mapRouteIncident, runMapCameraUpdate, selectedStatus, theme, trackedOfficers, user?.id]);
 
   const recenterMap = () => {
     if (!currentLocation) return;
-    mapInstanceRef.current?.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon });
-    mapInstanceRef.current?.setZoom(15);
+    setMapFollowMode('me');
+    if (!mapInstanceRef.current) return;
+    runMapCameraUpdate(() => {
+      mapInstanceRef.current?.setCenter({ lat: currentLocation.lat, lng: currentLocation.lon });
+      mapInstanceRef.current?.setZoom(15);
+    });
   };
 
   const cancelNavigation = () => {
     setNavigatingIncidentId(null);
+    setMapFollowMode('manual');
     setNavigationSummary(null);
     authClient.updateDestination(null, null, null).catch(() => undefined);
     routeRendererRef.current?.setMap(null);
@@ -1656,6 +1720,7 @@ export const OfficerDashboard: React.FC = () => {
 
     setSelectedIncidentId(selectedIncident.id);
     setNavigatingIncidentId(selectedIncident.id);
+    setMapFollowMode('call');
     authClient
       .updateDestination(selectedIncident.lat, selectedIncident.lon, selectedIncident.callNumber)
       .catch(() => undefined);
@@ -1679,6 +1744,8 @@ export const OfficerDashboard: React.FC = () => {
         const nextLocation = { lat: position.coords.latitude, lon: position.coords.longitude, speedMph };
         latestLocationRef.current = nextLocation;
         setCurrentLocation({ lat: nextLocation.lat, lon: nextLocation.lon });
+        setLocationAccuracy(Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null);
+        setLastLocationFixAt(Date.now());
         setCurrentSpeed(speedMph);
       } catch {
         setNavigationSummary(fallbackNavigationSummary(currentLocation, selectedIncident, currentSpeed) || {
@@ -1691,8 +1758,12 @@ export const OfficerDashboard: React.FC = () => {
       }
     }
 
-    mapInstanceRef.current?.setCenter({ lat: selectedIncident.lat, lng: selectedIncident.lon });
-    mapInstanceRef.current?.setZoom(16);
+    if (mapInstanceRef.current) {
+      runMapCameraUpdate(() => {
+        mapInstanceRef.current?.setCenter({ lat: selectedIncident.lat as number, lng: selectedIncident.lon as number });
+        mapInstanceRef.current?.setZoom(16);
+      });
+    }
     setActiveDockItem(null);
     setOpenDockItems((current) => current.filter((item) => item !== 'call-detail' && item !== 'navigation'));
   };
@@ -2532,14 +2603,23 @@ export const OfficerDashboard: React.FC = () => {
         </aside>
       </div>
 
-      <button
-        type="button"
-        onClick={recenterMap}
-        className="absolute bottom-4 left-4 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-cad-blue shadow-xl hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200"
-        title="My location"
-      >
-        <MapPin size={19} />
-      </button>
+      <div className="absolute bottom-4 left-4 z-30 inline-flex items-center gap-2">
+        <button
+          type="button"
+          onClick={recenterMap}
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-cad-blue shadow-xl hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200"
+          title="Follow my location"
+          aria-label="Follow my location"
+        >
+          <MapPin size={19} />
+        </button>
+        <span
+          className="rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-black uppercase tracking-wide text-slate-600 shadow-xl dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
+          title={mapFollowMode === 'manual' ? 'Manual mode: the map will not move until you choose a follow mode.' : mapFollowMode === 'call' ? 'Following active navigation call.' : 'Following your GPS location.'}
+        >
+          {mapFollowMode === 'manual' ? 'Manual' : mapFollowMode === 'call' ? 'Follow Call' : 'Follow Me'}
+        </span>
+      </div>
 
       <aside className="absolute left-3 top-3 z-40 flex gap-2 sm:left-5 sm:top-4">
         <label
@@ -2567,23 +2647,12 @@ export const OfficerDashboard: React.FC = () => {
         </div>
         <div
           className="inline-flex h-10 items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95"
-          title={
-            locationState === 'live'
-              ? `GPS active${locationAccuracy !== null ? ` - ${Math.round(locationAccuracy)}m accuracy` : ''}`
-              : locationState === 'starting'
-                ? `GPS connecting${locationAccuracy !== null ? ` - ${Math.round(locationAccuracy)}m accuracy` : ''}`
-                : 'GPS not working'
-          }
+          title={gpsConfidenceTitle}
+          aria-label={gpsConfidenceTitle}
         >
           <MapPin size={16} className="text-cad-blue dark:text-blue-100" />
           <span
-            className={`h-3 w-3 rounded-full ring-2 ring-white dark:ring-slate-950 ${
-              locationState === 'live'
-                ? 'bg-emerald-500'
-                : locationState === 'starting'
-                  ? 'bg-amber-400'
-                  : 'bg-red-500'
-            }`}
+            className={`h-3 w-3 rounded-full ring-2 ring-white dark:ring-slate-950 ${gpsConfidenceDotClass}`}
           />
         </div>
         <div
