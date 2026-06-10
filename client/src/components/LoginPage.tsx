@@ -248,7 +248,7 @@ export const LoginPage: React.FC = () => {
             {isRegistering && showCredentialFields && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <TextField id="name" label="Full name" value={name} onChange={setName} icon={<User size={16} />} autoComplete="name" required disabled={loading} className="sm:col-span-2" />
-                <label className="grid gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300">
+                <label className="grid gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300">
                   Role
                   <div className="relative">
                     <Radio className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -287,7 +287,7 @@ export const LoginPage: React.FC = () => {
                   disabled={loading}
                 />
 
-                <label className="grid gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300" htmlFor="password">
+                <label className="grid gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="password">
                   Password
                   <div className="relative">
                     <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -324,7 +324,7 @@ export const LoginPage: React.FC = () => {
                     <KeyRound size={17} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-black text-cad-blue dark:text-blue-100">
+                    <p className="text-sm font-semibold text-cad-blue dark:text-blue-100">
                       {twoFactorChallenge.setupRequired ? 'Set up 2FA' : 'Verify 2FA'}
                     </p>
                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">
@@ -343,11 +343,11 @@ export const LoginPage: React.FC = () => {
                             aria-label="Two-factor authenticator setup QR code"
                           />
                         </div>
-                        <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        <label className="grid gap-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                           Manual secret
                           <input className={`${inputBase} h-10 font-mono text-xs`} readOnly value={twoFactorChallenge.setup.secret} />
                         </label>
-                        <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        <label className="grid gap-1 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                           Authenticator URL
                           <input className={`${inputBase} h-10 font-mono text-xs`} readOnly value={twoFactorChallenge.setup.otpauthUrl} />
                         </label>
@@ -355,7 +355,7 @@ export const LoginPage: React.FC = () => {
                     )}
                   </div>
                 </div>
-                <label className="mt-3 grid gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300" htmlFor="twoFactorCode">
+                <label className="mt-3 grid gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="twoFactorCode">
                   2FA code
                   <input
                     id="twoFactorCode"
@@ -430,7 +430,7 @@ const TextField: React.FC<{
   disabled?: boolean;
   className?: string;
 }> = ({ id, label, value, onChange, icon, type = 'text', placeholder, autoComplete, required, disabled, className = '' }) => (
-  <label className={`grid gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300 ${className}`} htmlFor={id}>
+  <label className={`grid gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 ${className}`} htmlFor={id}>
     {label}
     <div className="relative">
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{icon}</span>
