@@ -52,6 +52,14 @@ type DockSlot = QuickLaunchSlot<DockItem>;
 type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
 type PendingCallFeedRow = { incident: Incident; exiting: boolean };
 type CallTabId = 'all' | 'my' | 'pending' | 'closed';
+type LiveFeedItem = {
+  id: string;
+  at: Date | string;
+  actor: string;
+  action: string;
+  detail: string;
+  tone: 'blue' | 'green' | 'yellow' | 'red' | 'slate';
+};
 
 interface OfficerGoogleMaps {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => GoogleMapInstance;
@@ -338,6 +346,9 @@ const escapeHtml = (value: string): string =>
 const officerMapLabel = (officer: User): string =>
   officer.cadUnitNumber || officer.unitNumber || officer.badge || officer.name.split(' ')[0] || 'Unit';
 
+const unitDisplayName = (name?: string, unitNumber?: string): string =>
+  [name, unitNumber].filter(Boolean).join(' ') || 'CAD';
+
 const officerMapDisplayLabel = (officer: User): string => {
   const unit = officerMapLabel(officer);
   const lastName = officer.name.trim().split(/\s+/).filter(Boolean).slice(-1)[0] || officer.name;
@@ -454,6 +465,32 @@ const workflowStatuses = (incident: Incident | null): IncidentUnitStatus[] => {
 
 const getMyUnitStatus = (incident: Incident, userId?: string): IncidentUnitStatus | null =>
   incident.units.find((unit) => unit.userId === userId)?.status || null;
+
+const callActionText = (type: string): string => {
+  const normalized = type.toLowerCase();
+  if (normalized.includes('traffic stop')) return 'is making a traffic stop';
+  if (normalized.includes('assist')) return 'is requesting assistance';
+  if (normalized.includes('pursuit')) return 'started a pursuit';
+  return `created ${type}`;
+};
+
+const unitStatusActionText = (status: IncidentUnitStatus): string => {
+  if (status === 'En Route') return 'is en route to';
+  if (status === 'On Scene') return 'arrived at';
+  if (status === 'Transporting') return 'is transporting from';
+  if (status === 'At Hospital') return 'arrived at hospital for';
+  if (status === 'Staged') return 'is staged for';
+  if (status === 'Cleared') return 'cleared';
+  if (status === 'Acknowledged') return 'acknowledged';
+  return 'was assigned to';
+};
+
+const feedToneForStatus = (status: IncidentUnitStatus): LiveFeedItem['tone'] => {
+  if (status === 'En Route') return 'yellow';
+  if (['On Scene', 'Transporting', 'At Hospital', 'Staged'].includes(status)) return 'red';
+  if (status === 'Cleared') return 'green';
+  return 'blue';
+};
 
 const addOfficerOverlay = ({
   map,
@@ -687,6 +724,61 @@ export const OfficerDashboard: React.FC = () => {
 
     return Array.from(byId.values());
   }, [currentLocation, currentSpeed, directory, onlineUserIds, user]);
+  const liveFeedItems = useMemo<LiveFeedItem[]>(() => {
+    const usersById = new Map(directory.map((item) => [item.id, item]));
+    const items: LiveFeedItem[] = [];
+
+    urgentAlerts.forEach((alert) => {
+      items.push({
+        id: `alert-${alert.id}`,
+        at: alert.createdAt,
+        actor: alert.createdByName || 'CAD',
+        action: `sent a ${alert.severity.toLowerCase()} alert`,
+        detail: alert.title,
+        tone: alert.severity === 'Critical' || alert.severity === 'Urgent' ? 'red' : alert.severity === 'Important' ? 'yellow' : 'blue'
+      });
+    });
+
+    incidents.forEach((incident) => {
+      const creator = usersById.get(incident.createdBy);
+      const firstUnit = incident.units[0];
+      items.push({
+        id: `call-${incident.id}`,
+        at: incident.createdAt,
+        actor: unitDisplayName(creator?.name || firstUnit?.name, creator?.cadUnitNumber || creator?.unitNumber || firstUnit?.cadUnitNumber),
+        action: callActionText(incident.type),
+        detail: `${incident.callNumber} ${incident.address || ''}`.trim(),
+        tone: incident.priority === 'Emergency' || incident.priority === 'High' ? 'red' : incident.status === 'Pending' ? 'yellow' : 'blue'
+      });
+
+      incident.units.forEach((unit) => {
+        items.push({
+          id: `unit-${incident.id}-${unit.userId}-${unit.status}`,
+          at: unit.statusUpdatedAt || unit.assignedAt,
+          actor: unitDisplayName(unit.name, unit.cadUnitNumber),
+          action: unitStatusActionText(unit.status),
+          detail: `${incident.callNumber} ${incident.type}`.trim(),
+          tone: feedToneForStatus(unit.status)
+        });
+      });
+
+      incident.notes.slice(-3).forEach((note) => {
+        items.push({
+          id: `note-${note.id}`,
+          at: note.createdAt,
+          actor: note.userName || 'CAD',
+          action: note.noteType === 'status' ? 'updated' : note.noteType === 'assignment' ? 'assigned units on' : 'added a note to',
+          detail: `${incident.callNumber}${note.body ? ` - ${note.body}` : ''}`,
+          tone: note.noteType === 'status' ? 'blue' : 'slate'
+        });
+      });
+    });
+
+    return items
+      .filter((item) => item.at && !Number.isNaN(new Date(item.at).getTime()))
+      .sort((first, second) => new Date(second.at).getTime() - new Date(first.at).getTime())
+      .slice(0, 8);
+  }, [directory, incidents, urgentAlerts]);
   const realtimeStatusLabel =
     realtimeState === 'live'
       ? `Live${lastRealtimeSync ? ` - synced ${lastRealtimeSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`
@@ -1973,6 +2065,42 @@ export const OfficerDashboard: React.FC = () => {
           )}
       </div>
 
+      <aside className="pointer-events-none fixed right-3 top-[4.75rem] z-30 w-[min(26rem,calc(100vw-1.5rem))] rounded-lg border border-white/40 bg-white/75 p-2 text-cad-ink opacity-90 shadow-xl dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-white sm:right-5 sm:top-[5.25rem]">
+        <div className="mb-1.5 flex items-center justify-between px-1">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Live Feed</span>
+          <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]" />
+        </div>
+        <div className="grid max-h-56 gap-1 overflow-hidden">
+          {liveFeedItems.length === 0 && (
+            <div className="rounded bg-white/70 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
+              Waiting for live CAD activity.
+            </div>
+          )}
+          {liveFeedItems.map((item) => {
+            const toneClass =
+              item.tone === 'red'
+                ? 'bg-red-500'
+                : item.tone === 'yellow'
+                  ? 'bg-amber-400'
+                  : item.tone === 'green'
+                    ? 'bg-emerald-500'
+                    : item.tone === 'blue'
+                      ? 'bg-cad-blue'
+                      : 'bg-slate-400';
+            return (
+              <div key={item.id} className="grid grid-cols-[auto_1fr] gap-2 rounded border border-white/50 bg-white/70 px-3 py-2 text-xs shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
+                <span className={`mt-1 h-2.5 w-2.5 rounded-full ${toneClass}`} />
+                <p className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
+                  <strong className="font-black text-slate-950 dark:text-white">{item.actor}</strong>{' '}
+                  <strong className="font-black text-cad-blue dark:text-blue-100">{item.action}</strong>{' '}
+                  <span className="text-slate-600 dark:text-slate-300">{item.detail}</span>
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </aside>
+
       <button
         type="button"
         onClick={recenterMap}
@@ -1982,10 +2110,22 @@ export const OfficerDashboard: React.FC = () => {
         <MapPin size={19} />
       </button>
 
-      <aside className="absolute left-3 top-3 z-40 grid gap-2 sm:left-5 sm:top-4">
+      <aside className="absolute left-3 top-3 z-40 flex gap-2 sm:left-5 sm:top-4">
         <div className="inline-flex h-10 items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95">
           <Navigation size={16} className="text-cad-blue dark:text-blue-100" />
           <p className="text-sm font-black text-slate-950 dark:text-white">{currentSpeed === null ? '--' : Math.round(currentSpeed)} MPH</p>
+        </div>
+        <div
+          className="inline-flex h-10 items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95"
+          title={
+            locationState === 'live'
+              ? `GPS active${locationAccuracy !== null ? ` - ${Math.round(locationAccuracy)}m accuracy` : ''}`
+              : locationState === 'starting'
+                ? `GPS connecting${locationAccuracy !== null ? ` - ${Math.round(locationAccuracy)}m accuracy` : ''}`
+                : 'GPS not working'
+          }
+        >
+          <MapPin size={16} className="text-cad-blue dark:text-blue-100" />
           <span
             className={`h-3 w-3 rounded-full ring-2 ring-white dark:ring-slate-950 ${
               locationState === 'live'
@@ -1994,13 +2134,6 @@ export const OfficerDashboard: React.FC = () => {
                   ? 'bg-amber-400'
                   : 'bg-red-500'
             }`}
-            title={
-              locationState === 'live'
-                ? `GPS active${locationAccuracy !== null ? ` - ${Math.round(locationAccuracy)}m accuracy` : ''}`
-                : locationState === 'starting'
-                  ? `GPS connecting${locationAccuracy !== null ? ` - ${Math.round(locationAccuracy)}m accuracy` : ''}`
-                  : 'GPS not working'
-            }
           />
         </div>
       </aside>
