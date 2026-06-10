@@ -241,6 +241,11 @@ class AuthClient {
     return response.data;
   }
 
+  async reopenIncident(incidentId: string): Promise<Incident> {
+    const response = await this.api.post<Incident>(`/incidents/${incidentId}/reopen`);
+    return response.data;
+  }
+
   async addIncidentNote(incidentId: string, body: string): Promise<IncidentNote> {
     const response = await this.api.post<IncidentNote>(`/incidents/${incidentId}/notes`, { body, noteType: 'note' });
     return response.data;

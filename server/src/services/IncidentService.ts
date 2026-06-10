@@ -60,6 +60,8 @@ const unitStatusToIncidentStatus = (status: IncidentUnitStatus): IncidentStatus 
   return 'Dispatched';
 };
 
+const isClosedIncidentStatus = (status: IncidentStatus): boolean => status === 'Closed' || status === 'Canceled';
+
 const toIncidentNote = (row: IncidentNoteRow): IncidentNote => ({
   id: row.id,
   incidentId: row.incident_id,
@@ -212,13 +214,20 @@ export class IncidentService {
     if (!incident) {
       return null;
     }
+    if (isClosedIncidentStatus(incident.status) && !isClosedIncidentStatus(status)) {
+      throw new Error('Reopen the call before changing status');
+    }
+    if (isClosedIncidentStatus(status) && !disposition?.trim()) {
+      throw new Error('Disposition is required to close or cancel a call');
+    }
 
     await pool.execute<ResultSetHeader>(
       `
         UPDATE incidents
         SET status = ?,
             disposition = CASE WHEN ? IN ('Closed', 'Canceled') THEN ? ELSE disposition END,
-            closed_at = CASE WHEN ? IN ('Closed', 'Canceled') THEN UTC_TIMESTAMP() ELSE NULL END
+            closed_at = CASE WHEN ? IN ('Closed', 'Canceled') THEN UTC_TIMESTAMP() ELSE NULL END,
+            updated_at = UTC_TIMESTAMP()
         WHERE id = ?
       `,
       [status, status, disposition?.trim() || null, status, id]
@@ -232,7 +241,7 @@ export class IncidentService {
           : `Status changed to ${status}`
     });
 
-    if (status === 'Closed' || status === 'Canceled') {
+    if (isClosedIncidentStatus(status)) {
       await pool.execute(
         `
           UPDATE incident_units
@@ -290,6 +299,34 @@ export class IncidentService {
     return this.getIncident(id);
   }
 
+  static async reopenIncident(id: string, reopenedBy?: string): Promise<Incident | null> {
+    const incident = await this.getIncident(id);
+    if (!incident) {
+      return null;
+    }
+    if (!isClosedIncidentStatus(incident.status)) {
+      return incident;
+    }
+
+    await pool.execute<ResultSetHeader>(
+      `
+        UPDATE incidents
+        SET status = 'Pending',
+            disposition = NULL,
+            closed_at = NULL,
+            updated_at = UTC_TIMESTAMP()
+        WHERE id = ?
+      `,
+      [id]
+    );
+    await this.addNote(id, reopenedBy || null, {
+      noteType: 'status',
+      body: `Call reopened from ${incident.status}${incident.disposition ? `: ${incident.disposition}` : ''}`
+    });
+
+    return this.getIncident(id);
+  }
+
   static async assignUnit(
     incidentId: string,
     userId: string,
@@ -303,6 +340,9 @@ export class IncidentService {
     const incident = await this.getIncident(incidentId);
     if (!incident) {
       return null;
+    }
+    if (isClosedIncidentStatus(incident.status) && status !== 'Cleared') {
+      throw new Error('Reopen the call before assigning units');
     }
 
     await pool.execute(
@@ -364,6 +404,9 @@ export class IncidentService {
     if (!incident || !incident.units.some((unit) => unit.userId === userId)) {
       return null;
     }
+    if (isClosedIncidentStatus(incident.status)) {
+      throw new Error('Reopen the call before changing unit status');
+    }
 
     await pool.execute(
       `
@@ -408,6 +451,20 @@ export class IncidentService {
         'Pending',
         'Dispatched'
       ]);
+    } else {
+      const remainingActiveUnits = incident.units.filter((unit) => unit.userId !== userId && unit.status !== 'Cleared');
+      if (remainingActiveUnits.length === 0) {
+        await pool.execute('UPDATE incidents SET status = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND status NOT IN (?, ?)', [
+          'Pending',
+          incidentId,
+          'Closed',
+          'Canceled'
+        ]);
+        await this.addNote(incidentId, userId, {
+          noteType: 'status',
+          body: 'All assigned units cleared; call is pending disposition'
+        });
+      }
     }
 
     return this.getIncident(incidentId);

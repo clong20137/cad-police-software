@@ -109,6 +109,28 @@ router.patch(
 );
 
 router.post(
+  '/:id/reopen',
+  authMiddleware,
+  requirePermission('update_dispatch'),
+  async (req: Request<{ id: string }>, res: Response): Promise<void> => {
+    try {
+      const incident = await IncidentService.reopenIncident(req.params.id, req.user?.id);
+      if (!incident) {
+        res.status(404).json({ error: 'Incident not found' });
+        return;
+      }
+
+      await broadcastIncidents();
+      await broadcastTrackedUnits();
+      await Promise.all(incident.units.map((unit) => broadcastOfficerAssignment(unit.userId)));
+      res.json(incident);
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message || 'Unable to reopen incident' });
+    }
+  }
+);
+
+router.post(
   '/:id/notes',
   authMiddleware,
   requirePermission('update_dispatch'),

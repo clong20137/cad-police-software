@@ -332,6 +332,9 @@ const locationReliabilityText = (unit: User, now: number): string => {
   return `Offline - last update ${age}`;
 };
 
+const isClosedIncident = (incident: Incident | null | undefined): boolean =>
+  incident?.status === 'Closed' || incident?.status === 'Canceled';
+
 const markerTone = (unit: User, currentUserId?: string, now = Date.now()): 'gray' | 'green' | 'blue' | 'yellow' | 'red' => {
   if (locationReliability(unit, now) !== 'live') return 'gray';
   const status = unit.status;
@@ -1789,29 +1792,75 @@ export const Dashboard: React.FC = () => {
 
   const updateIncidentStatus = async (status: IncidentStatus) => {
     if (!selectedIncident) return;
-    const disposition = status === 'Closed' || status === 'Canceled' ? incidentDisposition : undefined;
-    const incident = await authClient.updateIncidentStatus(selectedIncident.id, status, disposition);
-    setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
-    setIncidentDisposition('');
+    try {
+      const disposition = status === 'Closed' || status === 'Canceled' ? incidentDisposition : undefined;
+      const incident = await authClient.updateIncidentStatus(selectedIncident.id, status, disposition);
+      setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+      setIncidentDisposition('');
+      setIncidentError('');
+    } catch (error) {
+      const apiMessage =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response?: { data?: { error?: unknown } } }).response?.data?.error === 'string'
+          ? (error as { response: { data: { error: string } } }).response.data.error
+          : '';
+      setIncidentError(apiMessage || 'Unable to update call.');
+    }
+  };
+
+  const reopenIncident = async () => {
+    if (!selectedIncident) return;
+    try {
+      const incident = await authClient.reopenIncident(selectedIncident.id);
+      setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+      setIncidentDisposition('');
+      setIncidentError('');
+    } catch (error) {
+      const apiMessage =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response?: { data?: { error?: unknown } } }).response?.data?.error === 'string'
+          ? (error as { response: { data: { error: string } } }).response.data.error
+          : '';
+      setIncidentError(apiMessage || 'Unable to reopen call.');
+    }
   };
 
   const assignIncidentUnit = async () => {
     if (!selectedIncident || !assignmentUnitId) return;
-    const incident = await authClient.assignIncidentUnit(selectedIncident.id, assignmentUnitId, 'Assigned');
-    setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
-    setAssignmentUnitId('');
+    try {
+      const incident = await authClient.assignIncidentUnit(selectedIncident.id, assignmentUnitId, 'Assigned');
+      setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+      setAssignmentUnitId('');
+      setIncidentError('');
+    } catch {
+      setIncidentError('Unable to assign unit.');
+    }
   };
 
   const assignRecommendedUnit = async (unitId: string) => {
     if (!selectedIncident) return;
-    const incident = await authClient.assignIncidentUnit(selectedIncident.id, unitId, 'Assigned');
-    setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+    try {
+      const incident = await authClient.assignIncidentUnit(selectedIncident.id, unitId, 'Assigned');
+      setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+      setIncidentError('');
+    } catch {
+      setIncidentError('Unable to assign recommended unit.');
+    }
   };
 
   const updateAssignedUnitStatus = async (userId: string, status: IncidentUnitStatus) => {
     if (!selectedIncident) return;
-    const incident = await authClient.assignIncidentUnit(selectedIncident.id, userId, status);
-    setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+    try {
+      const incident = await authClient.assignIncidentUnit(selectedIncident.id, userId, status);
+      setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+      setIncidentError('');
+    } catch {
+      setIncidentError('Unable to update unit status.');
+    }
   };
 
   const addIncidentNote = async () => {
@@ -1987,7 +2036,6 @@ export const Dashboard: React.FC = () => {
   );
 
   const renderCallManagement = (showCallList: boolean) => {
-    const isClosedCall = (incident: Incident) => incident.status === 'Closed' || incident.status === 'Canceled';
     const isMyCall = (incident: Incident) =>
       incident.createdBy === user?.id || incident.units.some((unit) => unit.userId === user?.id && unit.status !== 'Cleared');
     const callMatchesSearch = (incident: Incident) => {
@@ -2017,7 +2065,7 @@ export const Dashboard: React.FC = () => {
         if (!callMatchesSearch(incident)) return false;
         if (tab === 'my') return isMyCall(incident);
         if (tab === 'pending') return incident.status === 'Pending';
-        if (tab === 'closed') return isClosedCall(incident);
+        if (tab === 'closed') return isClosedIncident(incident);
         return true;
       });
     const callTabs: Array<{ id: CallTabId; label: string; icon: React.ReactNode; calls: Incident[] }> = [
@@ -2035,10 +2083,11 @@ export const Dashboard: React.FC = () => {
           : activeCallTab === 'closed'
             ? 'No recent closed calls.'
             : 'No calls are in the queue.';
-    const activeCount = incidents.filter((incident) => !isClosedCall(incident)).length;
+    const activeCount = incidents.filter((incident) => !isClosedIncident(incident)).length;
     const pendingCount = incidents.filter((incident) => incident.status === 'Pending').length;
-    const assignedCount = incidents.filter((incident) => incident.units.length > 0 && !isClosedCall(incident)).length;
+    const assignedCount = incidents.filter((incident) => incident.units.length > 0 && !isClosedIncident(incident)).length;
     const selectedUnitSummary = selectedIncident?.units.length ? `${selectedIncident.units.length} assigned` : 'No units assigned';
+    const selectedCallClosed = isClosedIncident(selectedIncident);
 
     return (
     <div className={`grid h-[min(74vh,760px)] min-h-[560px] overflow-hidden rounded-lg border border-cad-line bg-white text-cad-ink dark:border-slate-700 dark:bg-slate-900 dark:text-white ${showCallList ? 'lg:grid-cols-[360px_1fr]' : ''}`}>
@@ -2142,6 +2191,11 @@ export const Dashboard: React.FC = () => {
       <div className="min-h-0 overflow-y-auto bg-white p-4 dark:bg-slate-900">
         {selectedIncident ? (
           <div className="space-y-4">
+            {incidentError && (
+              <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700 dark:border-red-900 dark:bg-red-950/60 dark:text-red-200">
+                {incidentError}
+              </p>
+            )}
             <div className="rounded-lg border border-cad-line bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -2193,27 +2247,31 @@ export const Dashboard: React.FC = () => {
                       <span className="font-semibold">{assignedUnit.cadUnitNumber || assignedUnit.name}</span>
                       <span>{assignedUnit.status}</span>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {dispatchUnitStatuses.map((status) => (
-                        <button
-                          key={`${assignedUnit.userId}-${status}`}
-                          type="button"
-                          onClick={() => updateAssignedUnitStatus(assignedUnit.userId, status)}
-                          className={`rounded border px-2 py-1 text-[11px] font-semibold ${
-                            assignedUnit.status === status
-                              ? 'border-cad-blue bg-blue-50 text-cad-blue dark:bg-blue-950 dark:text-blue-200'
-                              : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
-                          }`}
-                        >
-                          {status}
-                        </button>
-                      ))}
-                    </div>
+                    {!selectedCallClosed && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {dispatchUnitStatuses.map((status) => (
+                          <button
+                            key={`${assignedUnit.userId}-${status}`}
+                            type="button"
+                            onClick={() => updateAssignedUnitStatus(assignedUnit.userId, status)}
+                            className={`rounded border px-2 py-1 text-[11px] font-semibold ${
+                              assignedUnit.status === status
+                                ? 'border-cad-blue bg-blue-50 text-cad-blue dark:bg-blue-950 dark:text-blue-200'
+                                : status === 'Cleared'
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200'
+                                  : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            {status}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
-            {recommendedUnits.length > 0 && (
+            {!selectedCallClosed && recommendedUnits.length > 0 && (
               <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
                 <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Recommended Units</h3>
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
@@ -2238,29 +2296,43 @@ export const Dashboard: React.FC = () => {
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
-              <select value={assignmentUnitId} onChange={(event) => setAssignmentUnitId(event.target.value)} className="min-w-0 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
-                <option value="">Select unit</option>
-                {[...recommendedUnits.map((item) => item.unit), ...units.filter((unit) => !recommendedUnits.some((item) => item.unit.id === unit.id))].map((unit) => (
-                  <option key={unit.id} value={unit.id}>{displayCadUnitNumber(unit)} - {unit.name}</option>
-                ))}
-              </select>
-              <button type="button" onClick={assignIncidentUnit} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">Assign</button>
-            </div>
+            {!selectedCallClosed && (
+              <div className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+                <select value={assignmentUnitId} onChange={(event) => setAssignmentUnitId(event.target.value)} className="min-w-0 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                  <option value="">Select unit</option>
+                  {[...recommendedUnits.map((item) => item.unit), ...units.filter((unit) => !recommendedUnits.some((item) => item.unit.id === unit.id))].map((unit) => (
+                    <option key={unit.id} value={unit.id}>{displayCadUnitNumber(unit)} - {unit.name}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={assignIncidentUnit} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">Assign</button>
+              </div>
+            )}
             <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
               <h3 className="mb-3 text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Update Call</h3>
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-              {(['Dispatched', 'En Route', 'On Scene', 'Closed', 'Canceled'] as IncidentStatus[]).map((status) => (
-                <button key={status} type="button" onClick={() => updateIncidentStatus(status)} className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
-                  selectedIncident.status === status
-                    ? 'border-cad-blue bg-blue-50 text-cad-blue dark:border-blue-500 dark:bg-blue-950 dark:text-blue-100'
-                    : 'border-cad-line text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
-                }`}>
-                  {status}
+              {selectedCallClosed ? (
+                <button
+                  type="button"
+                  onClick={reopenIncident}
+                  className="rounded-md border border-cad-blue bg-blue-50 px-3 py-2 text-sm font-black text-cad-blue hover:bg-blue-100 dark:border-blue-500 dark:bg-blue-950 dark:text-blue-100"
+                >
+                  Reopen Call
                 </button>
-              ))}
-              </div>
-              <input value={incidentDisposition} onChange={(event) => setIncidentDisposition(event.target.value)} placeholder="Disposition for closing or canceling" className="mt-3 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+                    {(['Dispatched', 'En Route', 'On Scene', 'Closed', 'Canceled'] as IncidentStatus[]).map((status) => (
+                      <button key={status} type="button" onClick={() => updateIncidentStatus(status)} className={`rounded-md border px-3 py-2 text-sm font-bold transition ${
+                        selectedIncident.status === status
+                          ? 'border-cad-blue bg-blue-50 text-cad-blue dark:border-blue-500 dark:bg-blue-950 dark:text-blue-100'
+                          : 'border-cad-line text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
+                      }`}>
+                        {status}
+                      </button>
+                    ))}
+                  </div>
+                  <input value={incidentDisposition} onChange={(event) => setIncidentDisposition(event.target.value)} placeholder="Disposition required to close or cancel" className="mt-3 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                </>
+              )}
             </div>
             <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
               <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Call Timeline</h3>
