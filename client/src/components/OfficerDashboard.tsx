@@ -153,6 +153,7 @@ interface GoogleLatLngBoundsInstance {
 
 interface GoogleInfoWindowInstance {
   open: (options: { map: GoogleMapInstance; position: { lat: number; lng: number } }) => void;
+  addListener: (eventName: string, handler: () => void) => void;
 }
 
 interface GoogleDirectionsServiceInstance {
@@ -174,6 +175,9 @@ type NavigationSummary = {
   duration: string;
   status: 'ready' | 'loading' | 'unavailable';
   traffic: 'clear' | 'moderate' | 'heavy' | 'unknown';
+  destination?: string;
+  nextStep?: string;
+  updatedAt?: number;
 };
 
 type GpsConfidence = 'excellent' | 'fair' | 'poor';
@@ -376,6 +380,12 @@ const escapeHtml = (value: string): string =>
     }
   });
 
+const stripHtml = (value = ''): string =>
+  value
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const officerMapLabel = (officer: User): string =>
   officer.cadUnitNumber || officer.unitNumber || officer.badge || officer.name.split(' ')[0] || 'Unit';
 
@@ -396,6 +406,22 @@ const officerMapTone = (status: string, isCurrentUser: boolean): keyof typeof ma
   if (status === 'En Route') return 'yellow';
   if (['On Scene', 'Traffic Stop', 'Transporting', 'Dispatched', 'Busy', 'At Hospital', 'Staged'].includes(status)) return 'red';
   return 'green';
+};
+
+const officerActiveAssignment = (officer: User, incidents: Incident[]): Incident | null =>
+  incidents.find((incident) =>
+    incident.status !== 'Closed' &&
+    incident.status !== 'Canceled' &&
+    incident.units.some((unit) => unit.userId === officer.id && unit.status !== 'Cleared')
+  ) || null;
+
+const officerLastGpsLabel = (officer: User): string =>
+  officer.lastLocationAt ? `${elapsedTimeLabel(officer.lastLocationAt)} ago` : officer.lastSeenAt ? `Seen ${elapsedTimeLabel(officer.lastSeenAt)} ago` : 'No recent GPS';
+
+const officerDistanceLabel = (currentLocation: { lat: number; lon: number } | null, officer: User): string => {
+  if (!currentLocation || officer.lat === undefined || officer.lon === undefined) return 'Distance unavailable';
+  const miles = distanceMiles(currentLocation.lat, currentLocation.lon, officer.lat, officer.lon);
+  return `${miles.toFixed(miles < 10 ? 1 : 0)} mi away`;
 };
 
 const distanceMiles = (fromLat: number, fromLon: number, toLat: number, toLon: number): number => {
@@ -435,17 +461,20 @@ const fallbackNavigationSummary = (
     distance: `${miles.toFixed(1)} mi`,
     duration: minutes ? `${minutes} min` : 'ETA pending',
     status: 'unavailable',
-    traffic: 'unknown'
+    traffic: 'unknown',
+    destination: incident.address || incident.callNumber,
+    updatedAt: Date.now()
   };
 };
 
-const directionsNavigationSummary = (result: unknown, callNumber: string): NavigationSummary | null => {
+const directionsNavigationSummary = (result: unknown, incident: Incident): NavigationSummary | null => {
   const routes = (result as {
     routes?: Array<{
       legs?: Array<{
         distance?: { text?: string };
         duration?: { text?: string; value?: number };
         duration_in_traffic?: { text?: string; value?: number };
+        steps?: Array<{ instructions?: string; distance?: { text?: string } }>;
       }>;
     }>;
   }).routes;
@@ -455,12 +484,17 @@ const directionsNavigationSummary = (result: unknown, callNumber: string): Navig
   const trafficDurationValue = leg.duration_in_traffic?.value;
   const trafficRatio = durationValue && trafficDurationValue ? trafficDurationValue / durationValue : 0;
   const traffic = trafficRatio >= 1.35 ? 'heavy' : trafficRatio >= 1.15 ? 'moderate' : trafficRatio > 0 ? 'clear' : 'unknown';
+  const firstStep = leg.steps?.[0];
+  const nextStepInstruction = stripHtml(firstStep?.instructions);
   return {
-    callNumber,
+    callNumber: incident.callNumber,
     distance: leg.distance.text,
     duration: leg.duration_in_traffic?.text || leg.duration.text,
     status: 'ready',
-    traffic
+    traffic,
+    destination: incident.address || incident.callNumber,
+    nextStep: nextStepInstruction ? `${nextStepInstruction}${firstStep?.distance?.text ? ` - ${firstStep.distance.text}` : ''}` : undefined,
+    updatedAt: Date.now()
   };
 };
 
@@ -1561,15 +1595,44 @@ export const OfficerDashboard: React.FC = () => {
         const isCurrentUser = officer.id === user?.id;
         const tone = officerMapTone(status, isCurrentUser);
         const label = officerMapDisplayLabel(officer);
+        const assignment = officerActiveAssignment(officer, incidents);
+        const assignmentUnit = assignment?.units.find((unit) => unit.userId === officer.id);
+        const messageButtonId = `message-map-unit-${officer.id}`;
         const infoWindow = new googleMaps.InfoWindow({
           content: `
-            <div style="min-width:190px;font-family:Arial,sans-serif;color:#0f172a">
-              <div style="font-weight:700;margin-bottom:2px">${escapeHtml(officer.name)}</div>
-              <div>Unit ${escapeHtml(officerMapLabel(officer))}</div>
-              <div style="margin-top:4px;font-size:12px;color:#475569">${escapeHtml(status)}</div>
-              <div style="font-size:12px;color:#475569">${officer.lat.toFixed(5)}, ${officer.lon.toFixed(5)}</div>
+            <div style="min-width:240px;font-family:Arial,sans-serif;color:#0f172a">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+                <div>
+                  <div style="font-size:15px;font-weight:800;margin-bottom:2px">${escapeHtml(officer.name || 'Officer')}</div>
+                  <div style="font-size:12px;color:#475569;font-weight:700">Unit ${escapeHtml(officerMapLabel(officer))}</div>
+                </div>
+                <span style="border-radius:999px;background:${tone === 'blue' ? '#dbeafe' : tone === 'yellow' ? '#fef3c7' : tone === 'red' ? '#fee2e2' : '#dcfce7'};color:${tone === 'blue' ? '#1d4ed8' : tone === 'yellow' ? '#92400e' : tone === 'red' ? '#b91c1c' : '#166534'};padding:4px 8px;font-size:11px;font-weight:800;white-space:nowrap">${escapeHtml(status)}</span>
+              </div>
+              <div style="margin-top:10px;display:grid;gap:6px;font-size:12px;color:#334155">
+                <div><strong>District:</strong> ${escapeHtml(officer.district || 'Unassigned')}</div>
+                <div><strong>Speed:</strong> ${Math.round(officer.speedMph || 0)} mph</div>
+                <div><strong>Distance:</strong> ${escapeHtml(officerDistanceLabel(renderCurrentLocation, officer))}</div>
+                <div><strong>Last GPS:</strong> ${escapeHtml(officerLastGpsLabel(officer))}</div>
+                <div><strong>Location:</strong> ${officer.lat.toFixed(5)}, ${officer.lon.toFixed(5)}</div>
+                <div><strong>Assignment:</strong> ${assignment ? `${escapeHtml(assignment.callNumber)} - ${escapeHtml(assignment.type)}${assignmentUnit?.status ? ` (${escapeHtml(assignmentUnit.status)})` : ''}` : 'None'}</div>
+              </div>
+              ${
+                !isCurrentUser
+                  ? `<button id="${messageButtonId}" type="button" style="margin-top:12px;width:100%;border:0;border-radius:8px;background:#2563eb;color:white;padding:8px 10px;font-size:12px;font-weight:800;cursor:pointer">Message ${escapeHtml(officerMapLabel(officer))}</button>`
+                  : ''
+              }
             </div>
           `
+        });
+        infoWindow.addListener('domready', () => {
+          const button = document.getElementById(messageButtonId);
+          if (!button) return;
+          button.onclick = () => {
+            setSelectedMessageUserId(officer.id);
+            setMessageBody('');
+            setMessageSearch('');
+            setActiveDockItem('messages');
+          };
         });
         const overlay = addOfficerOverlay({
           map,
@@ -1603,7 +1666,9 @@ export const OfficerDashboard: React.FC = () => {
         distance: 'Calculating',
         duration: 'Calculating',
         status: 'loading',
-        traffic: 'unknown'
+        traffic: 'unknown',
+        destination: mapRouteIncident.address || mapRouteIncident.callNumber,
+        updatedAt: Date.now()
       });
       routeRendererRef.current = new googleMaps.DirectionsRenderer({
         map,
@@ -1629,7 +1694,7 @@ export const OfficerDashboard: React.FC = () => {
         (result, status) => {
           if (status === 'OK' && routeRendererRef.current) {
             routeRendererRef.current.setDirections(result);
-            setNavigationSummary(directionsNavigationSummary(result, mapRouteIncident.callNumber) || fallbackNavigationSummary(renderCurrentLocation, mapRouteIncident, currentSpeed));
+            setNavigationSummary(directionsNavigationSummary(result, mapRouteIncident) || fallbackNavigationSummary(renderCurrentLocation, mapRouteIncident, currentSpeed));
             return;
           }
           setNavigationSummary(fallbackNavigationSummary(renderCurrentLocation, mapRouteIncident, currentSpeed));
@@ -1680,7 +1745,7 @@ export const OfficerDashboard: React.FC = () => {
       runMapCameraUpdate(() => map.fitBounds(bounds));
       hasFitCallBoundsRef.current = true;
     }
-  }, [assignedIncidents, configuredGeofences, currentSpeed, deferredCurrentLocation, deferredLocationTrail, mapFollowMode, mapLayers, mapRouteIncident, runMapCameraUpdate, selectedStatus, theme, trackedOfficers, user?.id]);
+  }, [assignedIncidents, configuredGeofences, currentSpeed, deferredCurrentLocation, deferredLocationTrail, incidents, mapFollowMode, mapLayers, mapRouteIncident, runMapCameraUpdate, selectedStatus, theme, trackedOfficers, user?.id]);
 
   const recenterMap = () => {
     if (!currentLocation) return;
@@ -1713,7 +1778,9 @@ export const OfficerDashboard: React.FC = () => {
         distance: 'No map pin',
         duration: 'Unavailable',
         status: 'unavailable',
-        traffic: 'unknown'
+        traffic: 'unknown',
+        destination: selectedIncident.address || selectedIncident.callNumber,
+        updatedAt: Date.now()
       });
       return;
     }
@@ -1729,7 +1796,9 @@ export const OfficerDashboard: React.FC = () => {
       distance: 'Calculating',
       duration: 'Calculating',
       status: 'loading',
-      traffic: 'unknown'
+      traffic: 'unknown',
+      destination: selectedIncident.address || selectedIncident.callNumber,
+      updatedAt: Date.now()
     });
 
     if (!currentLocation && navigator.geolocation) {
@@ -1753,7 +1822,9 @@ export const OfficerDashboard: React.FC = () => {
           distance: 'Waiting for GPS',
           duration: 'Unavailable',
           status: 'unavailable',
-          traffic: 'unknown'
+          traffic: 'unknown',
+          destination: selectedIncident.address || selectedIncident.callNumber,
+          updatedAt: Date.now()
         });
       }
     }
@@ -2670,26 +2741,47 @@ export const OfficerDashboard: React.FC = () => {
       </aside>
 
       {navigationSummary && (
-        <aside className="absolute left-3 top-[3.75rem] z-30 flex w-[min(25rem,calc(100vw-1.5rem))] items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95 sm:left-5 sm:top-[4.25rem]">
-          <div className="min-w-0">
-            <p className="truncate text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Navigating {navigationSummary.callNumber}</p>
-            <p className="mt-0.5 text-sm font-black text-slate-950 dark:text-white">{navigationSummary.duration}</p>
+        <aside className="absolute left-3 top-[3.75rem] z-30 w-[min(26rem,calc(100vw-1.5rem))] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95 sm:left-5 sm:top-[4.25rem]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Navigating {navigationSummary.callNumber}</p>
+              <p className="mt-0.5 truncate text-sm font-semibold text-slate-600 dark:text-slate-300">{navigationSummary.destination || 'Selected call'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={cancelNavigation}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-600 text-white shadow-sm hover:bg-red-700"
+              title="Cancel navigation"
+              aria-label="Cancel navigation"
+            >
+              <X size={17} />
+            </button>
           </div>
-          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${trafficIndicatorClasses[navigationSummary.traffic]}`}>
-            {trafficIndicatorLabels[navigationSummary.traffic]}
-          </span>
-          <div className="text-right">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Distance</p>
-            <p className="mt-0.5 text-sm font-black text-cad-blue dark:text-blue-100">{navigationSummary.distance}</p>
+          <div className="mt-3 grid grid-cols-[1fr_auto_auto] items-center gap-2">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">ETA</p>
+              <p className="mt-0.5 text-xl font-black text-slate-950 dark:text-white">{navigationSummary.duration}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Distance</p>
+              <p className="mt-0.5 text-sm font-black text-cad-blue dark:text-blue-100">{navigationSummary.distance}</p>
+            </div>
+            <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${trafficIndicatorClasses[navigationSummary.traffic]}`}>
+              {trafficIndicatorLabels[navigationSummary.traffic]}
+            </span>
           </div>
-          <button
-            type="button"
-            onClick={cancelNavigation}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-600 text-white shadow-sm hover:bg-red-700"
-            title="Cancel navigation"
-          >
-            <X size={17} />
-          </button>
+          {navigationSummary.nextStep && (
+            <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-xs font-semibold text-cad-blue dark:bg-blue-950/50 dark:text-blue-100">
+              {navigationSummary.nextStep}
+            </p>
+          )}
+          <p className="mt-2 text-[11px] font-semibold text-slate-400">
+            {navigationSummary.status === 'loading'
+              ? 'Calculating route'
+              : navigationSummary.updatedAt
+                ? `Updated ${elapsedTimeLabel(new Date(navigationSummary.updatedAt), sidebarNow)} ago`
+                : 'Route ready'}
+          </p>
         </aside>
       )}
 
