@@ -20,6 +20,7 @@ import {
   Search,
   Shield,
   SlidersHorizontal,
+  Terminal,
   CheckCheck,
   Check,
   CheckCircle2,
@@ -646,6 +647,7 @@ export const Dashboard: React.FC = () => {
   });
   const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [callBadgeCount, setCallBadgeCount] = useState(0);
+  const [mapCommand, setMapCommand] = useState('');
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
   const [messageBody, setMessageBody] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -2119,6 +2121,55 @@ export const Dashboard: React.FC = () => {
     return () => window.removeEventListener('cad:quick-access-open', handleQuickAccess);
   }, [openQuickLaunch]);
 
+  const submitMapCommand = (event: React.FormEvent) => {
+    event.preventDefault();
+    const command = mapCommand.trim().toLowerCase();
+    if (!command) return;
+
+    const openAndClear = (target: QuickLaunchId) => {
+      openQuickLaunch(target);
+      setMapCommand('');
+    };
+
+    if (['new', 'new call', 'call new', 'create call', 'dispatch'].includes(command)) {
+      openAndClear('new-call');
+      return;
+    }
+    if (['calls', 'call', 'active calls', 'pending calls', 'queue'].includes(command)) {
+      openAndClear('calls');
+      return;
+    }
+    if (['units', 'unit', 'unit status', 'status board'].includes(command)) {
+      openAndClear('units');
+      return;
+    }
+    if (['messages', 'message', 'msg', 'chat'].includes(command)) {
+      openAndClear('messages');
+      return;
+    }
+    if (['cjis', 'inquiry', 'inquiries', '10-27', '10-28', 'plate', 'vin', 'name'].includes(command)) {
+      openAndClear('inquiries');
+      return;
+    }
+    if (['protective orders', 'protective order', 'protect ord', 'po', 'order'].includes(command)) {
+      openAndClear('protective-orders');
+      return;
+    }
+    if (['settings', 'account', 'account settings'].includes(command)) {
+      setAccountSettingsOpen(true);
+      setMapCommand('');
+      return;
+    }
+
+    const toast: ToastNotice = {
+      id: `map-command-${Date.now()}`,
+      title: 'Command not found',
+      message: `No dispatch command matches "${mapCommand.trim()}".`,
+      tone: 'warning'
+    };
+    setToasts((current) => [toast, ...current].slice(0, 4));
+  };
+
   const setUnitBoardSortKey = (key: UnitBoardSortKey) => {
     setUnitBoardSort((current) =>
       current.key === key
@@ -3488,12 +3539,27 @@ export const Dashboard: React.FC = () => {
         <button
           type="button"
           onClick={recenterToCurrentLocation}
-          className="absolute bottom-4 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-line bg-white/95 text-cad-blue shadow-xl transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
+          className="absolute bottom-20 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-line bg-white/95 text-cad-blue shadow-xl transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
           aria-label="Return to my location"
           title="My location"
         >
           <MapPin size={18} />
         </button>
+
+        <form
+          onSubmit={submitMapCommand}
+          className="absolute bottom-4 left-4 z-20 flex h-11 w-[min(22rem,calc(100vw-2rem))] items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95"
+        >
+          <Terminal size={16} className="shrink-0 text-cad-blue dark:text-blue-100" />
+          <span className="text-sm font-semibold text-slate-400">&gt;</span>
+          <input
+            value={mapCommand}
+            onChange={(event) => setMapCommand(event.target.value)}
+            placeholder="Command"
+            className="min-w-0 flex-1 bg-transparent text-sm font-medium text-cad-ink outline-none placeholder:text-slate-400 dark:text-white"
+            aria-label="Dispatch command line"
+          />
+        </form>
 
         <div className="hidden">
           <OverlayPanel

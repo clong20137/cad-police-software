@@ -1,5 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   ClipboardList,
   Command,
@@ -66,6 +66,7 @@ const AppLoading: React.FC = () => (
 const GlobalQuickAccessPalette: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -77,14 +78,23 @@ const GlobalQuickAccessPalette: React.FC = () => {
     setOpen(true);
   }, [isAuthenticated]);
 
+  const activeSide: 'dispatch' | 'officer' =
+    location.pathname.startsWith('/officer')
+      ? 'officer'
+      : location.pathname.startsWith('/dashboard')
+        ? 'dispatch'
+        : user?.role === UserRole.OFFICER
+          ? 'officer'
+          : 'dispatch';
+
   const runDashboardCommand = useCallback((route: '/dashboard' | '/officer', target: QuickAccessTarget) => {
     navigate(route);
     window.setTimeout(() => dispatchQuickAccessTarget(target), 80);
   }, [navigate]);
 
   const runRoleCommand = useCallback((target: QuickAccessTarget) => {
-    runDashboardCommand(user?.role === UserRole.OFFICER ? '/officer' : '/dashboard', target);
-  }, [runDashboardCommand, user?.role]);
+    runDashboardCommand(activeSide === 'officer' ? '/officer' : '/dashboard', target);
+  }, [activeSide, runDashboardCommand]);
 
   const runAndClose = useCallback((action: () => void) => {
     action();
@@ -118,15 +128,17 @@ const GlobalQuickAccessPalette: React.FC = () => {
   const items = useMemo<QuickAccessItem[]>(() => {
     if (!isAuthenticated || !user) return [];
 
-    const roleHome = user.role === UserRole.OFFICER ? '/officer' : '/dashboard';
+    const sideHome = activeSide === 'officer' ? '/officer' : '/dashboard';
+    const isDispatchSide = activeSide === 'dispatch';
+    const isOfficerSide = activeSide === 'officer';
     const baseItems: QuickAccessItem[] = [
       {
         id: 'home',
-        label: user.role === UserRole.OFFICER ? 'Officer Side' : 'Dispatch Side',
+        label: isOfficerSide ? 'Officer Side' : 'Dispatch Side',
         detail: 'Return to your main CAD workspace.',
         keywords: ['home', 'dashboard', 'workspace'],
         icon: LayoutDashboard,
-        action: () => navigate(roleHome)
+        action: () => navigate(sideHome)
       },
       {
         id: 'messages',
@@ -138,7 +150,7 @@ const GlobalQuickAccessPalette: React.FC = () => {
       },
       {
         id: 'calls',
-        label: user.role === UserRole.OFFICER ? 'My Calls' : 'Calls',
+        label: isOfficerSide ? 'My Calls' : 'Calls',
         detail: 'Open active call management.',
         keywords: ['case', 'assignment', 'pending', 'closed'],
         icon: ClipboardList,
@@ -178,7 +190,7 @@ const GlobalQuickAccessPalette: React.FC = () => {
       }
     ];
 
-    if (user.role === UserRole.ADMIN || user.role === UserRole.DISPATCHER) {
+    if (isDispatchSide && (user.role === UserRole.ADMIN || user.role === UserRole.DISPATCHER)) {
       baseItems.push(
         {
           id: 'new-call',
@@ -199,7 +211,7 @@ const GlobalQuickAccessPalette: React.FC = () => {
       );
     }
 
-    if (user.role === UserRole.OFFICER || user.role === UserRole.ADMIN) {
+    if (isOfficerSide && (user.role === UserRole.OFFICER || user.role === UserRole.ADMIN)) {
       baseItems.push({
         id: 'officer-status',
         label: 'Officer Unit Status',
@@ -212,14 +224,23 @@ const GlobalQuickAccessPalette: React.FC = () => {
 
     if (user.role === UserRole.ADMIN) {
       baseItems.push(
-        {
-          id: 'dispatch-side',
-          label: 'Dispatch Side',
-          detail: 'Switch to dispatch.',
-          keywords: ['dispatcher', 'cad'],
-          icon: LayoutDashboard,
-          action: () => navigate('/dashboard')
-        },
+        isOfficerSide
+          ? {
+              id: 'dispatch-side',
+              label: 'Dispatch Side',
+              detail: 'Switch to dispatch.',
+              keywords: ['dispatcher', 'cad'],
+              icon: LayoutDashboard,
+              action: () => navigate('/dashboard')
+            }
+          : {
+              id: 'officer-side',
+              label: 'Officer Side',
+              detail: 'Switch to officer tools.',
+              keywords: ['officer', 'mobile', 'unit'],
+              icon: Shield,
+              action: () => navigate('/officer')
+            },
         {
           id: 'admin-settings',
           label: 'Admin Settings',
@@ -232,7 +253,7 @@ const GlobalQuickAccessPalette: React.FC = () => {
     }
 
     return baseItems;
-  }, [isAuthenticated, navigate, runDashboardCommand, runRoleCommand, user]);
+  }, [activeSide, isAuthenticated, navigate, runDashboardCommand, runRoleCommand, user]);
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();

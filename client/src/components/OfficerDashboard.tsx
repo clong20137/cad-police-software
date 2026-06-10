@@ -2686,12 +2686,6 @@ export const OfficerDashboard: React.FC = () => {
         >
           <MapPin size={19} />
         </button>
-        <span
-          className="rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-black uppercase tracking-wide text-slate-600 shadow-xl dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
-          title={mapFollowMode === 'manual' ? 'Manual mode: the map will not move until you choose a follow mode.' : mapFollowMode === 'call' ? 'Following active navigation call.' : 'Following your GPS location.'}
-        >
-          {mapFollowMode === 'manual' ? 'Manual' : mapFollowMode === 'call' ? 'Follow Call' : 'Follow Me'}
-        </span>
       </div>
 
       <aside className="absolute left-3 top-3 z-40 flex gap-2 sm:left-5 sm:top-4">
