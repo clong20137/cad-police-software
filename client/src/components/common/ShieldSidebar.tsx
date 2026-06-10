@@ -32,7 +32,7 @@ export const ShieldSidebar: React.FC<{
   onProfile?: () => void;
 }> = ({ title, subtitle, user, collapsed, onToggleCollapsed, items, bottomContent, footerItems = [], onProfile }) => (
   <aside
-    className={`relative hidden h-[100dvh] shrink-0 overflow-visible bg-cad-blue text-white shadow-xl transition-all duration-200 md:block ${
+    className={`shield-sidebar-theme-stable relative hidden h-[100dvh] shrink-0 overflow-visible bg-cad-blue text-white shadow-xl transition-all duration-200 md:block ${
       collapsed ? 'w-20' : 'w-72'
     }`}
   >

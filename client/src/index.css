@@ -94,6 +94,118 @@
     user-select: none;
   }
 
+  .dark .shield-sidebar-theme-stable {
+    background-color: #1a365d !important;
+    color: #ffffff !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-white {
+    background-color: #ffffff !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-slate-50 {
+    background-color: #f8fafc !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-slate-100 {
+    background-color: #f1f5f9 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-blue-50 {
+    background-color: #eff6ff !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-amber-50 {
+    background-color: #fffbeb !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-amber-100 {
+    background-color: #fef3c7 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-emerald-50 {
+    background-color: #ecfdf5 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-red-50 {
+    background-color: #fef2f2 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-violet-50 {
+    background-color: #f5f3ff !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-cyan-50 {
+    background-color: #ecfeff !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .bg-orange-50 {
+    background-color: #fff7ed !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .border-cad-line,
+  .dark .shield-sidebar-theme-stable .border-slate-100,
+  .dark .shield-sidebar-theme-stable .border-slate-200 {
+    border-color: #e2e8f0 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-white {
+    color: #ffffff !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-blue-50 {
+    color: #eff6ff !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-blue-100 {
+    color: #dbeafe !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-blue-700 {
+    color: #1d4ed8 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-cad-blue {
+    color: #1a365d !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-cad-ink,
+  .dark .shield-sidebar-theme-stable .text-slate-950 {
+    color: #172033 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-slate-700 {
+    color: #334155 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-slate-600 {
+    color: #475569 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-slate-500 {
+    color: #64748b !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-slate-300 {
+    color: #cbd5e1 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-amber-800 {
+    color: #92400e !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-emerald-700 {
+    color: #047857 !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .text-red-700 {
+    color: #b91c1c !important;
+  }
+
+  .dark .shield-sidebar-theme-stable .shadow-control {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.12) !important;
+  }
+
   .shield-sidebar::-webkit-scrollbar {
     width: 10px;
   }
