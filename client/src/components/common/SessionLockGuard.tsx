@@ -33,6 +33,26 @@ export const SessionLockGuard: React.FC<{ children: React.ReactNode }> = ({ chil
     setLocked(true);
   }, [clearIdleTimer]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+
+    const handleManualLock = () => lockSession();
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        lockSession();
+      }
+    };
+
+    window.addEventListener('cad:lock-session', handleManualLock);
+    document.addEventListener('keydown', handleShortcut);
+
+    return () => {
+      window.removeEventListener('cad:lock-session', handleManualLock);
+      document.removeEventListener('keydown', handleShortcut);
+    };
+  }, [isAuthenticated, lockSession, user]);
+
   const scheduleLock = useCallback(() => {
     clearIdleTimer();
     if (!isAuthenticated || !user || locked || !Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) {
@@ -110,7 +130,7 @@ export const SessionLockGuard: React.FC<{ children: React.ReactNode }> = ({ chil
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/95 p-4 text-white">
           <form
             onSubmit={unlock}
-            className="floating-window-mac-enter w-[min(92vw,26rem)] overflow-hidden rounded-lg border border-white/15 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            className="floating-window-mac-enter login-card-border w-[min(92vw,26rem)] overflow-hidden rounded-lg border border-white/15 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
           >
             <div className="border-b border-cad-line bg-cad-navy px-5 py-4 text-white dark:border-slate-700">
               <div className="flex items-center gap-3">

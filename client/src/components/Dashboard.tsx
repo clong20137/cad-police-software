@@ -2090,7 +2090,7 @@ export const Dashboard: React.FC = () => {
     setDraggedSlotIndex(null);
   };
 
-  const openQuickLaunch = (item: QuickLaunchId) => {
+  const openQuickLaunch = useCallback((item: QuickLaunchId) => {
     if (item === 'messages') {
       setMessageBadgeCount(0);
     }
@@ -2101,7 +2101,24 @@ export const Dashboard: React.FC = () => {
       setSettingsOpen(false);
     }
     focusQuickModal(item);
-  };
+  }, [focusQuickModal]);
+
+  useEffect(() => {
+    const handleQuickAccess = (event: Event) => {
+      const target = (event as CustomEvent<{ target?: QuickLaunchId }>).detail?.target;
+      if (!target) return;
+      if (target === 'settings') {
+        setAccountSettingsOpen(true);
+        return;
+      }
+      if (!quickLaunchOptions.some((item) => item.id === target)) return;
+      openQuickLaunch(target);
+    };
+
+    window.addEventListener('cad:quick-access-open', handleQuickAccess);
+    return () => window.removeEventListener('cad:quick-access-open', handleQuickAccess);
+  }, [openQuickLaunch]);
+
   const setUnitBoardSortKey = (key: UnitBoardSortKey) => {
     setUnitBoardSort((current) =>
       current.key === key

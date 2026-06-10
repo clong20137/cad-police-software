@@ -1856,7 +1856,7 @@ export const OfficerDashboard: React.FC = () => {
     setDraggedSlotIndex(null);
   };
 
-  const openDockItem = (item: DockItem) => {
+  const openDockItem = useCallback((item: DockItem) => {
     if (item === 'settings') {
       setSettingsOpen(false);
     }
@@ -1864,7 +1864,23 @@ export const OfficerDashboard: React.FC = () => {
       setMessageBadgeCount(0);
     }
     setActiveDockItem(item);
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleQuickAccess = (event: Event) => {
+      const target = (event as CustomEvent<{ target?: DockItem }>).detail?.target;
+      if (!target) return;
+      if (target === 'settings') {
+        setAccountSettingsOpen(true);
+        return;
+      }
+      if (!dockItems.some((item) => item.id === target)) return;
+      openDockItem(target);
+    };
+
+    window.addEventListener('cad:quick-access-open', handleQuickAccess);
+    return () => window.removeEventListener('cad:quick-access-open', handleQuickAccess);
+  }, [openDockItem]);
 
   const changePassword = async () => {
     if (passwordForm.newPassword.length < 14) {
