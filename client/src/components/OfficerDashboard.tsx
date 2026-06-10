@@ -583,6 +583,7 @@ export const OfficerDashboard: React.FC = () => {
   const [typingByThread, setTypingByThread] = useState<Record<string, { name: string; expiresAt: number }>>({});
   const [messagePendingDelete, setMessagePendingDelete] = useState<ChatMessage | null>(null);
   const [threadPendingDeleteUserId, setThreadPendingDeleteUserId] = useState<string | null>(null);
+  const [sidebarNow, setSidebarNow] = useState(() => Date.now());
   const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -625,6 +626,18 @@ export const OfficerDashboard: React.FC = () => {
   const assignedIncidents = useMemo(
     () => incidents.filter((incident) => incident.units.some((unit) => unit.userId === user?.id && unit.status !== 'Cleared')),
     [incidents, user?.id]
+  );
+  const myActiveIncident = useMemo(
+    () =>
+      assignedIncidents
+        .slice()
+        .sort((first, second) => {
+          const priorityRank: Record<IncidentPriority, number> = { Emergency: 0, High: 1, Normal: 2, Low: 3 };
+          const priorityDelta = priorityRank[first.priority] - priorityRank[second.priority];
+          if (priorityDelta !== 0) return priorityDelta;
+          return new Date(first.createdAt).getTime() - new Date(second.createdAt).getTime();
+        })[0] || null,
+    [assignedIncidents]
   );
   const assignmentMapKey = assignedIncidents.map((incident) => incident.id).join(',');
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || incidents[0] || null;
@@ -732,6 +745,11 @@ export const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('cad_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setSidebarNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const nextPendingById = new Map(pendingCalls.map((incident) => [incident.id, incident]));
@@ -1609,6 +1627,98 @@ export const OfficerDashboard: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  const openMyActiveCall = (incident: Incident) => {
+    setSelectedIncidentId(incident.id);
+    setActiveDockItem('call-detail');
+  };
+
+  const renderMyActiveCall = (compact: boolean) => {
+    const incident = myActiveIncident;
+    if (compact) {
+      return (
+        <button
+          type="button"
+          onClick={() => (incident ? openMyActiveCall(incident) : setActiveDockItem('calls'))}
+          className={`relative flex h-11 w-full items-center justify-center rounded transition ${
+            incident ? 'bg-white text-cad-blue hover:bg-blue-50' : 'bg-white/10 text-blue-50 hover:bg-white/15'
+          }`}
+          title={incident ? `${incident.callNumber} ${incident.type}` : 'No active call'}
+        >
+          <ClipboardList size={19} />
+          {assignedIncidents.length > 0 && (
+            <span className="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-cad-alert px-1 text-[10px] font-bold text-white">
+              {assignedIncidents.length > 9 ? '9+' : assignedIncidents.length}
+            </span>
+          )}
+        </button>
+      );
+    }
+
+    if (!incident) {
+      return (
+        <section className="rounded border border-white/10 bg-white/10 p-2.5 text-white shadow-inner">
+          <button
+            type="button"
+            onClick={() => setActiveDockItem('calls')}
+            className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left transition hover:bg-white/10"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-white text-cad-blue">
+              <ClipboardList size={16} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-blue-100">My Active Call</span>
+              <span className="block truncate text-xs text-blue-50">No active assignment</span>
+            </span>
+          </button>
+        </section>
+      );
+    }
+
+    const myAssignment = incident.units.find((unit) => unit.userId === user?.id);
+    const status = myAssignment?.status || 'Assigned';
+    return (
+      <section className="rounded border border-white/10 bg-white p-2.5 text-cad-ink shadow-inner dark:bg-slate-900 dark:text-white">
+        <button
+          type="button"
+          onClick={() => openMyActiveCall(incident)}
+          className="w-full rounded text-left transition hover:bg-blue-50 dark:hover:bg-slate-800"
+        >
+          <span className="flex items-start justify-between gap-2">
+            <span className="min-w-0">
+              <span className="block text-[11px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">My Active Call</span>
+              <span className="mt-1 block truncate text-sm font-black text-slate-950 dark:text-white">{incident.callNumber}</span>
+              <span className="block truncate text-xs font-bold text-cad-blue dark:text-blue-100">{incident.type}</span>
+            </span>
+            <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${priorityClasses[incident.priority]}`}>
+              {incident.priority}
+            </span>
+          </span>
+          <span className="mt-2 grid grid-cols-2 gap-1.5">
+            <span className="rounded bg-slate-100 px-2 py-1 dark:bg-slate-800">
+              <span className="block text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">Timer</span>
+              <span className="block text-xs font-black">{elapsedTimeLabel(incident.createdAt, sidebarNow)}</span>
+            </span>
+            <span className="rounded bg-slate-100 px-2 py-1 dark:bg-slate-800">
+              <span className="block text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400">Status</span>
+              <span className="block truncate text-xs font-black">{status}</span>
+            </span>
+          </span>
+          <span className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+            <MapPin size={11} />
+            <span className="truncate">{incident.address || 'Address pending'}</span>
+          </span>
+        </button>
+      </section>
+    );
+  };
+
+  const renderOfficerSidebarWidgets = (compact: boolean) => (
+    <div className="grid gap-2">
+      {renderMyActiveCall(compact)}
+      {renderPendingCallFeed(compact)}
+    </div>
+  );
+
   const renderPendingCallFeed = (compact: boolean) => {
     if (compact) {
       return (
@@ -1698,7 +1808,7 @@ export const OfficerDashboard: React.FC = () => {
         collapsed={appSidebarCollapsed}
         onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}
         items={sidebarItems}
-        bottomContent={renderPendingCallFeed(appSidebarCollapsed)}
+        bottomContent={renderOfficerSidebarWidgets(appSidebarCollapsed)}
         onProfile={() => setSettingsOpen(true)}
       />
       <div className="relative min-w-0 flex-1 overflow-hidden bg-slate-950">
