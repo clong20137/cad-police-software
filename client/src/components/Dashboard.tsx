@@ -59,6 +59,7 @@ import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { UrgentAlertOverlay } from './common/UrgentAlertOverlay';
 import { callTypesFromConfig } from '../utils/adminConfig';
 import { geofenceAssignmentForPoint, geofencesFromConfig, MapGeofence } from '../utils/mapGeofences';
+import { offlineAgeLabel } from '../utils/offlineStatus';
 import { APP_NAME } from '../constants/branding';
 
 declare global {
@@ -595,6 +596,8 @@ export const Dashboard: React.FC = () => {
   const [unitLoadError, setUnitLoadError] = useState<string>('');
   const [realtimeState, setRealtimeState] = useState<'connecting' | 'live' | 'reconnecting' | 'offline'>('connecting');
   const [lastRealtimeSync, setLastRealtimeSync] = useState<Date | null>(null);
+  const [offlineCacheAgeMs, setOfflineCacheAgeMs] = useState<number | null>(null);
+  const [queuedActionCount, setQueuedActionCount] = useState(0);
   const [directory, setDirectory] = useState<User[]>([]);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [selectedMessageUserId, setSelectedMessageUserId] = useState<string>('');
@@ -883,6 +886,26 @@ export const Dashboard: React.FC = () => {
     loadDirectory();
   }, [loadDirectory]);
 
+  useEffect(() => {
+    let canceled = false;
+    const refreshOfflineStatus = async () => {
+      const [age, queued] = await Promise.all([
+        authClient.cacheAgeMs('incidents'),
+        authClient.queuedActionCount()
+      ]);
+      if (!canceled) {
+        setOfflineCacheAgeMs(age);
+        setQueuedActionCount(queued);
+      }
+    };
+    refreshOfflineStatus();
+    const timer = window.setInterval(refreshOfflineStatus, realtimeState === 'live' ? 30000 : 5000);
+    return () => {
+      canceled = true;
+      window.clearInterval(timer);
+    };
+  }, [realtimeState]);
+
 
   useEffect(() => {
     localStorage.setItem('cad_quick_launch_slots', JSON.stringify(quickLaunchSlots));
@@ -1090,6 +1113,10 @@ export const Dashboard: React.FC = () => {
     socket.on('connect', () => {
       setRealtimeState('live');
       setUnitLoadError('');
+      authClient.flushOfflineActions()
+        .then(() => authClient.queuedActionCount())
+        .then(setQueuedActionCount)
+        .catch(() => undefined);
       requestResync('connect');
     });
     socket.io.on('reconnect_attempt', () => {
@@ -1097,6 +1124,10 @@ export const Dashboard: React.FC = () => {
     });
     socket.io.on('reconnect', () => {
       setRealtimeState('live');
+      authClient.flushOfflineActions()
+        .then(() => authClient.queuedActionCount())
+        .then(setQueuedActionCount)
+        .catch(() => undefined);
       requestResync('reconnect');
       pushToast({ title: 'Realtime restored', message: 'CAD data resynced.', tone: 'success' });
     });
@@ -1538,7 +1569,7 @@ export const Dashboard: React.FC = () => {
       (message.senderId === user?.id && message.recipientId === selectedMessageUserId) ||
       (message.senderId === selectedMessageUserId && message.recipientId === user?.id)
   );
-  const searchedMessages = visibleMessages;
+  const searchedMessages = visibleMessages.slice(-200);
   const selectedTyping = selectedMessageUserId ? typingByThread[selectedMessageUserId] : null;
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
   const sidebarItems: ShieldSidebarItem[] = [
@@ -3018,6 +3049,11 @@ export const Dashboard: React.FC = () => {
           >
             {realtimeState === 'offline' ? <WifiOff size={19} /> : <Wifi size={19} />}
           </span>
+          {(realtimeState !== 'live' || queuedActionCount > 0) && (
+            <span className="hidden max-w-40 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-black uppercase tracking-wide text-amber-800 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-100 sm:inline-flex">
+              {queuedActionCount > 0 ? `${queuedActionCount} pending sync` : offlineAgeLabel(offlineCacheAgeMs)}
+            </span>
+          )}
           <div className="relative">
             <button
               type="button"

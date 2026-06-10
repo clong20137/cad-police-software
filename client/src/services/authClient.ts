@@ -37,11 +37,9 @@ import {
   User
 } from '../types/auth';
 import { runtimeConfig } from '../config/runtimeConfig';
+import { offlineStore } from './offlineStore';
 
 const API_URL = runtimeConfig.apiUrl;
-const OFFLINE_CACHE_PREFIX = 'cad_offline_v1:';
-const OFFLINE_CACHE_MAX_ENTRIES = 24;
-const OFFLINE_CACHE_MAX_CHARS = 2_500_000;
 const SIGNED_REQUESTS = [
   { method: 'POST', pathPattern: /^\/api\/auth\/change-password$/ },
   { method: 'POST', pathPattern: /^\/api\/auth\/verify-password$/ },
@@ -60,10 +58,10 @@ interface StoredAuth {
   expiresAt: number;
 }
 
-interface OfflineCacheEnvelope<T> {
-  value: T;
-  savedAt: number;
-}
+type QueuedAction =
+  | { id: string; type: 'assign-me'; incidentId: string; status: IncidentUnitStatus; createdAt: number }
+  | { id: string; type: 'my-status'; incidentId: string; status: IncidentUnitStatus; createdAt: number }
+  | { id: string; type: 'my-note'; incidentId: string; body: string; createdAt: number };
 
 class AuthClient {
   private api: AxiosInstance;
@@ -114,6 +112,11 @@ class AuthClient {
     );
 
     this.loadFromStorage();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        void this.flushOfflineActions();
+      });
+    }
   }
 
   async login(email: string, password: string): Promise<StoredAuth | TwoFactorChallengeResponse> {
@@ -242,7 +245,7 @@ class AuthClient {
       }, (messages) => messages.slice(-150));
     } catch (error) {
       if (searchKey && this.isOfflineError(error)) {
-        const cachedAll = this.getCached<ChatMessage[]>(`messages:${userId}:all`);
+        const cachedAll = await this.getCached<ChatMessage[]>(`messages:${userId}:all`);
         if (cachedAll) {
           return cachedAll.filter((message) =>
             message.body.toLowerCase().includes(searchKey) ||
@@ -347,15 +350,27 @@ class AuthClient {
   }
 
   async assignMeToIncident(incidentId: string, status: IncidentUnitStatus = 'Assigned'): Promise<Incident> {
-    const response = await this.api.post<Incident>(`/incidents/${incidentId}/assign-me`, { status });
-    this.mergeCachedIncident(response.data);
-    return response.data;
+    try {
+      const response = await this.api.post<Incident>(`/incidents/${incidentId}/assign-me`, { status });
+      this.mergeCachedIncident(response.data);
+      return response.data;
+    } catch (error) {
+      if (!this.isOfflineError(error)) throw error;
+      await this.enqueueAction({ id: this.queueId(), type: 'assign-me', incidentId, status, createdAt: Date.now() });
+      return this.optimisticAssignMe(incidentId, status);
+    }
   }
 
   async updateMyIncidentStatus(incidentId: string, status: IncidentUnitStatus): Promise<Incident> {
-    const response = await this.api.patch<Incident>(`/incidents/${incidentId}/my-status`, { status });
-    this.mergeCachedIncident(response.data);
-    return response.data;
+    try {
+      const response = await this.api.patch<Incident>(`/incidents/${incidentId}/my-status`, { status });
+      this.mergeCachedIncident(response.data);
+      return response.data;
+    } catch (error) {
+      if (!this.isOfflineError(error)) throw error;
+      await this.enqueueAction({ id: this.queueId(), type: 'my-status', incidentId, status, createdAt: Date.now() });
+      return this.optimisticMyStatus(incidentId, status);
+    }
   }
 
   async createOfficerEvent(input: OfficerEventRequest): Promise<Incident> {
@@ -365,11 +380,28 @@ class AuthClient {
   }
 
   async addMyIncidentNote(incidentId: string, body: string): Promise<IncidentNote> {
-    const response = await this.api.post<IncidentNote>(`/incidents/${incidentId}/my-notes`, {
-      body,
-      noteType: 'note'
-    });
-    return response.data;
+    try {
+      const response = await this.api.post<IncidentNote>(`/incidents/${incidentId}/my-notes`, {
+        body,
+        noteType: 'note'
+      });
+      return response.data;
+    } catch (error) {
+      if (!this.isOfflineError(error)) throw error;
+      const action: QueuedAction = { id: this.queueId(), type: 'my-note', incidentId, body, createdAt: Date.now() };
+      await this.enqueueAction(action);
+      const note: IncidentNote = {
+        id: action.id,
+        incidentId,
+        userId: this.auth?.user.id,
+        userName: this.auth?.user.name,
+        noteType: 'note',
+        body,
+        createdAt: new Date(action.createdAt)
+      };
+      await this.mergeCachedNote(incidentId, note);
+      return note;
+    }
   }
 
   async submitBmvInquiry(input: BmvInquiryRequest): Promise<BmvInquiryResponse> {
@@ -411,27 +443,64 @@ class AuthClient {
   }
 
   cacheIncidents(incidents: Incident[]): void {
-    this.setCached('incidents', incidents.slice(0, 300));
+    void this.setCached('incidents', incidents.slice(0, 300));
   }
 
   cacheTrackedUnits(units: User[]): void {
-    this.setCached('tracked-units', units.slice(0, 300));
+    void this.setCached('tracked-units', units.slice(0, 300));
   }
 
   cacheDirectory(users: User[]): void {
-    this.setCached('directory', users.slice(0, 600));
+    void this.setCached('directory', users.slice(0, 600));
   }
 
   cacheUrgentAlerts(alerts: UrgentAlert[]): void {
-    this.setCached('urgent-alerts', alerts.slice(0, 100));
+    void this.setCached('urgent-alerts', alerts.slice(0, 100));
   }
 
   cacheMessageThreads(threads: MessageThread[]): void {
-    this.setCached('message-threads', threads.slice(0, 120));
+    void this.setCached('message-threads', threads.slice(0, 120));
   }
 
   cacheMessages(userId: string, messages: ChatMessage[]): void {
-    this.setCached(`messages:${userId}:all`, messages.slice(-150));
+    void this.setCached(`messages:${userId}:all`, messages.slice(-150));
+  }
+
+  async cacheAgeMs(key: string): Promise<number | null> {
+    const record = await offlineStore.get<unknown>(this.cacheKey(key));
+    return record ? Date.now() - record.savedAt : null;
+  }
+
+  async queuedActionCount(): Promise<number> {
+    return (await this.getQueuedActions()).length;
+  }
+
+  async flushOfflineActions(): Promise<number> {
+    if (!this.auth || (typeof navigator !== 'undefined' && navigator.onLine === false)) return 0;
+    const queue = await this.getQueuedActions();
+    if (queue.length === 0) return 0;
+
+    const remaining: QueuedAction[] = [];
+    let flushed = 0;
+    for (const action of queue) {
+      try {
+        if (action.type === 'assign-me') {
+          const response = await this.api.post<Incident>(`/incidents/${action.incidentId}/assign-me`, { status: action.status });
+          this.mergeCachedIncident(response.data);
+        } else if (action.type === 'my-status') {
+          const response = await this.api.patch<Incident>(`/incidents/${action.incidentId}/my-status`, { status: action.status });
+          this.mergeCachedIncident(response.data);
+        } else {
+          await this.api.post<IncidentNote>(`/incidents/${action.incidentId}/my-notes`, { body: action.body, noteType: 'note' });
+        }
+        flushed += 1;
+      } catch (error) {
+        remaining.push(action);
+        if (this.isOfflineError(error)) break;
+      }
+    }
+    await this.setQueuedActions(remaining);
+    return flushed;
   }
 
   async updateLocation(lat: number, lon: number, speedMph?: number | null): Promise<User> {
@@ -541,11 +610,11 @@ class AuthClient {
     try {
       const value = await request();
       const cachedValue = trim ? trim(value) : value;
-      this.setCached(key, cachedValue);
+      void this.setCached(key, cachedValue);
       return value;
     } catch (error) {
       if (this.isOfflineError(error)) {
-        const cached = this.getCached<T>(key);
+        const cached = await this.getCached<T>(key);
         if (cached !== null) return cached;
       }
       throw error;
@@ -554,75 +623,109 @@ class AuthClient {
 
   private cacheKey(key: string): string {
     const userId = this.auth?.user.id || 'public';
-    return `${OFFLINE_CACHE_PREFIX}${userId}:${key}`;
+    return `${userId}:${key}`;
   }
 
-  private getCached<T>(key: string): T | null {
-    try {
-      const stored = localStorage.getItem(this.cacheKey(key));
-      if (!stored) return null;
-      const envelope = JSON.parse(stored) as OfflineCacheEnvelope<T>;
-      return envelope.value;
-    } catch {
-      return null;
-    }
+  private async getCached<T>(key: string): Promise<T | null> {
+    const record = await offlineStore.get<T>(this.cacheKey(key));
+    return record?.value ?? null;
   }
 
-  private setCached<T>(key: string, value: T): void {
-    try {
-      const envelope: OfflineCacheEnvelope<T> = { value, savedAt: Date.now() };
-      localStorage.setItem(this.cacheKey(key), JSON.stringify(envelope));
-      this.pruneOfflineCache();
-    } catch {
-      this.pruneOfflineCache(true);
-      try {
-        const envelope: OfflineCacheEnvelope<T> = { value, savedAt: Date.now() };
-        localStorage.setItem(this.cacheKey(key), JSON.stringify(envelope));
-      } catch {
-        // Offline cache is best-effort only.
-      }
-    }
+  private async setCached<T>(key: string, value: T): Promise<void> {
+    await offlineStore.set(this.cacheKey(key), value);
   }
 
   private mergeCachedIncident(incident: Incident): void {
-    const cached = this.getCached<Incident[]>('incidents') || [];
-    this.setCached('incidents', [incident, ...cached.filter((item) => item.id !== incident.id)].slice(0, 300));
+    void this.getCached<Incident[]>('incidents').then((cached) => {
+      const incidents = cached || [];
+      return this.setCached('incidents', [incident, ...incidents.filter((item) => item.id !== incident.id)].slice(0, 300));
+    });
   }
 
-  private pruneOfflineCache(force = false): void {
-    const entries = this.offlineCacheKeys()
-      .map((key) => {
-        try {
-          const envelope = JSON.parse(localStorage.getItem(key) || '{}') as Partial<OfflineCacheEnvelope<unknown>>;
-          return { key, savedAt: Number(envelope.savedAt || 0), size: localStorage.getItem(key)?.length || 0 };
-        } catch {
-          return { key, savedAt: 0, size: localStorage.getItem(key)?.length || 0 };
+  private async mergeCachedNote(incidentId: string, note: IncidentNote): Promise<void> {
+    const incidents = (await this.getCached<Incident[]>('incidents')) || [];
+    await this.setCached(
+      'incidents',
+      incidents.map((incident) =>
+        incident.id === incidentId
+          ? { ...incident, notes: [...(incident.notes || []), note], updatedAt: new Date() }
+          : incident
+      )
+    );
+  }
+
+  private async optimisticAssignMe(incidentId: string, status: IncidentUnitStatus): Promise<Incident> {
+    const incident = await this.getCachedIncident(incidentId);
+    const user = this.auth?.user;
+    if (!incident || !user) throw new Error('Call is not cached for offline assignment.');
+    const now = new Date();
+    const next: Incident = {
+      ...incident,
+      units: [
+        ...incident.units.filter((unit) => unit.userId !== user.id),
+        {
+          userId: user.id,
+          name: user.name,
+          cadUnitNumber: user.cadUnitNumber || user.unitNumber || user.badge,
+          status,
+          assignedAt: now,
+          statusUpdatedAt: now
         }
-      })
-      .sort((first, second) => first.savedAt - second.savedAt);
-    let totalSize = entries.reduce((sum, entry) => sum + entry.size, 0);
-    while (entries.length > 0 && (force || entries.length > OFFLINE_CACHE_MAX_ENTRIES || totalSize > OFFLINE_CACHE_MAX_CHARS)) {
-      const oldest = entries.shift();
-      if (!oldest) break;
-      localStorage.removeItem(oldest.key);
-      totalSize -= oldest.size;
-      force = false;
-    }
+      ],
+      updatedAt: now
+    };
+    await this.setCachedIncident(next);
+    return next;
+  }
+
+  private async optimisticMyStatus(incidentId: string, status: IncidentUnitStatus): Promise<Incident> {
+    const incident = await this.getCachedIncident(incidentId);
+    const userId = this.auth?.user.id;
+    if (!incident || !userId) throw new Error('Call is not cached for offline status update.');
+    const now = new Date();
+    const next: Incident = {
+      ...incident,
+      units: incident.units.map((unit) =>
+        unit.userId === userId
+          ? { ...unit, status, statusUpdatedAt: now, clearedAt: status === 'Cleared' ? now : unit.clearedAt }
+          : unit
+      ),
+      updatedAt: now
+    };
+    await this.setCachedIncident(next);
+    return next;
+  }
+
+  private async getCachedIncident(incidentId: string): Promise<Incident | null> {
+    const incidents = (await this.getCached<Incident[]>('incidents')) || [];
+    return incidents.find((incident) => incident.id === incidentId) || null;
+  }
+
+  private async setCachedIncident(incident: Incident): Promise<void> {
+    const incidents = (await this.getCached<Incident[]>('incidents')) || [];
+    await this.setCached('incidents', [incident, ...incidents.filter((item) => item.id !== incident.id)].slice(0, 300));
+  }
+
+  private async enqueueAction(action: QueuedAction): Promise<void> {
+    const actions = await this.getQueuedActions();
+    await this.setQueuedActions([...actions, action].slice(-100));
+  }
+
+  private async getQueuedActions(): Promise<QueuedAction[]> {
+    return (await this.getCached<QueuedAction[]>('offline-actions')) || [];
+  }
+
+  private async setQueuedActions(actions: QueuedAction[]): Promise<void> {
+    await this.setCached('offline-actions', actions);
+  }
+
+  private queueId(): string {
+    return `offline-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }
 
   private clearOfflineCache(): void {
-    this.offlineCacheKeys().forEach((key) => localStorage.removeItem(key));
-  }
-
-  private offlineCacheKeys(): string[] {
-    const keys: string[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (key?.startsWith(OFFLINE_CACHE_PREFIX)) {
-        keys.push(key);
-      }
-    }
-    return keys;
+    const userId = this.auth?.user.id || 'public';
+    void offlineStore.removePrefix(`${userId}:`);
   }
 
   private isOfflineError(error: unknown): boolean {

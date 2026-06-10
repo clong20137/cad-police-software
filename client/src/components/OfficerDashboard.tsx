@@ -47,6 +47,7 @@ import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { UrgentAlertOverlay } from './common/UrgentAlertOverlay';
 import { callTypesFromConfig } from '../utils/adminConfig';
 import { geofenceAssignmentForPoint, geofencesFromConfig } from '../utils/mapGeofences';
+import { offlineAgeLabel } from '../utils/offlineStatus';
 import { APP_NAME } from '../constants/branding';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'protective-orders' | 'location' | 'settings' | 'navigation' | 'status';
@@ -579,6 +580,8 @@ export const OfficerDashboard: React.FC = () => {
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [realtimeState, setRealtimeState] = useState<'connecting' | 'live' | 'reconnecting' | 'offline'>('connecting');
   const [lastRealtimeSync, setLastRealtimeSync] = useState<Date | null>(null);
+  const [offlineCacheAgeMs, setOfflineCacheAgeMs] = useState<number | null>(null);
+  const [queuedActionCount, setQueuedActionCount] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationTrail, setLocationTrail] = useState<Array<{ lat: number; lon: number; speedMph?: number | null }>>([]);
@@ -822,12 +825,14 @@ export const OfficerDashboard: React.FC = () => {
     const secondThread = messageThreadByUser[second.id];
     return new Date(secondThread?.updatedAt || 0).getTime() - new Date(firstThread?.updatedAt || 0).getTime();
   });
-  const searchedMessages = messages.filter(
-    (message) =>
-      !messageTextSearch.trim() ||
-      message.body.toLowerCase().includes(messageTextSearch.toLowerCase()) ||
-      message.attachments.some((attachment) => attachment.fileName.toLowerCase().includes(messageTextSearch.toLowerCase()))
-  );
+  const searchedMessages = messages
+    .filter(
+      (message) =>
+        !messageTextSearch.trim() ||
+        message.body.toLowerCase().includes(messageTextSearch.toLowerCase()) ||
+        message.attachments.some((attachment) => attachment.fileName.toLowerCase().includes(messageTextSearch.toLowerCase()))
+    )
+    .slice(-200);
   const selectedTyping = selectedMessageUserId ? typingByThread[selectedMessageUserId] : null;
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
   const sidebarItems: ShieldSidebarItem[] = [
@@ -951,6 +956,26 @@ export const OfficerDashboard: React.FC = () => {
   }, [loadMessageThreads]);
 
   useEffect(() => {
+    let canceled = false;
+    const refreshOfflineStatus = async () => {
+      const [age, queued] = await Promise.all([
+        authClient.cacheAgeMs('incidents'),
+        authClient.queuedActionCount()
+      ]);
+      if (!canceled) {
+        setOfflineCacheAgeMs(age);
+        setQueuedActionCount(queued);
+      }
+    };
+    refreshOfflineStatus();
+    const timer = window.setInterval(refreshOfflineStatus, realtimeState === 'live' ? 30000 : 5000);
+    return () => {
+      canceled = true;
+      window.clearInterval(timer);
+    };
+  }, [realtimeState]);
+
+  useEffect(() => {
     selectedMessageUserIdRef.current = selectedMessageUserId;
   }, [selectedMessageUserId]);
 
@@ -1048,11 +1073,19 @@ export const OfficerDashboard: React.FC = () => {
     };
     socket.on('connect', () => {
       setRealtimeState('live');
+      authClient.flushOfflineActions()
+        .then(() => authClient.queuedActionCount())
+        .then(setQueuedActionCount)
+        .catch(() => undefined);
       requestResync('connect');
     });
     socket.io.on('reconnect_attempt', () => setRealtimeState('reconnecting'));
     socket.io.on('reconnect', () => {
       setRealtimeState('live');
+      authClient.flushOfflineActions()
+        .then(() => authClient.queuedActionCount())
+        .then(setQueuedActionCount)
+        .catch(() => undefined);
       requestResync('reconnect');
     });
     socket.io.on('reconnect_error', () => setRealtimeState('reconnecting'));
@@ -2329,6 +2362,11 @@ export const OfficerDashboard: React.FC = () => {
         >
           {realtimeState === 'offline' ? <WifiOff size={17} /> : <Wifi size={17} />}
         </div>
+        {(realtimeState !== 'live' || queuedActionCount > 0) && (
+          <div className="inline-flex h-10 max-w-40 items-center rounded border border-amber-200 bg-amber-50 px-2 text-[11px] font-black uppercase tracking-wide text-amber-800 shadow-xl dark:border-amber-700 dark:bg-amber-950/80 dark:text-amber-100">
+            {queuedActionCount > 0 ? `${queuedActionCount} pending sync` : offlineAgeLabel(offlineCacheAgeMs)}
+          </div>
+        )}
       </aside>
 
       {navigationSummary && (
