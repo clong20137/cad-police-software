@@ -37,7 +37,7 @@ import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
 import { AdminConfigurationItem, ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, UrgentAlert, User, UserRole } from '../types/auth';
-import { ChangePasswordModal } from './common/ChangePasswordModal';
+import { AccountSettingsModal, PasswordFormState, TwoFactorSetupState } from './common/AccountSettingsModal';
 import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot } from './common/QuickLaunchDock';
@@ -567,7 +567,7 @@ const addOfficerOverlay = ({
 };
 
 export const OfficerDashboard: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshAuth } = useAuth();
   const [appSidebarCollapsed, setAppSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('cad_theme') === 'dark' ? 'dark' : 'light'
@@ -614,9 +614,13 @@ export const OfficerDashboard: React.FC = () => {
   const [customizingSlot, setCustomizingSlot] = useState<number | null>(null);
   const [draggedSlotIndex, setDraggedSlotIndex] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState<PasswordFormState>({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordMessage, setPasswordMessage] = useState('');
+  const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetupState | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorMessage, setTwoFactorMessage] = useState('');
+  const [twoFactorBackupCodes, setTwoFactorBackupCodes] = useState<string[]>([]);
   const [noteBody, setNoteBody] = useState('');
   const [officerEvent, setOfficerEvent] = useState<{ type: string; priority: IncidentPriority; description: string }>({
     type: 'Traffic Stop',
@@ -1047,7 +1051,7 @@ export const OfficerDashboard: React.FC = () => {
           return;
         }
         setCustomizingSlot(null);
-        setChangePasswordOpen(false);
+        setAccountSettingsOpen(false);
         setSettingsOpen(false);
       }
     };
@@ -1644,6 +1648,39 @@ export const OfficerDashboard: React.FC = () => {
     }
   };
 
+  const startTwoFactorSetup = async () => {
+    setTwoFactorMessage('');
+    setTwoFactorBackupCodes([]);
+    try {
+      const setup = await authClient.beginTwoFactorSetup();
+      setTwoFactorSetup(setup);
+      setTwoFactorCode('');
+      setTwoFactorMessage('Scan the QR code, then enter the 6 digit code from your authenticator app.');
+    } catch {
+      setTwoFactorMessage('Unable to start 2FA setup.');
+    }
+  };
+
+  const verifyTwoFactorSetup = async () => {
+    if (!twoFactorSetup || !twoFactorCode.trim()) {
+      setTwoFactorMessage('Enter the 6 digit code from your authenticator app.');
+      return;
+    }
+    try {
+      const result = await authClient.verifyTwoFactor({
+        challengeToken: twoFactorSetup.challengeToken,
+        code: twoFactorCode.trim()
+      });
+      setTwoFactorBackupCodes(result.backupCodes || []);
+      setTwoFactorSetup(null);
+      setTwoFactorCode('');
+      setTwoFactorMessage('2FA enabled. Store your backup codes somewhere secure.');
+      refreshAuth();
+    } catch {
+      setTwoFactorMessage('Invalid 2FA code.');
+    }
+  };
+
   const updateStatus = async (status: IncidentUnitStatus) => {
     if (!selectedIncident) return;
     setBusy(true);
@@ -2175,14 +2212,15 @@ export const OfficerDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setChangePasswordOpen(true);
+                  setAccountSettingsOpen(true);
                   setSettingsOpen(false);
                   setPasswordMessage('');
+                  setTwoFactorMessage('');
                 }}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <Lock size={16} />
-                Change password
+                Account Settings
               </button>
               {user?.role === UserRole.ADMIN && (
                 <Link
@@ -2495,13 +2533,23 @@ export const OfficerDashboard: React.FC = () => {
 
       <UrgentAlertOverlay alerts={urgentAlerts} onAcknowledge={acknowledgeUrgentAlert} />
 
-      <ChangePasswordModal
-        open={changePasswordOpen}
-        form={passwordForm}
-        message={passwordMessage}
-        onClose={() => setChangePasswordOpen(false)}
-        onChange={setPasswordForm}
-        onSubmit={changePassword}
+      <AccountSettingsModal
+        open={accountSettingsOpen}
+        user={user}
+        passwordForm={passwordForm}
+        passwordMessage={passwordMessage}
+        twoFactorSetup={twoFactorSetup}
+        twoFactorCode={twoFactorCode}
+        twoFactorMessage={twoFactorMessage}
+        twoFactorBackupCodes={twoFactorBackupCodes}
+        theme={theme}
+        onClose={() => setAccountSettingsOpen(false)}
+        onPasswordChange={setPasswordForm}
+        onPasswordSubmit={changePassword}
+        onStartTwoFactorSetup={startTwoFactorSetup}
+        onTwoFactorCodeChange={setTwoFactorCode}
+        onVerifyTwoFactorSetup={verifyTwoFactorSetup}
+        onThemeChange={setTheme}
       />
       </div>
     </main>

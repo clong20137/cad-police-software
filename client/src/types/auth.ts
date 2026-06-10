@@ -95,6 +95,12 @@ export interface TwoFactorVerifyResponse {
   backupCodes?: string[];
 }
 
+export interface TwoFactorSetupResponse {
+  challengeToken: string;
+  secret: string;
+  otpauthUrl: string;
+}
+
 export interface ChatMessage {
   id: string;
   senderId: string;

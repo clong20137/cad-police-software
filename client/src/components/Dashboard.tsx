@@ -49,7 +49,7 @@ import {
   User,
   UserRole
 } from '../types/auth';
-import { ChangePasswordModal } from './common/ChangePasswordModal';
+import { AccountSettingsModal, PasswordFormState, TwoFactorSetupState } from './common/AccountSettingsModal';
 import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot as DockSlotValue } from './common/QuickLaunchDock';
@@ -577,16 +577,20 @@ const addGooglePulseMarker = ({
 };
 
 export const Dashboard: React.FC = () => {
-  const { user, logout, hasPermission } = useAuth();
+  const { user, logout, hasPermission, refreshAuth } = useAuth();
   const [appSidebarCollapsed, setAppSidebarCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [locationClock, setLocationClock] = useState(() => Date.now());
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('cad_theme') === 'dark' ? 'dark' : 'light'
   );
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState<PasswordFormState>({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordMessage, setPasswordMessage] = useState('');
+  const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetupState | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorMessage, setTwoFactorMessage] = useState('');
+  const [twoFactorBackupCodes, setTwoFactorBackupCodes] = useState<string[]>([]);
   const [callsOverlayOpen, setCallsOverlayOpen] = useState(true);
   const [callDetailOpen, setCallDetailOpen] = useState(true);
   const [units, setUnits] = useState<TrackedUnit[]>([]);
@@ -978,8 +982,8 @@ export const Dashboard: React.FC = () => {
         setAddressSuggestionsOpen(false);
         return;
       }
-      if (changePasswordOpen) {
-        setChangePasswordOpen(false);
+      if (accountSettingsOpen) {
+        setAccountSettingsOpen(false);
         return;
       }
       if (customizingSlot !== null) {
@@ -997,7 +1001,7 @@ export const Dashboard: React.FC = () => {
 
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [activeQuickModal, addressSuggestionsOpen, changePasswordOpen, closeQuickModal, customizingSlot, emojiOpen, settingsOpen]);
+  }, [accountSettingsOpen, activeQuickModal, addressSuggestionsOpen, closeQuickModal, customizingSlot, emojiOpen, settingsOpen]);
 
   const playAlert = useCallback((kind: 'message' | 'call') => {
     try {
@@ -1711,6 +1715,39 @@ export const Dashboard: React.FC = () => {
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch {
       setPasswordMessage('Unable to change password. Check your current password.');
+    }
+  };
+
+  const startTwoFactorSetup = async () => {
+    setTwoFactorMessage('');
+    setTwoFactorBackupCodes([]);
+    try {
+      const setup = await authClient.beginTwoFactorSetup();
+      setTwoFactorSetup(setup);
+      setTwoFactorCode('');
+      setTwoFactorMessage('Scan the QR code, then enter the 6 digit code from your authenticator app.');
+    } catch {
+      setTwoFactorMessage('Unable to start 2FA setup.');
+    }
+  };
+
+  const verifyTwoFactorSetup = async () => {
+    if (!twoFactorSetup || !twoFactorCode.trim()) {
+      setTwoFactorMessage('Enter the 6 digit code from your authenticator app.');
+      return;
+    }
+    try {
+      const result = await authClient.verifyTwoFactor({
+        challengeToken: twoFactorSetup.challengeToken,
+        code: twoFactorCode.trim()
+      });
+      setTwoFactorBackupCodes(result.backupCodes || []);
+      setTwoFactorSetup(null);
+      setTwoFactorCode('');
+      setTwoFactorMessage('2FA enabled. Store your backup codes somewhere secure.');
+      refreshAuth();
+    } catch {
+      setTwoFactorMessage('Invalid 2FA code.');
     }
   };
 
@@ -3141,14 +3178,15 @@ export const Dashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setChangePasswordOpen(true);
+                  setAccountSettingsOpen(true);
                   setSettingsOpen(false);
                   setPasswordMessage('');
+                  setTwoFactorMessage('');
                 }}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <Lock size={16} />
-                Change password
+                Account Settings
               </button>
               {hasPermission('manage_system') && (
                 <Link
@@ -3460,13 +3498,23 @@ export const Dashboard: React.FC = () => {
 
       <UrgentAlertOverlay alerts={urgentAlerts} onAcknowledge={acknowledgeUrgentAlert} />
 
-      <ChangePasswordModal
-        open={changePasswordOpen}
-        form={passwordForm}
-        message={passwordMessage}
-        onClose={() => setChangePasswordOpen(false)}
-        onChange={setPasswordForm}
-        onSubmit={changePassword}
+      <AccountSettingsModal
+        open={accountSettingsOpen}
+        user={user}
+        passwordForm={passwordForm}
+        passwordMessage={passwordMessage}
+        twoFactorSetup={twoFactorSetup}
+        twoFactorCode={twoFactorCode}
+        twoFactorMessage={twoFactorMessage}
+        twoFactorBackupCodes={twoFactorBackupCodes}
+        theme={theme}
+        onClose={() => setAccountSettingsOpen(false)}
+        onPasswordChange={setPasswordForm}
+        onPasswordSubmit={changePassword}
+        onStartTwoFactorSetup={startTwoFactorSetup}
+        onTwoFactorCodeChange={setTwoFactorCode}
+        onVerifyTwoFactorSetup={verifyTwoFactorSetup}
+        onThemeChange={setTheme}
       />
 
       {openQuickModals.map((modalId) => (

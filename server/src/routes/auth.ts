@@ -238,6 +238,41 @@ router.post('/2fa/verify', sensitiveRateLimiter, async (req: Request<{}, {}, Two
   }
 });
 
+router.post(
+  '/2fa/setup',
+  sensitiveRateLimiter,
+  authMiddleware,
+  requireRequestSignature,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const user = await AuthService.getUser(req.user?.id || '');
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+      if (user.twoFactorEnabled) {
+        res.status(409).json({ error: 'Two-factor authentication is already enabled' });
+        return;
+      }
+
+      const setup = AuthService.createTwoFactorSetup(user);
+      await AuditLogService.fromRequest(req, {
+        action: 'two_factor_setup_started',
+        resource: 'auth',
+        resourceId: user.id,
+        severity: 'warning'
+      });
+      res.json({
+        challengeToken: setup.challengeToken,
+        secret: setup.secret,
+        otpauthUrl: setup.otpauthUrl
+      });
+    } catch (error) {
+      res.status(400).json({ error: getErrorMessage(error, 'Unable to start two-factor setup') });
+    }
+  }
+);
+
 router.post('/refresh', async (req: Request<{}, {}, RefreshTokenRequest>, res: Response): Promise<void> => {
   try {
     const { refreshToken } = req.body;

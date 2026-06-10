@@ -28,6 +28,7 @@ import {
   OfficerEventRequest,
   TokenPair,
   TwoFactorChallengeResponse,
+  TwoFactorSetupResponse,
   TwoFactorVerifyRequest,
   TwoFactorVerifyResponse,
   UpdateIncidentStatusRequest,
@@ -42,6 +43,7 @@ import { offlineStore } from './offlineStore';
 const API_URL = runtimeConfig.apiUrl;
 const SIGNED_REQUESTS = [
   { method: 'POST', pathPattern: /^\/api\/auth\/change-password$/ },
+  { method: 'POST', pathPattern: /^\/api\/auth\/2fa\/setup$/ },
   { method: 'POST', pathPattern: /^\/api\/auth\/verify-password$/ },
   { method: 'POST', pathPattern: /^\/api\/auth\/users$/ },
   { method: 'PATCH', pathPattern: /^\/api\/auth\/users\/[^/]+$/ },
@@ -139,6 +141,21 @@ class AuthClient {
     const response = await this.api.post<TwoFactorVerifyResponse>('/auth/2fa/verify', input);
     const auth = this.storeAuth(response.data);
     return { ...auth, backupCodes: response.data.backupCodes };
+  }
+
+  async beginTwoFactorSetup(): Promise<TwoFactorSetupResponse> {
+    const response = await this.api.post<TwoFactorSetupResponse>('/auth/2fa/setup');
+    return response.data;
+  }
+
+  async getMe(): Promise<User> {
+    const response = await this.api.get<User>('/auth/me');
+    if (this.auth) {
+      this.auth.user = response.data;
+      this.auth.permissions = ROLE_PERMISSIONS[response.data.role] || [];
+      this.saveToStorage();
+    }
+    return response.data;
   }
 
   async getTrackedUnits(): Promise<User[]> {

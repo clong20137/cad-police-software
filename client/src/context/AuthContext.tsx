@@ -14,6 +14,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<AuthFlowResult>;
   register: (input: RegisterRequest) => Promise<AuthFlowResult>;
   verifyTwoFactor: (challengeToken: string, code: string) => Promise<AuthFlowResult>;
+  refreshAuth: () => void;
   logout: () => Promise<void>;
   hasPermission: (permission: Permission) => boolean;
   hasRole: (role: UserRole) => boolean;
@@ -87,6 +88,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const refreshAuth = useCallback((): void => {
+    const auth = authClient.getAuth();
+    if (auth && authClient.isAuthenticated()) {
+      setUser(auth.user);
+      setPermissions(auth.permissions);
+    }
+  }, []);
+
   const logout = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     await authClient.logout();
@@ -111,6 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     login,
     register,
     verifyTwoFactor,
+    refreshAuth,
     logout,
     hasPermission,
     hasRole
