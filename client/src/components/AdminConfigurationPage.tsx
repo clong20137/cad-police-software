@@ -28,6 +28,7 @@ import {
   UserRole
 } from '../types/auth';
 import { defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
+import { indianaDistricts } from '../utils/indianaDistricts';
 import { APP_NAME } from '../constants/branding';
 
 type EditableConfigSection = Exclude<AdminConfigSection, 'security' | 'integrations'>;
@@ -364,8 +365,8 @@ export const AdminConfigurationPage: React.FC = () => {
   }
 
   return (
-    <div className={`flex min-h-screen flex-col ${theme === 'dark' ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-100 text-cad-ink'}`}>
-      <header className="flex min-h-16 items-center justify-between border-b border-slate-800 bg-cad-navy px-4 text-white">
+    <div className={`flex min-h-screen flex-col ${theme === 'dark' ? 'dark bg-cad-navy text-slate-100' : 'bg-cad-panel text-cad-ink'}`}>
+      <header className="flex min-h-16 items-center justify-between border-b border-cad-accent/30 bg-cad-blue px-4 text-white shadow-shield">
         <div className="flex items-center gap-3">
           <Link to="/dashboard" className="rounded-md border border-white/15 bg-white/10 p-2 hover:bg-white/20" aria-label="Back to dispatch">
             <ArrowLeft size={18} />
@@ -386,7 +387,7 @@ export const AdminConfigurationPage: React.FC = () => {
       </header>
 
       <main className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[260px_1fr]">
-        <aside className="rounded-lg border border-cad-line bg-white p-2 shadow-control dark:border-slate-700 dark:bg-slate-900">
+        <aside className="rounded-lg border border-cad-blue/20 bg-cad-blue p-2 text-white shadow-shield dark:border-cad-accent/30 dark:bg-cad-blue">
           {sections.map((section) => (
             <button
               key={section.id}
@@ -394,8 +395,8 @@ export const AdminConfigurationPage: React.FC = () => {
               onClick={() => setActiveSection(section.id)}
               className={`mb-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold transition ${
                 activeSection === section.id
-                  ? 'bg-blue-50 text-cad-blue dark:bg-blue-950/60 dark:text-blue-200'
-                  : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
+                  ? 'bg-white text-cad-blue shadow'
+                  : 'text-blue-50 hover:bg-white/10'
               }`}
             >
               {section.icon}
@@ -404,7 +405,7 @@ export const AdminConfigurationPage: React.FC = () => {
           ))}
         </aside>
 
-        <section className="rounded-lg border border-cad-line bg-white p-4 shadow-control dark:border-slate-700 dark:bg-slate-900">
+        <section className="rounded-lg border border-cad-line bg-white p-4 shadow-shield dark:border-slate-700 dark:bg-slate-900">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-cad-line pb-4 dark:border-slate-700">
             <div>
               <h2 className="text-lg font-bold">{sections.find((section) => section.id === activeSection)?.label}</h2>
@@ -414,7 +415,7 @@ export const AdminConfigurationPage: React.FC = () => {
               <button
                 type="button"
                 onClick={addItem}
-                className="inline-flex items-center gap-2 rounded-md border border-cad-line px-3 py-2 text-sm font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white hover:bg-cad-secondary"
               >
                 <Plus size={16} />
                 Add
@@ -427,7 +428,7 @@ export const AdminConfigurationPage: React.FC = () => {
                   setCreatingUser(true);
                   setSelectedUserId('');
                 }}
-                className="inline-flex items-center gap-2 rounded-md border border-cad-line px-3 py-2 text-sm font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white hover:bg-cad-secondary"
               >
                 <Plus size={16} />
                 New User
@@ -473,7 +474,7 @@ export const AdminConfigurationPage: React.FC = () => {
                         {Array.from(new Set([...unitStatuses, ...defaultUnitStatuses])).map((status) => <option key={status} value={status}>{status}</option>)}
                       </select>
                       <input value={newUser.group} onChange={(event) => setNewUser((value) => ({ ...value, group: event.target.value }))} placeholder="Group" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-                      <input value={newUser.district} onChange={(event) => setNewUser((value) => ({ ...value, district: event.target.value }))} placeholder="District" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <DistrictSelect value={newUser.district} onChange={(district) => setNewUser((value) => ({ ...value, district }))} />
                     </div>
                     <div className="mt-5 flex justify-end gap-2">
                       <button type="button" onClick={() => setCreatingUser(false)} className="rounded-md border border-cad-line px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancel</button>
@@ -504,7 +505,7 @@ export const AdminConfigurationPage: React.FC = () => {
                         {Array.from(new Set([...unitStatuses, ...defaultUnitStatuses])).map((status) => <option key={status} value={status}>{status}</option>)}
                       </select>
                       <input value={selectedUser.group || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { group: event.target.value })} placeholder="Group" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-                      <input value={selectedUser.district || ''} onChange={(event) => scheduleUserUpdate(selectedUser.id, { district: event.target.value })} placeholder="District" className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      <DistrictSelect value={selectedUser.district || ''} onChange={(district) => scheduleUserUpdate(selectedUser.id, { district })} />
                     </div>
                     <div className="mt-5 rounded-md border border-cad-line p-4 dark:border-slate-700">
                       <h3 className="flex items-center gap-2 text-sm font-bold"><Shield size={16} /> Reset Password</h3>
@@ -719,3 +720,22 @@ const ToggleSetting: React.FC<{ label: string; checked: boolean; onChange: (valu
     <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
   </label>
 );
+
+const DistrictSelect: React.FC<{ value: string; onChange: (value: string) => void }> = ({ value, onChange }) => {
+  const isKnownDistrict = !value || indianaDistricts.some((district) => district.label === value);
+  return (
+    <select
+      value={isKnownDistrict ? value : '__custom__'}
+      onChange={(event) => onChange(event.target.value === '__custom__' ? value : event.target.value)}
+      className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+    >
+      <option value="">Unassigned District</option>
+      {!isKnownDistrict && <option value="__custom__">{value}</option>}
+      {indianaDistricts.map((district) => (
+        <option key={district.number} value={district.label}>
+          {district.label}
+        </option>
+      ))}
+    </select>
+  );
+};
