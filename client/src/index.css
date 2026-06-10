@@ -232,6 +232,19 @@
     animation: pendingFeedIn 220ms ease-out;
   }
 
+  .cad-shimmer {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(90deg, rgba(226, 232, 240, 0.72), rgba(248, 250, 252, 0.92), rgba(226, 232, 240, 0.72));
+    background-size: 220% 100%;
+    animation: cadShimmer 1.15s ease-in-out infinite;
+  }
+
+  .dark .cad-shimmer {
+    background: linear-gradient(90deg, rgba(30, 41, 59, 0.8), rgba(51, 65, 85, 0.8), rgba(30, 41, 59, 0.8));
+    background-size: 220% 100%;
+  }
+
   .live-feed-push-down {
     animation: liveFeedPushDown 460ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
     overflow: hidden;
@@ -359,6 +372,16 @@
     100% {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  @keyframes cadShimmer {
+    0% {
+      background-position: 120% 0;
+    }
+
+    100% {
+      background-position: -120% 0;
     }
   }
 

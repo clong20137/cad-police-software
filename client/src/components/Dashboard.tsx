@@ -22,6 +22,7 @@ import {
   SlidersHorizontal,
   CheckCheck,
   Check,
+  CheckCircle2,
   Moon,
   Plus,
   SmilePlus,
@@ -616,6 +617,10 @@ export const Dashboard: React.FC = () => {
   const [twoFactorBackupCodes, setTwoFactorBackupCodes] = useState<string[]>([]);
   const [callsOverlayOpen, setCallsOverlayOpen] = useState(true);
   const [callDetailOpen, setCallDetailOpen] = useState(true);
+  const [unitsLoading, setUnitsLoading] = useState(true);
+  const [incidentsLoading, setIncidentsLoading] = useState(true);
+  const [directoryLoading, setDirectoryLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
   const [units, setUnits] = useState<TrackedUnit[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<string>('');
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
@@ -710,6 +715,7 @@ export const Dashboard: React.FC = () => {
   const mapPolygonsRef = useRef<GooglePolygonInstance[]>([]);
   const trafficLayerRef = useRef<GoogleTrafficLayerInstance | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const latestMessageRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
   const typingStopTimerRef = useRef<number | null>(null);
@@ -729,6 +735,7 @@ export const Dashboard: React.FC = () => {
   const configuredGeofences = useMemo(() => geofencesFromConfig(adminConfig), [adminConfig]);
 
   const loadUnits = useCallback(async () => {
+    setUnitsLoading(true);
     try {
       const response = await authClient.getTrackedUnits();
       const trackedUnits = response.filter(isTrackedUnit);
@@ -742,6 +749,8 @@ export const Dashboard: React.FC = () => {
       });
     } catch {
       setUnitLoadError('Unable to load tracked units.');
+    } finally {
+      setUnitsLoading(false);
     }
   }, []);
 
@@ -844,6 +853,7 @@ export const Dashboard: React.FC = () => {
   }, [loadUnits]);
 
   const loadIncidents = useCallback(async () => {
+    setIncidentsLoading(true);
     try {
       const response = await authClient.getIncidents();
       knownIncidentIdsRef.current = new Set(response.map((incident) => incident.id));
@@ -858,6 +868,8 @@ export const Dashboard: React.FC = () => {
       });
     } catch {
       setIncidentError('Unable to load active calls.');
+    } finally {
+      setIncidentsLoading(false);
     }
   }, []);
 
@@ -880,12 +892,15 @@ export const Dashboard: React.FC = () => {
   }, [configuredCallTypes, incidentForm.type]);
 
   const loadMessageThreads = useCallback(async () => {
+    setMessagesLoading(true);
     try {
       const threads = await authClient.getMessageThreads();
       setMessageThreadSummaries(threads);
       setMessageBadgeCount(threads.reduce((count, thread) => count + thread.unreadCount, 0));
     } catch {
       // Keep the last visible thread list during transient offline periods.
+    } finally {
+      setMessagesLoading(false);
     }
   }, []);
 
@@ -898,6 +913,7 @@ export const Dashboard: React.FC = () => {
   }, []);
 
   const loadDirectory = useCallback(async () => {
+    setDirectoryLoading(true);
     try {
       const users = await authClient.getDirectory();
       setDirectory(users);
@@ -907,6 +923,8 @@ export const Dashboard: React.FC = () => {
     } catch {
       loadMessageThreads();
       loadUrgentAlerts();
+    } finally {
+      setDirectoryLoading(false);
     }
   }, [loadMessageThreads, loadUrgentAlerts, user?.id]);
 
@@ -1597,6 +1615,12 @@ export const Dashboard: React.FC = () => {
   const searchedMessages = visibleMessages.slice(-200);
   const selectedTyping = selectedMessageUserId ? typingByThread[selectedMessageUserId] : null;
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
+
+  useEffect(() => {
+    if (activeQuickModal !== 'messages' || !selectedMessageUserId) return;
+    window.setTimeout(() => latestMessageRef.current?.scrollIntoView({ block: 'end' }), 0);
+  }, [activeQuickModal, searchedMessages.length, selectedMessageUserId]);
+
   const sidebarItems: ShieldSidebarItem[] = [
     { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveQuickModal('inquiries') },
     { id: 'unit-status', label: 'Unit Status', icon: Users, iconClassName: 'text-indigo-700', onClick: () => setActiveQuickModal('units') },
@@ -2105,29 +2129,20 @@ export const Dashboard: React.FC = () => {
 
   const renderNewCallForm = () => {
     const requiredReady = incidentForm.type.trim() && incidentForm.address.trim();
+    const addressVerified = Boolean(incidentForm.address.trim() && incidentForm.lat.trim() && incidentForm.lon.trim());
     const fieldClass =
       'h-10 rounded-md border border-cad-line bg-white px-3 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white';
     const labelClass = 'grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300';
+    const completionIcon = (complete: boolean) =>
+      complete ? <CheckCircle2 size={14} className="text-emerald-500" aria-hidden="true" /> : <span className="h-3.5 w-3.5" aria-hidden="true" />;
 
     return (
       <div className="max-h-[72vh] space-y-4 overflow-y-auto pr-1">
-        <div className="rounded-lg border border-cad-line bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-semibold text-slate-950 dark:text-white">Create Call</h3>
-              <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">Type and address are required. Coordinates are optional.</p>
-            </div>
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${requiredReady ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800'}`}>
-              {requiredReady ? 'Ready' : 'Needs required info'}
-            </span>
-          </div>
-        </div>
-
         <section className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
           <h4 className="mb-3 text-sm font-semibold text-cad-blue dark:text-blue-100">Call Basics</h4>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={labelClass}>
-              Call Type
+              <span className="flex items-center justify-between gap-2">Call Type {completionIcon(Boolean(incidentForm.type.trim()))}</span>
               <select
                 value={incidentForm.type}
                 onChange={(event) => {
@@ -2148,7 +2163,7 @@ export const Dashboard: React.FC = () => {
               </select>
             </label>
             <label className={labelClass}>
-              Priority
+              <span className="flex items-center justify-between gap-2">Priority {completionIcon(Boolean(incidentForm.priority))}</span>
               <select
                 value={incidentForm.priority}
                 onChange={(event) =>
@@ -2170,7 +2185,19 @@ export const Dashboard: React.FC = () => {
           <h4 className="mb-3 text-sm font-semibold text-cad-blue dark:text-blue-100">Location</h4>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={`${labelClass} sm:col-span-2`}>
-              Address
+              <span className="flex items-center justify-between gap-2">
+                Address
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold normal-case tracking-normal">
+                  {addressVerified ? (
+                    <>
+                      <CheckCircle2 size={14} className="text-emerald-500" />
+                      Verified
+                    </>
+                  ) : (
+                    completionIcon(Boolean(incidentForm.address.trim()))
+                  )}
+                </span>
+              </span>
               <div className="relative">
                 <input
                   value={incidentForm.address}
@@ -2199,11 +2226,11 @@ export const Dashboard: React.FC = () => {
               </div>
             </label>
             <label className={labelClass}>
-              Latitude
+              <span className="flex items-center justify-between gap-2">Latitude {completionIcon(Boolean(incidentForm.lat.trim()))}</span>
               <input value={incidentForm.lat} onChange={(event) => setIncidentForm((value) => ({ ...value, lat: event.target.value }))} placeholder="Optional" className={fieldClass} />
             </label>
             <label className={labelClass}>
-              Longitude
+              <span className="flex items-center justify-between gap-2">Longitude {completionIcon(Boolean(incidentForm.lon.trim()))}</span>
               <input value={incidentForm.lon} onChange={(event) => setIncidentForm((value) => ({ ...value, lon: event.target.value }))} placeholder="Optional" className={fieldClass} />
             </label>
           </div>
@@ -2213,15 +2240,15 @@ export const Dashboard: React.FC = () => {
           <h4 className="mb-3 text-sm font-semibold text-cad-blue dark:text-blue-100">Caller And Notes</h4>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={labelClass}>
-              Caller Name
+              <span className="flex items-center justify-between gap-2">Caller Name {completionIcon(Boolean(incidentForm.callerName.trim()))}</span>
               <input value={incidentForm.callerName} onChange={(event) => setIncidentForm((value) => ({ ...value, callerName: event.target.value }))} placeholder="Unknown if unavailable" className={fieldClass} />
             </label>
             <label className={labelClass}>
-              Caller Phone
+              <span className="flex items-center justify-between gap-2">Caller Phone {completionIcon(Boolean(incidentForm.callerPhone.trim()))}</span>
               <input value={incidentForm.callerPhone} onChange={(event) => setIncidentForm((value) => ({ ...value, callerPhone: event.target.value }))} placeholder="Unknown if unavailable" className={fieldClass} />
             </label>
             <label className={`${labelClass} sm:col-span-2`}>
-              Initial Notes
+              <span className="flex items-center justify-between gap-2">Initial Notes {completionIcon(Boolean(incidentForm.description.trim()))}</span>
               <textarea
                 value={incidentForm.description}
                 onChange={(event) => setIncidentForm((value) => ({ ...value, description: event.target.value }))}
@@ -2364,7 +2391,22 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-            {visibleIncidents.length === 0 && <p className="rounded-md bg-white p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">{emptyCopy}</p>}
+            {incidentsLoading && incidents.length === 0 && (
+              <div className="space-y-2">
+                {[0, 1, 2].map((item) => (
+                  <div key={item} className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                    <div className="cad-shimmer h-4 w-28 rounded" />
+                    <div className="cad-shimmer mt-2 h-3 w-40 rounded" />
+                    <div className="cad-shimmer mt-3 h-3 w-full rounded" />
+                    <div className="mt-3 flex gap-2">
+                      <div className="cad-shimmer h-5 w-16 rounded-full" />
+                      <div className="cad-shimmer h-5 w-20 rounded-full" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!incidentsLoading && visibleIncidents.length === 0 && <p className="rounded-md bg-white p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">{emptyCopy}</p>}
             {visibleIncidents.map((incident) => (
               <button
                 key={incident.id}
@@ -2632,6 +2674,24 @@ export const Dashboard: React.FC = () => {
               />
             </div>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-slate-50 p-2 pb-16 dark:bg-slate-950">
+              {(directoryLoading || messagesLoading) && messageThreads.length === 0 && (
+                <div className="space-y-2">
+                  {[0, 1, 2, 3].map((item) => (
+                    <div key={item} className="rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <div className="flex items-center gap-3">
+                        <div className="cad-shimmer h-10 w-10 rounded-full" />
+                        <div className="min-w-0 flex-1">
+                          <div className="cad-shimmer h-4 w-28 rounded" />
+                          <div className="cad-shimmer mt-2 h-3 w-40 rounded" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!(directoryLoading || messagesLoading) && messageThreads.length === 0 && (
+                <p className="rounded-md bg-white p-3 text-sm font-semibold text-slate-500 dark:bg-slate-900 dark:text-slate-300">No conversations found.</p>
+              )}
               {messageThreads.map((item) => (
                 (() => {
                   const thread = messageThreadByUser[item.id];
@@ -2762,7 +2822,19 @@ export const Dashboard: React.FC = () => {
                   )}
                 </div>
                 <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50 p-3 dark:bg-slate-950 sm:p-4">
-                  {searchedMessages.length === 0 && (
+                  {messagesLoading && searchedMessages.length === 0 && (
+                    <div className="space-y-4">
+                      {[0, 1, 2].map((item) => (
+                        <div key={item} className={`flex ${item % 2 ? 'justify-end' : 'justify-start'}`}>
+                          <div className="max-w-[70%] space-y-2">
+                            <div className={`cad-shimmer h-10 rounded-[1.35rem] ${item % 2 ? 'w-56' : 'w-64'}`} />
+                            <div className={`cad-shimmer h-3 rounded ${item % 2 ? 'ml-auto w-16' : 'w-16'}`} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!messagesLoading && searchedMessages.length === 0 && (
                     <div className="flex h-full min-h-48 items-center justify-center text-center">
                       <div>
                         <p className="text-sm font-bold text-slate-700 dark:text-slate-200">New chat with {selectedMessageUser.name}</p>
@@ -2865,6 +2937,7 @@ export const Dashboard: React.FC = () => {
                       </div>
                     </div>
                   )}
+                  <div ref={latestMessageRef} />
                 </div>
                 <form
                   className="relative shrink-0 border-t border-cad-line p-3 dark:border-slate-700 sm:p-4"
@@ -3051,30 +3124,10 @@ export const Dashboard: React.FC = () => {
     }
 
     if (modalId === 'units') {
-      const onDutyCount = unitBoardUnits.length;
-      const availableCount = unitBoardUnits.filter((unit) => displayStatus(unit) === 'Available').length;
-      const enRouteCount = unitBoardUnits.filter((unit) => displayStatus(unit) === 'En Route').length;
-      const busyCount = unitBoardUnits.filter((unit) => {
-        const status = displayStatus(unit);
-        return status !== 'Available' && status !== 'En Route';
-      }).length;
-      const liveTrackingCount = unitBoardUnits.filter((unit) => locationReliability(unit, locationClock) === 'live').length;
       return (
         <div className="grid h-full min-h-[520px] grid-rows-[auto_1fr_auto] overflow-hidden rounded-lg border border-cad-line bg-white dark:border-slate-700 dark:bg-slate-900">
           <div className="border-b border-cad-line bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="text-base font-black text-slate-950 dark:text-white">On Duty Officers</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  {onDutyCount} on duty / {availableCount} available / {enRouteCount} en route / {busyCount} busy / {liveTrackingCount} live GPS
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-1.5 text-[11px] font-black uppercase">
-                <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800">Available {availableCount}</span>
-                <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800">En Route {enRouteCount}</span>
-                <span className="rounded-full bg-red-50 px-2 py-1 text-red-700 ring-1 ring-red-200 dark:bg-red-950 dark:text-red-200 dark:ring-red-800">Busy {busyCount}</span>
-              </div>
-            </div>
+            <h3 className="text-base font-semibold text-slate-950 dark:text-white">On Duty Officers</h3>
             <div className="mt-3 grid gap-2 md:grid-cols-[1fr_9.5rem_9.5rem_auto]">
               <input
                 value={unitBoardSearch}
@@ -3117,7 +3170,26 @@ export const Dashboard: React.FC = () => {
           </div>
 
           {unitLoadError && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{unitLoadError}</p>}
-          {unitBoardUnits.length === 0 ? (
+          {(unitsLoading || directoryLoading) && unitBoardUnits.length === 0 ? (
+            <div className="min-h-0 overflow-auto">
+              <div className="min-w-[640px] text-sm">
+                <div className="grid grid-cols-[108px_78px_1fr_104px_110px_118px] gap-2 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-slate-900">
+                  {[0, 1, 2, 3, 4, 5].map((item) => (
+                    <div key={item} className="cad-shimmer h-3 rounded" />
+                  ))}
+                </div>
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {[0, 1, 2, 3, 4].map((row) => (
+                    <div key={row} className="grid grid-cols-[108px_78px_1fr_104px_110px_118px] gap-2 bg-white px-4 py-3 dark:bg-slate-900">
+                      {[0, 1, 2, 3, 4, 5].map((item) => (
+                        <div key={item} className={`cad-shimmer h-5 rounded ${item === 2 ? 'w-11/12' : 'w-4/5'}`} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : unitBoardUnits.length === 0 ? (
             <div className="flex min-h-0 items-center justify-center p-6">
               <div className="max-w-sm rounded-lg border border-dashed border-gray-300 bg-slate-50 p-6 text-center dark:border-gray-700 dark:bg-slate-950">
                 <Radio className="mx-auto text-slate-400" size={28} />
