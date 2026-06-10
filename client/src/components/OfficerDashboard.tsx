@@ -277,20 +277,6 @@ const markerPulseClass = {
   blue: 'bg-blue-300/25'
 };
 
-const trafficIndicatorClasses: Record<NavigationSummary['traffic'], string> = {
-  clear: 'bg-blue-500 text-white',
-  moderate: 'bg-orange-500 text-white',
-  heavy: 'bg-red-600 text-white',
-  unknown: 'bg-slate-300 text-slate-700 dark:bg-slate-700 dark:text-slate-100'
-};
-
-const trafficIndicatorLabels: Record<NavigationSummary['traffic'], string> = {
-  clear: 'Clear',
-  moderate: 'Moderate',
-  heavy: 'Heavy',
-  unknown: 'Traffic'
-};
-
 const darkMapStyles = [
   { elementType: 'geometry', stylers: [{ color: '#1f2937' }] },
   { elementType: 'labels.text.stroke', stylers: [{ color: '#111827' }] },
@@ -2757,11 +2743,11 @@ export const OfficerDashboard: React.FC = () => {
       </aside>
 
       {navigationSummary && (
-        <aside className="absolute left-3 top-[3.75rem] z-30 w-[min(26rem,calc(100vw-1.5rem))] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95 sm:left-5 sm:top-[4.25rem]">
+        <aside className="absolute left-3 top-[3.75rem] z-30 w-[min(21.5rem,calc(100vw-1.5rem))] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95 sm:left-5 sm:top-[4.25rem]">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Navigating {navigationSummary.callNumber}</p>
-              <p className="mt-0.5 truncate text-sm font-semibold text-slate-600 dark:text-slate-300">{navigationSummary.destination || 'Selected call'}</p>
+              <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Navigating {navigationSummary.callNumber}</p>
+              <p className="mt-0.5 truncate text-sm font-medium text-slate-600 dark:text-slate-300">{navigationSummary.destination || 'Selected call'}</p>
             </div>
             <button
               type="button"
@@ -2773,25 +2759,22 @@ export const OfficerDashboard: React.FC = () => {
               <X size={17} />
             </button>
           </div>
-          <div className="mt-3 grid grid-cols-[1fr_auto_auto] items-center gap-2">
+          <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-2">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">ETA</p>
-              <p className="mt-0.5 text-xl font-black text-slate-950 dark:text-white">{navigationSummary.duration}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">ETA</p>
+              <p className="mt-0.5 text-lg font-semibold text-slate-950 dark:text-white">{navigationSummary.duration}</p>
             </div>
             <div className="text-right">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Distance</p>
-              <p className="mt-0.5 text-sm font-black text-cad-blue dark:text-blue-100">{navigationSummary.distance}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Distance</p>
+              <p className="mt-0.5 text-sm font-semibold text-cad-blue dark:text-blue-100">{navigationSummary.distance}</p>
             </div>
-            <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${trafficIndicatorClasses[navigationSummary.traffic]}`}>
-              {trafficIndicatorLabels[navigationSummary.traffic]}
-            </span>
           </div>
           {navigationSummary.nextStep && (
-            <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-xs font-semibold text-cad-blue dark:bg-blue-950/50 dark:text-blue-100">
+            <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-xs font-medium text-cad-blue dark:bg-blue-950/50 dark:text-blue-100">
               {navigationSummary.nextStep}
             </p>
           )}
-          <p className="mt-2 text-[11px] font-semibold text-slate-400">
+          <p className="mt-2 text-[11px] font-medium text-slate-400">
             {navigationSummary.status === 'loading'
               ? 'Calculating route'
               : navigationSummary.updatedAt
@@ -3242,9 +3225,9 @@ const DockContent: React.FC<{
       <div className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <span className={`rounded-full px-3 py-1 text-xs font-bold ${priorityClasses[selectedIncident.priority]}`}>{selectedIncident.priority}</span>
-            <h3 className="mt-3 text-2xl font-black text-slate-950 dark:text-white">{selectedIncident.type}</h3>
-            <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{selectedIncident.callNumber} opened {formatTime(selectedIncident.createdAt)}</p>
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${priorityClasses[selectedIncident.priority]}`}>{selectedIncident.priority}</span>
+            <h3 className="mt-3 text-xl font-semibold text-slate-950 dark:text-white">{selectedIncident.type}</h3>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{selectedIncident.callNumber} opened {formatTime(selectedIncident.createdAt)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {canAssignSelected && (
@@ -3252,42 +3235,42 @@ const DockContent: React.FC<{
                 type="button"
                 disabled={busy}
                 onClick={() => onAssignMeToIncident(selectedIncident.id)}
-                className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-3 text-sm font-bold text-white hover:bg-blue-800 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
               >
-                <Plus size={18} />
+                <Plus size={16} />
                 Assign Me
               </button>
             )}
-            <button type="button" onClick={onNavigateToIncident} className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-3 text-sm font-bold text-white">
-              <Navigation size={18} />
+            <button type="button" onClick={onNavigateToIncident} className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white">
+              <Navigation size={16} />
               Navigate
             </button>
             <button
               type="button"
               disabled={busy || !myAssignment}
               onClick={() => onUpdateStatus('Cleared')}
-              className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
-              <CheckCircle2 size={18} />
+              <CheckCircle2 size={16} />
               Clear Call
             </button>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Metric label="Call Timer" value={elapsedTimeLabel(selectedIncident.createdAt, timerNow)} icon={<Clock size={16} />} />
-          <Metric label="Assigned" value={elapsedTimeLabel(myAssignment?.assignedAt, timerNow)} />
-          <Metric label={selectedStatus ? `${selectedStatus} Time` : 'Status Time'} value={elapsedTimeLabel(currentStatusStartedAt, timerNow)} />
-          <Metric label="Status Updated" value={formatTime(selectedIncident.statusUpdatedAt || selectedIncident.updatedAt)} />
+          <SoftMetric label="Call Timer" value={elapsedTimeLabel(selectedIncident.createdAt, timerNow)} icon={<Clock size={16} />} />
+          <SoftMetric label="Assigned" value={elapsedTimeLabel(myAssignment?.assignedAt, timerNow)} />
+          <SoftMetric label={selectedStatus ? `${selectedStatus} Time` : 'Status Time'} value={elapsedTimeLabel(currentStatusStartedAt, timerNow)} />
+          <SoftMetric label="Status Updated" value={formatTime(selectedIncident.statusUpdatedAt || selectedIncident.updatedAt)} />
         </div>
         <OfficerCallWorkflow incident={selectedIncident} />
         <div className="grid gap-3 sm:grid-cols-2">
-          <Metric label="ETA" value={etaText(currentLocation, selectedIncident, currentSpeed)} />
-          <Metric label="Coordinates" value={selectedIncident.lat !== undefined && selectedIncident.lon !== undefined ? `${selectedIncident.lat.toFixed(5)}, ${selectedIncident.lon.toFixed(5)}` : 'No map pin'} />
-          <Metric label="District" value={selectedIncident.district || 'Unassigned'} />
-          <Metric label="Beat" value={selectedIncident.beat || 'Unassigned'} />
+          <SoftMetric label="ETA" value={etaText(currentLocation, selectedIncident, currentSpeed)} />
+          <SoftMetric label="Coordinates" value={selectedIncident.lat !== undefined && selectedIncident.lon !== undefined ? `${selectedIncident.lat.toFixed(5)}, ${selectedIncident.lon.toFixed(5)}` : 'No map pin'} />
+          <SoftMetric label="District" value={selectedIncident.district || 'Unassigned'} />
+          <SoftMetric label="Beat" value={selectedIncident.beat || 'Unassigned'} />
         </div>
         <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-          <p className="text-sm font-bold">{selectedIncident.address}</p>
+          <p className="text-sm font-semibold">{selectedIncident.address}</p>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{selectedIncident.description || 'No additional call details.'}</p>
         </div>
       </div>
@@ -3904,6 +3887,16 @@ const Metric: React.FC<{ label: string; value: string; icon?: React.ReactNode }>
       {label}
     </p>
     <p className="mt-1 break-words text-lg font-black text-slate-950 dark:text-white">{value}</p>
+  </div>
+);
+
+const SoftMetric: React.FC<{ label: string; value: string; icon?: React.ReactNode }> = ({ label, value, icon }) => (
+  <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-950">
+    <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      {icon}
+      {label}
+    </p>
+    <p className="mt-1 break-words text-base font-semibold text-slate-950 dark:text-white">{value}</p>
   </div>
 );
 

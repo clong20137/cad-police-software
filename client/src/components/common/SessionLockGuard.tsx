@@ -9,7 +9,7 @@ const LOCK_STORAGE_KEY = 'cad_session_locked';
 const DEFAULT_TIMEOUT_MINUTES = 30;
 
 export const SessionLockGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [timeoutMinutes, setTimeoutMinutes] = useState(DEFAULT_TIMEOUT_MINUTES);
   const [locked, setLocked] = useState(() => localStorage.getItem(LOCK_STORAGE_KEY) === 'true');
   const [password, setPassword] = useState('');
@@ -45,11 +45,11 @@ export const SessionLockGuard: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     window.addEventListener('cad:lock-session', handleManualLock);
-    document.addEventListener('keydown', handleShortcut);
+    document.addEventListener('keydown', handleShortcut, true);
 
     return () => {
       window.removeEventListener('cad:lock-session', handleManualLock);
-      document.removeEventListener('keydown', handleShortcut);
+      document.removeEventListener('keydown', handleShortcut, true);
     };
   }, [isAuthenticated, lockSession, user]);
 
@@ -63,6 +63,8 @@ export const SessionLockGuard: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [clearIdleTimer, isAuthenticated, lockSession, locked, timeoutMinutes, user]);
 
   useEffect(() => {
+    if (isLoading) return;
+
     if (!isAuthenticated || !user) {
       clearIdleTimer();
       setLocked(false);
@@ -75,7 +77,7 @@ export const SessionLockGuard: React.FC<{ children: React.ReactNode }> = ({ chil
       .getActiveConfiguration()
       .then((items) => setTimeoutMinutes(sessionTimeoutMinutesFromConfig(items, DEFAULT_TIMEOUT_MINUTES)))
       .catch(() => setTimeoutMinutes(DEFAULT_TIMEOUT_MINUTES));
-  }, [clearIdleTimer, isAuthenticated, user]);
+  }, [clearIdleTimer, isAuthenticated, isLoading, user]);
 
   useEffect(() => {
     if (!isAuthenticated || !user || locked) {
