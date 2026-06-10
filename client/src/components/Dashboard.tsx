@@ -2107,24 +2107,24 @@ export const Dashboard: React.FC = () => {
     const requiredReady = incidentForm.type.trim() && incidentForm.address.trim();
     const fieldClass =
       'h-10 rounded-md border border-cad-line bg-white px-3 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white';
-    const labelClass = 'grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400';
+    const labelClass = 'grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300';
 
     return (
       <div className="max-h-[72vh] space-y-4 overflow-y-auto pr-1">
         <div className="rounded-lg border border-cad-line bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-black text-slate-950 dark:text-white">Create Call</h3>
+              <h3 className="text-base font-semibold text-slate-950 dark:text-white">Create Call</h3>
               <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">Type and address are required. Coordinates are optional.</p>
             </div>
-            <span className={`rounded-full px-3 py-1 text-xs font-black ${requiredReady ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800'}`}>
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${requiredReady ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800'}`}>
               {requiredReady ? 'Ready' : 'Needs required info'}
             </span>
           </div>
         </div>
 
         <section className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-cad-blue dark:text-blue-100">Call Basics</h4>
+          <h4 className="mb-3 text-sm font-semibold text-cad-blue dark:text-blue-100">Call Basics</h4>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={labelClass}>
               Call Type
@@ -2167,7 +2167,7 @@ export const Dashboard: React.FC = () => {
         </section>
 
         <section className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-cad-blue dark:text-blue-100">Location</h4>
+          <h4 className="mb-3 text-sm font-semibold text-cad-blue dark:text-blue-100">Location</h4>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={`${labelClass} sm:col-span-2`}>
               Address
@@ -2210,7 +2210,7 @@ export const Dashboard: React.FC = () => {
         </section>
 
         <section className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-cad-blue dark:text-blue-100">Caller And Notes</h4>
+          <h4 className="mb-3 text-sm font-semibold text-cad-blue dark:text-blue-100">Caller And Notes</h4>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={labelClass}>
               Caller Name
@@ -2245,7 +2245,7 @@ export const Dashboard: React.FC = () => {
             type="button"
             onClick={createIncident}
             disabled={!requiredReady}
-            className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-2 text-sm font-black text-white hover:bg-cad-secondary disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-2 text-sm font-semibold text-white hover:bg-cad-secondary disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Send size={16} />
             Create Call
@@ -2620,81 +2620,87 @@ export const Dashboard: React.FC = () => {
   const renderQuickModalContent = (modalId: QuickLaunchId) => {
     if (modalId === 'messages') {
       return (
-        <div className="grid h-[min(70vh,680px)] min-h-[520px] overflow-hidden rounded-md border border-cad-line sm:grid-cols-[220px_1fr]">
-          <div className="relative flex h-full min-h-0 flex-col border-r border-cad-line bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
+        <div className="grid h-[min(72vh,720px)] min-h-[540px] gap-4 overflow-hidden rounded-lg sm:grid-cols-[260px_1fr]">
+          <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-white shadow dark:bg-slate-900 dark:shadow-none dark:ring-1 dark:ring-slate-800">
             <div className="shrink-0 border-b border-cad-line p-3 dark:border-slate-700">
+              <p className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Conversations</p>
               <input
                 value={messageSearch}
                 onChange={(event) => setMessageSearch(event.target.value)}
-                placeholder="Search threads"
-                className="w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                placeholder="Search conversations"
+                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
               />
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto pb-16">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-slate-50 p-2 pb-16 dark:bg-slate-950">
               {messageThreads.map((item) => (
                 (() => {
                   const thread = messageThreadByUser[item.id];
+                  const isOnline = onlineUserIds.includes(item.id);
                   return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => setSelectedMessageUserId(item.id)}
-                      className={`w-full border-b border-slate-200 px-3 py-3 text-left text-sm dark:border-slate-800 ${
-                        selectedMessageUserId === item.id ? 'bg-blue-50 dark:bg-blue-950/50' : 'hover:bg-white dark:hover:bg-slate-900'
+                      className={`w-full rounded-lg border px-3 py-3 text-left text-sm shadow-sm transition ${
+                        selectedMessageUserId === item.id
+                          ? 'border-cad-blue bg-blue-50 dark:border-blue-500 dark:bg-blue-950/50'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800'
                       }`}
                     >
-                      <span className="flex items-center gap-2 font-semibold">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cad-blue/10 text-xs font-black text-cad-blue">
+                      <span className="flex items-start gap-3">
+                        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-cad-blue/10 text-xs font-bold text-cad-blue shadow-sm dark:border-slate-700">
                           {getInitials(item.name)}
+                          <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
                         </span>
-                        <span
-                          className={`h-2.5 w-2.5 rounded-full ${
-                            onlineUserIds.includes(item.id) ? 'bg-emerald-500' : 'bg-slate-300'
-                          }`}
-                        />
-                        <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                        {thread?.unreadCount ? (
-                          <span className="rounded-full bg-cad-blue px-2 py-0.5 text-[11px] font-black text-white">
-                            {thread.unreadCount}
+                        <span className="min-w-0 flex-1">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate font-bold text-slate-950 dark:text-white">{item.name}</span>
+                            {thread?.unreadCount ? (
+                              <span className="rounded-full bg-cad-blue px-2 py-0.5 text-[11px] font-bold text-white">
+                                {thread.unreadCount}
+                              </span>
+                            ) : null}
                           </span>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            togglePinnedMessageThread(item.id);
-                          }}
-                          className={`rounded-full p-1 ${
-                            pinnedMessageThreadIds.includes(item.id)
-                              ? 'text-cad-blue'
-                              : 'text-slate-400 hover:text-cad-blue'
-                          }`}
-                          aria-label={pinnedMessageThreadIds.includes(item.id) ? 'Unpin conversation' : 'Pin conversation'}
-                          title={pinnedMessageThreadIds.includes(item.id) ? 'Unpin conversation' : 'Pin conversation'}
-                        >
-                          {pinnedMessageThreadIds.includes(item.id) ? <PinOff size={13} /> : <Pin size={13} />}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setThreadPendingDeleteUserId(item.id);
-                          }}
-                          disabled={!thread?.lastMessage}
-                          className="rounded-full bg-red-600 p-1 text-white hover:bg-red-700 disabled:opacity-40"
-                          aria-label="Delete conversation"
-                          title="Delete conversation"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </span>
-                      <span className="mt-1 block truncate text-xs text-slate-500">
-                        {thread?.lastMessage?.body ||
-                          (thread?.lastMessage?.attachments?.length
-                            ? `${thread.lastMessage.attachments.length} attachment(s)`
-                            : onlineUserIds.includes(item.id)
-                              ? 'Active now'
-                              : `Last seen ${formatDateTime(item.lastSeenAt)}`)}
+                          <span className="mt-1 block truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            {thread?.lastMessage?.body ||
+                              (thread?.lastMessage?.attachments?.length
+                                ? `${thread.lastMessage.attachments.length} attachment(s)`
+                                : isOnline
+                                  ? 'Active now'
+                                  : `Last seen ${formatDateTime(item.lastSeenAt)}`)}
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              togglePinnedMessageThread(item.id);
+                            }}
+                            className={`flex h-8 w-8 items-center justify-center rounded-full hover:bg-cad-blue/10 ${
+                              pinnedMessageThreadIds.includes(item.id)
+                                ? 'text-cad-blue'
+                                : 'text-slate-400 hover:text-cad-blue'
+                            }`}
+                            aria-label={pinnedMessageThreadIds.includes(item.id) ? 'Unpin conversation' : 'Pin conversation'}
+                            title={pinnedMessageThreadIds.includes(item.id) ? 'Unpin conversation' : 'Pin conversation'}
+                          >
+                            {pinnedMessageThreadIds.includes(item.id) ? <PinOff size={14} /> : <Pin size={14} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setThreadPendingDeleteUserId(item.id);
+                            }}
+                            disabled={!thread?.lastMessage}
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-red-600 text-white shadow-sm hover:bg-red-700 disabled:opacity-40"
+                            aria-label="Delete conversation"
+                            title="Delete conversation"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </span>
                       </span>
                     </button>
                   );
@@ -2708,33 +2714,62 @@ export const Dashboard: React.FC = () => {
                 setMessageBody('');
                 setMessageSearch('');
               }}
-              className="absolute bottom-3 left-1/2 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full bg-cad-blue text-white shadow-lg transition hover:bg-blue-700"
+              className="absolute bottom-4 right-4 flex h-12 w-12 items-center justify-center rounded-full bg-cad-blue text-white shadow-lg transition hover:bg-cad-secondary"
               aria-label="New message"
               title="New message"
             >
               <Plus size={18} />
             </button>
-          </div>
-          <div className="flex min-h-0 min-w-0 flex-col">
+          </section>
+          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg bg-white shadow dark:bg-slate-900 dark:shadow-none dark:ring-1 dark:ring-slate-800">
             {selectedMessageUser ? (
               <>
                 <div className="border-b border-cad-line bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
-                  <p className="text-sm font-bold">{selectedMessageUser.name}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                    <span>{onlineUserIds.includes(selectedMessageUser.id) ? 'Active now' : `Last seen ${formatDateTime(selectedMessageUser.lastSeenAt)}`}</span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">
-                      <Lock size={12} />
-                      Encrypted
-                    </span>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-cad-blue/10 text-sm font-bold text-cad-blue shadow-sm dark:border-slate-700">
+                        {getInitials(selectedMessageUser.name)}
+                        <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full ring-2 ring-white dark:ring-slate-900 ${onlineUserIds.includes(selectedMessageUser.id) ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <h2 className="truncate text-lg font-bold text-slate-950 dark:text-white">{selectedMessageUser.name}</h2>
+                          <span className={`h-2.5 w-2.5 rounded-full ${onlineUserIds.includes(selectedMessageUser.id) ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            {onlineUserIds.includes(selectedMessageUser.id) ? 'Active now' : `Last seen ${formatDateTime(selectedMessageUser.lastSeenAt)}`}
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
+                            <Lock size={12} />
+                            Encrypted
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <input
-                    value={messageTextSearch}
-                    onChange={(event) => setMessageTextSearch(event.target.value)}
-                    placeholder="Search messages"
-                    className="mt-2 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                  />
+                  <label className="relative mt-3 block">
+                    <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={messageTextSearch}
+                      onChange={(event) => setMessageTextSearch(event.target.value)}
+                      placeholder="Search this conversation"
+                      className="w-full rounded border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    />
+                  </label>
+                  {selectedTyping && (
+                    <p className="mt-2 text-xs font-semibold text-cad-blue dark:text-blue-100">{selectedTyping.name} is typing...</p>
+                  )}
                 </div>
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-white p-4 dark:bg-slate-950">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50 p-3 dark:bg-slate-950 sm:p-4">
+                  {searchedMessages.length === 0 && (
+                    <div className="flex h-full min-h-48 items-center justify-center text-center">
+                      <div>
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-200">New chat with {selectedMessageUser.name}</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-400">Type below to send the first message.</p>
+                      </div>
+                    </div>
+                  )}
                   {searchedMessages.map((message) => {
                     const mine = message.senderId === user?.id;
                     const index = searchedMessages.findIndex((item) => item.id === message.id);
@@ -2758,8 +2793,8 @@ export const Dashboard: React.FC = () => {
                             <div
                               className={`w-fit max-w-full rounded-[1.35rem] px-4 py-2.5 text-sm shadow-sm ${
                               mine
-                                ? 'rounded-br-md bg-cad-blue text-white'
-                                : 'rounded-bl-md border border-slate-200 bg-white text-cad-ink dark:border-slate-800 dark:bg-slate-900 dark:text-white'
+                                ? 'rounded-br-md bg-[#007AFF] text-white'
+                                : 'rounded-bl-md border border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-white dark:text-slate-900'
                               }`}
                             >
                               {message.body && <p className="whitespace-pre-wrap text-left leading-6">{message.body}</p>}
@@ -2781,7 +2816,7 @@ export const Dashboard: React.FC = () => {
                                 )}
                               </div>
                             )}
-                            <div className={`mt-1 flex flex-wrap items-center gap-1.5 px-1 text-[11px] font-semibold ${mine ? 'justify-end text-blue-100' : 'justify-start text-slate-400'}`}>
+                            <div className={`mt-1 flex flex-wrap items-center gap-1.5 px-1 text-[11px] font-semibold text-slate-400 ${mine ? 'justify-end' : 'justify-start'}`}>
                               <span>{formatMessageTime(message.createdAt)}</span>
                               {mine && message.deliveryStatus === 'sending' && <span>Sending</span>}
                               {mine && message.deliveryStatus === 'failed' && <span>Failed</span>}
@@ -2831,7 +2866,13 @@ export const Dashboard: React.FC = () => {
                     </div>
                   )}
                 </div>
-                <div className="relative shrink-0 border-t border-cad-line p-3 dark:border-slate-700">
+                <form
+                  className="relative shrink-0 border-t border-cad-line p-3 dark:border-slate-700 sm:p-4"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    sendChatMessage();
+                  }}
+                >
                   {emojiOpen && (
                     <div className="absolute bottom-16 left-3 z-30 w-80 rounded-lg border border-cad-line bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
                       <input
@@ -2870,7 +2911,7 @@ export const Dashboard: React.FC = () => {
                       ))}
                     </div>
                   )}
-                  <div className="flex gap-2">
+                  <div className="relative flex min-h-14 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950 sm:rounded-full sm:py-1.5">
                     <input
                       ref={attachmentInputRef}
                       type="file"
@@ -2881,45 +2922,49 @@ export const Dashboard: React.FC = () => {
                     <button
                       type="button"
                       onClick={openEmojiPicker}
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg hover:bg-slate-100 dark:hover:bg-slate-800 sm:h-8 sm:w-8"
+                      aria-label="Add emoji"
                     >
                       {emojiButton}
                     </button>
                     <button
                       type="button"
                       onClick={() => attachmentInputRef.current?.click()}
-                      className="rounded-md border border-cad-line px-3 py-2 text-sm"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-cad-blue hover:bg-slate-100 dark:text-blue-100 dark:hover:bg-slate-800 sm:h-8 sm:w-8"
                       aria-label="Attach files"
                     >
                       <Paperclip size={16} />
                     </button>
-                    <input
+                    <textarea
                       value={messageBody}
                       onChange={(event) => updateMessageBody(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                          event.preventDefault();
                           sendChatMessage();
                         }
                       }}
-                      placeholder="Type a message"
-                      className="min-w-0 flex-1 rounded-md border border-cad-line px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100"
+                      rows={1}
+                      placeholder="Message"
+                      className="min-h-10 min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm leading-5 outline-none focus:border-0 focus:ring-0 dark:bg-transparent dark:text-white sm:min-h-8 sm:py-1.5"
                     />
                     <button
-                      type="button"
-                      onClick={sendChatMessage}
-                      className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white"
+                      type="submit"
+                      disabled={!messageBody.trim() && pendingAttachments.length === 0}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cad-blue text-white hover:bg-cad-secondary disabled:cursor-not-allowed disabled:opacity-50 sm:h-9 sm:w-9"
+                      aria-label="Send message"
                     >
-                      Send
+                      <Send size={17} />
                     </button>
                   </div>
-                </div>
+                </form>
               </>
             ) : (
               <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-slate-600 dark:text-slate-300">
                 Select a user to start messaging.
               </div>
             )}
-          </div>
+          </section>
           {threadPendingDeleteUserId && (
             <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4">
               <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-2xl dark:bg-slate-900">
