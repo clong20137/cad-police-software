@@ -1891,7 +1891,9 @@ export const Dashboard: React.FC = () => {
       });
       setIncidents((current) => [incident, ...current.filter((item) => item.id !== incident.id)]);
       setSelectedIncidentId(incident.id);
+      setActiveCallTab('all');
       closeQuickModal('new-call');
+      focusQuickModal('calls');
       setIncidentError('');
       setIncidentForm({
         type: configuredCallTypes[0]?.label || '911 Call',
@@ -2101,115 +2103,157 @@ export const Dashboard: React.FC = () => {
         ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/20 dark:text-red-100 dark:ring-red-300/30'
         : 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/30';
 
-  const renderNewCallForm = () => (
-    <div className="grid max-h-[70vh] gap-3 overflow-y-auto sm:grid-cols-2">
-      <select
-        value={incidentForm.type}
-        onChange={(event) => {
-          const callType = configuredCallTypes.find((item) => item.label === event.target.value);
-          setIncidentForm((value) => ({
-            ...value,
-            type: event.target.value,
-            priority: callType?.priority || value.priority
-          }));
-        }}
-        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-      >
-        {configuredCallTypes.map((callType) => (
-          <option key={callType.label} value={callType.label}>
-            {callType.label}
-          </option>
-        ))}
-      </select>
-      <select
-        value={incidentForm.priority}
-        onChange={(event) =>
-          setIncidentForm((value) => ({ ...value, priority: event.target.value as IncidentPriority }))
-        }
-        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-      >
-        {(['Low', 'Normal', 'High', 'Emergency'] as IncidentPriority[]).map((priority) => (
-          <option key={priority} value={priority}>
-            {priority}
-          </option>
-        ))}
-      </select>
-      <div className="relative sm:col-span-2">
-        <input
-          value={incidentForm.address}
-          onChange={(event) => {
-            setIncidentForm((value) => ({ ...value, address: event.target.value }));
-            setAddressSuggestionsOpen(true);
-          }}
-          onFocus={() => setAddressSuggestionsOpen(true)}
-          placeholder="Address"
-          className="w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-        />
-        {addressSuggestionsOpen && addressSuggestions.length > 0 && (
-          <div className="absolute inset-x-0 top-11 z-20 rounded-md border border-cad-line bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
-            {addressSuggestions.map((suggestion) => (
-              <button
-                key={suggestion.place_id}
-                type="button"
-                onClick={() => selectAddressSuggestion(suggestion)}
-                className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-blue-50 dark:border-slate-800 dark:hover:bg-slate-800"
-              >
-                {suggestion.description}
-              </button>
-            ))}
+  const renderNewCallForm = () => {
+    const requiredReady = incidentForm.type.trim() && incidentForm.address.trim();
+    const fieldClass =
+      'h-10 rounded-md border border-cad-line bg-white px-3 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white';
+    const labelClass = 'grid gap-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400';
+
+    return (
+      <div className="max-h-[72vh] space-y-4 overflow-y-auto pr-1">
+        <div className="rounded-lg border border-cad-line bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-black text-slate-950 dark:text-white">Create Call</h3>
+              <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">Type and address are required. Coordinates are optional.</p>
+            </div>
+            <span className={`rounded-full px-3 py-1 text-xs font-black ${requiredReady ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-800' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800'}`}>
+              {requiredReady ? 'Ready' : 'Needs required info'}
+            </span>
           </div>
-        )}
+        </div>
+
+        <section className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-cad-blue dark:text-blue-100">Call Basics</h4>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className={labelClass}>
+              Call Type
+              <select
+                value={incidentForm.type}
+                onChange={(event) => {
+                  const callType = configuredCallTypes.find((item) => item.label === event.target.value);
+                  setIncidentForm((value) => ({
+                    ...value,
+                    type: event.target.value,
+                    priority: callType?.priority || value.priority
+                  }));
+                }}
+                className={fieldClass}
+              >
+                {configuredCallTypes.map((callType) => (
+                  <option key={callType.label} value={callType.label}>
+                    {callType.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={labelClass}>
+              Priority
+              <select
+                value={incidentForm.priority}
+                onChange={(event) =>
+                  setIncidentForm((value) => ({ ...value, priority: event.target.value as IncidentPriority }))
+                }
+                className={fieldClass}
+              >
+                {(['Low', 'Normal', 'High', 'Emergency'] as IncidentPriority[]).map((priority) => (
+                  <option key={priority} value={priority}>
+                    {priority}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-cad-blue dark:text-blue-100">Location</h4>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className={`${labelClass} sm:col-span-2`}>
+              Address
+              <div className="relative">
+                <input
+                  value={incidentForm.address}
+                  onChange={(event) => {
+                    setIncidentForm((value) => ({ ...value, address: event.target.value }));
+                    setAddressSuggestionsOpen(true);
+                  }}
+                  onFocus={() => setAddressSuggestionsOpen(true)}
+                  placeholder="Street, city, landmark, or mile marker"
+                  className={`${fieldClass} w-full`}
+                />
+                {addressSuggestionsOpen && addressSuggestions.length > 0 && (
+                  <div className="absolute inset-x-0 top-11 z-20 rounded-md border border-cad-line bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                    {addressSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.place_id}
+                        type="button"
+                        onClick={() => selectAddressSuggestion(suggestion)}
+                        className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-blue-50 dark:border-slate-800 dark:hover:bg-slate-800"
+                      >
+                        {suggestion.description}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </label>
+            <label className={labelClass}>
+              Latitude
+              <input value={incidentForm.lat} onChange={(event) => setIncidentForm((value) => ({ ...value, lat: event.target.value }))} placeholder="Optional" className={fieldClass} />
+            </label>
+            <label className={labelClass}>
+              Longitude
+              <input value={incidentForm.lon} onChange={(event) => setIncidentForm((value) => ({ ...value, lon: event.target.value }))} placeholder="Optional" className={fieldClass} />
+            </label>
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h4 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-cad-blue dark:text-blue-100">Caller And Notes</h4>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className={labelClass}>
+              Caller Name
+              <input value={incidentForm.callerName} onChange={(event) => setIncidentForm((value) => ({ ...value, callerName: event.target.value }))} placeholder="Unknown if unavailable" className={fieldClass} />
+            </label>
+            <label className={labelClass}>
+              Caller Phone
+              <input value={incidentForm.callerPhone} onChange={(event) => setIncidentForm((value) => ({ ...value, callerPhone: event.target.value }))} placeholder="Unknown if unavailable" className={fieldClass} />
+            </label>
+            <label className={`${labelClass} sm:col-span-2`}>
+              Initial Notes
+              <textarea
+                value={incidentForm.description}
+                onChange={(event) => setIncidentForm((value) => ({ ...value, description: event.target.value }))}
+                placeholder="Summary, hazards, vehicle/person details, callback instructions"
+                className="min-h-28 rounded-md border border-cad-line bg-white px-3 py-2 text-sm normal-case tracking-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+            </label>
+          </div>
+        </section>
+
+        {incidentError && <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700 dark:border-red-900 dark:bg-red-950/70 dark:text-red-200">{incidentError}</p>}
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-cad-line bg-white/95 py-3 dark:border-slate-700 dark:bg-slate-900/95">
+          <button
+            type="button"
+            onClick={() => closeQuickModal('new-call')}
+            className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={createIncident}
+            disabled={!requiredReady}
+            className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-2 text-sm font-black text-white hover:bg-cad-secondary disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Send size={16} />
+            Create Call
+          </button>
+        </div>
       </div>
-      <input
-        value={incidentForm.callerName}
-        onChange={(event) => setIncidentForm((value) => ({ ...value, callerName: event.target.value }))}
-        placeholder="Caller name"
-        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-      />
-      <input
-        value={incidentForm.callerPhone}
-        onChange={(event) => setIncidentForm((value) => ({ ...value, callerPhone: event.target.value }))}
-        placeholder="Caller phone"
-        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-      />
-      <input
-        value={incidentForm.lat}
-        onChange={(event) => setIncidentForm((value) => ({ ...value, lat: event.target.value }))}
-        placeholder="Lat"
-        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-      />
-      <input
-        value={incidentForm.lon}
-        onChange={(event) => setIncidentForm((value) => ({ ...value, lon: event.target.value }))}
-        placeholder="Lon"
-        className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-      />
-      <textarea
-        value={incidentForm.description}
-        onChange={(event) => setIncidentForm((value) => ({ ...value, description: event.target.value }))}
-        placeholder="Call notes"
-        className="min-h-28 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white sm:col-span-2"
-      />
-      {incidentError && <p className="text-sm font-medium text-red-600 sm:col-span-2">{incidentError}</p>}
-      <div className="flex justify-end gap-2 sm:col-span-2">
-        <button
-          type="button"
-          onClick={() => closeQuickModal('new-call')}
-          className="rounded-md border border-cad-line px-3 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={createIncident}
-          className="inline-flex items-center gap-2 rounded-md bg-cad-navy px-3 py-2 text-sm font-semibold text-white"
-        >
-          <Send size={16} />
-          Create
-        </button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const renderCallManagement = (showCallList: boolean) => {
     const isMyCall = (incident: Incident) =>
@@ -2264,6 +2308,14 @@ export const Dashboard: React.FC = () => {
     const assignedCount = incidents.filter((incident) => incident.units.length > 0 && !isClosedIncident(incident)).length;
     const selectedUnitSummary = selectedIncident?.units.length ? `${selectedIncident.units.length} assigned` : 'No units assigned';
     const selectedCallClosed = isClosedIncident(selectedIncident);
+    const nextStatusMap: Partial<Record<IncidentStatus, IncidentStatus>> = {
+      Pending: 'Dispatched',
+      Dispatched: 'En Route',
+      'En Route': 'On Scene',
+      'On Scene': 'Closed'
+    };
+    const recommendedNextStatus = selectedIncident ? nextStatusMap[selectedIncident.status] : undefined;
+    const recommendedNextDisabled = recommendedNextStatus === 'Closed' && !incidentDisposition.trim();
 
     return (
     <div className={`grid h-[min(74vh,760px)] min-h-[560px] overflow-hidden rounded-lg border border-cad-line bg-white text-cad-ink dark:border-slate-700 dark:bg-slate-900 dark:text-white ${showCallList ? 'lg:grid-cols-[360px_1fr]' : ''}`}>
@@ -2397,6 +2449,24 @@ export const Dashboard: React.FC = () => {
                 <CallInfoTile label="Opened" value={formatDateTime(selectedIncident.createdAt)} />
               </div>
               <CallWorkflow incident={selectedIncident} />
+              {!selectedCallClosed && recommendedNextStatus && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-cad-line bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Recommended Next Action</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      Move this call to {recommendedNextStatus}{recommendedNextStatus === 'Closed' ? ' after entering a disposition.' : '.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={recommendedNextDisabled}
+                    onClick={() => updateIncidentStatus(recommendedNextStatus)}
+                    className="rounded-md bg-cad-blue px-3 py-2 text-sm font-black text-white hover:bg-cad-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Set {recommendedNextStatus}
+                  </button>
+                </div>
+              )}
               {selectedIncident.description && (
                 <div className="mt-4 rounded-md border border-cad-line bg-white p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
                   {selectedIncident.description}
@@ -2483,7 +2553,7 @@ export const Dashboard: React.FC = () => {
                     <option key={unit.id} value={unit.id}>{displayCadUnitNumber(unit)} - {unit.name}</option>
                   ))}
                 </select>
-                <button type="button" onClick={assignIncidentUnit} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">Assign</button>
+                <button type="button" disabled={!assignmentUnitId} onClick={assignIncidentUnit} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">Assign</button>
               </div>
             )}
             <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
@@ -2535,7 +2605,7 @@ export const Dashboard: React.FC = () => {
               </div>
               <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
                 <input value={incidentNoteBody} onChange={(event) => setIncidentNoteBody(event.target.value)} placeholder="Add call note" className="min-w-0 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
-                <button type="button" onClick={addIncidentNote} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white hover:bg-blue-700">Add</button>
+                <button type="button" disabled={!incidentNoteBody.trim()} onClick={addIncidentNote} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">Add</button>
               </div>
             </div>
           </div>
