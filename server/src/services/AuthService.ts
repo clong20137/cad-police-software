@@ -58,6 +58,7 @@ const toUser = (row: UserRow): User => ({
   destinationLabel: row.destination_label || undefined,
   lastLocationAt: row.last_location_at || undefined,
   lastSeenAt: row.last_seen_at || undefined,
+  twoFactorEnabled: Boolean(row.two_factor_enabled),
   active: Boolean(row.active),
   createdAt: row.created_at,
   updatedAt: row.updated_at
@@ -81,7 +82,79 @@ const allowedRegistrationRoles = new Set<UserRole>([
 const normalizePasswordSearchText = (value?: string | null): string =>
   (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+const base32Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const generateBase32Secret = (): string => {
+  const bytes = crypto.randomBytes(20);
+  let bits = '';
+  bytes.forEach((byte) => {
+    bits += byte.toString(2).padStart(8, '0');
+  });
+  return bits.match(/.{1,5}/g)?.map((chunk) => base32Alphabet[parseInt(chunk.padEnd(5, '0'), 2)]).join('') || '';
+};
+
+const base32ToBuffer = (secret: string): Buffer => {
+  const clean = secret.replace(/=+$/u, '').replace(/\s+/gu, '').toUpperCase();
+  let bits = '';
+  for (const char of clean) {
+    const value = base32Alphabet.indexOf(char);
+    if (value >= 0) bits += value.toString(2).padStart(5, '0');
+  }
+  const bytes = bits.match(/.{8}/g)?.map((byte) => parseInt(byte, 2)) || [];
+  return Buffer.from(bytes);
+};
+
+const totpCode = (secret: string, step = Math.floor(Date.now() / 30000)): string => {
+  const counter = Buffer.alloc(8);
+  counter.writeUInt32BE(Math.floor(step / 0x100000000), 0);
+  counter.writeUInt32BE(step >>> 0, 4);
+  const hmac = crypto.createHmac('sha1', base32ToBuffer(secret)).update(counter).digest();
+  const offset = hmac[hmac.length - 1] & 0xf;
+  const binary = ((hmac[offset] & 0x7f) << 24) | (hmac[offset + 1] << 16) | (hmac[offset + 2] << 8) | hmac[offset + 3];
+  return String(binary % 1000000).padStart(6, '0');
+};
+
+const verifyTotp = (secret: string, code: string): boolean => {
+  const clean = code.replace(/\s+/gu, '');
+  const currentStep = Math.floor(Date.now() / 30000);
+  return [-1, 0, 1].some((offset) => totpCode(secret, currentStep + offset) === clean);
+};
+
+const backupCodeHash = (code: string): string => crypto.createHash('sha256').update(code.trim().toUpperCase()).digest('hex');
+
+const generateBackupCodes = (): string[] =>
+  Array.from({ length: 10 }, () => crypto.randomBytes(4).toString('hex').toUpperCase().replace(/(.{4})/u, '$1-'));
+
+type TwoFactorSetup = {
+  challengeToken: string;
+  secret: string;
+  otpauthUrl: string;
+};
+
 export class AuthService {
+  private static setupToken(userId: string, secret: string): string {
+    return jwt.sign({ id: userId, purpose: '2fa_setup', secret }, securityConfig.jwtSecret, { expiresIn: '10m' });
+  }
+
+  private static challengeToken(userId: string): string {
+    return jwt.sign({ id: userId, purpose: '2fa_challenge' }, securityConfig.jwtSecret, { expiresIn: '10m' });
+  }
+
+  private static otpauthUrl(user: User, secret: string): string {
+    const issuer = 'Blueline CAD';
+    const issuerParam = encodeURIComponent(issuer);
+    const label = encodeURIComponent(`${issuer}:${user.email}`);
+    return `otpauth://totp/${label}?secret=${secret}&issuer=${issuerParam}&algorithm=SHA1&digits=6&period=30`;
+  }
+
+  static createTwoFactorSetup(user: User): TwoFactorSetup {
+    const secret = generateBase32Secret();
+    return {
+      challengeToken: this.setupToken(user.id, secret),
+      secret,
+      otpauthUrl: this.otpauthUrl(user, secret)
+    };
+  }
+
   static async generateTokens(user: User): Promise<TokenPair> {
     const payload: AuthPayload = {
       id: user.id,
@@ -165,6 +238,89 @@ export class AuthService {
 
     const passwordMatches = await bcrypt.compare(password, user.password_hash);
     return passwordMatches ? toUser(user) : null;
+  }
+
+  static async beginLogin(email: string, password: string, twoFactorCode?: string): Promise<
+    | { type: 'success'; user: User }
+    | { type: 'setup'; user: User; challengeToken: string; secret: string; otpauthUrl: string }
+    | { type: 'challenge'; challengeToken: string }
+    | null
+  > {
+    const userRow = await this.getUserWithPasswordByEmail(email);
+    if (!userRow || !userRow.active || this.isPasswordExpired(userRow.password_changed_at)) {
+      return null;
+    }
+
+    const passwordMatches = await bcrypt.compare(password, userRow.password_hash);
+    if (!passwordMatches) {
+      return null;
+    }
+
+    const user = toUser(userRow);
+    if (!userRow.two_factor_enabled || !userRow.two_factor_secret) {
+      const setup = this.createTwoFactorSetup(user);
+      return {
+        type: 'setup',
+        user,
+        ...setup
+      };
+    }
+
+    if (!twoFactorCode) {
+      return { type: 'challenge', challengeToken: this.challengeToken(user.id) };
+    }
+
+    const verified = await this.verifyTwoFactorCode(userRow, twoFactorCode);
+    return verified ? { type: 'success', user } : null;
+  }
+
+  static async completeTwoFactorSetup(challengeToken: string, code: string): Promise<{ user: User; backupCodes: string[] } | null> {
+    try {
+      const payload = jwt.verify(challengeToken, securityConfig.jwtSecret) as { id: string; purpose: string; secret: string };
+      if (payload.purpose !== '2fa_setup' || !payload.secret || !verifyTotp(payload.secret, code)) {
+        return null;
+      }
+      const backupCodes = generateBackupCodes();
+      await pool.execute(
+        'UPDATE users SET two_factor_secret = ?, two_factor_enabled = TRUE, two_factor_recovery_codes = ? WHERE id = ? AND active = TRUE',
+        [payload.secret, JSON.stringify(backupCodes.map(backupCodeHash)), payload.id]
+      );
+      const user = await this.getUser(payload.id);
+      return user ? { user, backupCodes } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  static async completeTwoFactorChallenge(challengeToken: string, code: string): Promise<User | null> {
+    try {
+      const payload = jwt.verify(challengeToken, securityConfig.jwtSecret) as { id: string; purpose: string };
+      if (payload.purpose !== '2fa_challenge') return null;
+      const [rows] = await pool.execute<UserRow[]>('SELECT * FROM users WHERE id = ? LIMIT 1', [payload.id]);
+      const userRow = rows[0];
+      if (!userRow || !userRow.active || !(await this.verifyTwoFactorCode(userRow, code))) return null;
+      return toUser(userRow);
+    } catch {
+      return null;
+    }
+  }
+
+  private static async verifyTwoFactorCode(user: UserRow, code: string): Promise<boolean> {
+    if (user.two_factor_secret && verifyTotp(user.two_factor_secret, code)) {
+      return true;
+    }
+    const cleanHash = backupCodeHash(code);
+    const storedCodes = typeof user.two_factor_recovery_codes === 'string'
+      ? JSON.parse(user.two_factor_recovery_codes || '[]') as string[]
+      : Array.isArray(user.two_factor_recovery_codes)
+        ? user.two_factor_recovery_codes as string[]
+        : [];
+    if (!storedCodes.includes(cleanHash)) return false;
+    await pool.execute('UPDATE users SET two_factor_recovery_codes = ? WHERE id = ?', [
+      JSON.stringify(storedCodes.filter((item) => item !== cleanHash)),
+      user.id
+    ]);
+    return true;
   }
 
   static async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean> {

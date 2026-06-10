@@ -25,6 +25,7 @@ export interface User {
   destinationLabel?: string;
   lastLocationAt?: Date;
   lastSeenAt?: Date;
+  twoFactorEnabled: boolean;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -51,9 +52,20 @@ export interface TokenPair {
 }
 
 export interface LoginResponse {
-  success: boolean;
+  success: true;
   user: User;
   tokens: TokenPair;
+}
+
+export interface TwoFactorChallengeResponse {
+  success: false;
+  twoFactorRequired: true;
+  setupRequired: boolean;
+  challengeToken: string;
+  setup?: {
+    secret: string;
+    otpauthUrl: string;
+  };
 }
 
 export interface RegisterRequest {
@@ -69,10 +81,18 @@ export interface RegisterRequest {
   district?: string;
 }
 
-export interface RegisterResponse {
-  success: boolean;
+export type RegisterResponse = LoginResponse | TwoFactorChallengeResponse;
+
+export interface TwoFactorVerifyRequest {
+  challengeToken: string;
+  code: string;
+}
+
+export interface TwoFactorVerifyResponse {
+  success: true;
   user: User;
   tokens: TokenPair;
+  backupCodes?: string[];
 }
 
 export interface ChatMessage {

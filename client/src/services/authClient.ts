@@ -27,6 +27,9 @@ import {
   MessageThread,
   OfficerEventRequest,
   TokenPair,
+  TwoFactorChallengeResponse,
+  TwoFactorVerifyRequest,
+  TwoFactorVerifyResponse,
   UpdateIncidentStatusRequest,
   UpdateUserRequest,
   UrgentAlert,
@@ -105,14 +108,26 @@ class AuthClient {
     this.loadFromStorage();
   }
 
-  async login(email: string, password: string): Promise<StoredAuth> {
-    const response = await this.api.post<LoginResponse>('/auth/login', { email, password });
+  async login(email: string, password: string): Promise<StoredAuth | TwoFactorChallengeResponse> {
+    const response = await this.api.post<LoginResponse | TwoFactorChallengeResponse>('/auth/login', { email, password });
+    if (!response.data.success) {
+      return response.data;
+    }
     return this.storeAuth(response.data);
   }
 
-  async register(input: RegisterRequest): Promise<StoredAuth> {
+  async register(input: RegisterRequest): Promise<StoredAuth | TwoFactorChallengeResponse> {
     const response = await this.api.post<RegisterResponse>('/auth/register', input);
+    if (!response.data.success) {
+      return response.data;
+    }
     return this.storeAuth(response.data);
+  }
+
+  async verifyTwoFactor(input: TwoFactorVerifyRequest): Promise<StoredAuth & { backupCodes?: string[] }> {
+    const response = await this.api.post<TwoFactorVerifyResponse>('/auth/2fa/verify', input);
+    const auth = this.storeAuth(response.data);
+    return { ...auth, backupCodes: response.data.backupCodes };
   }
 
   async getTrackedUnits(): Promise<User[]> {
@@ -369,7 +384,7 @@ class AuthClient {
     return response.data;
   }
 
-  private storeAuth(data: LoginResponse | RegisterResponse): StoredAuth {
+  private storeAuth(data: LoginResponse | TwoFactorVerifyResponse): StoredAuth {
     this.auth = {
       user: data.user,
       permissions: ROLE_PERMISSIONS[data.user.role] || [],

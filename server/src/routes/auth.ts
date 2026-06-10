@@ -23,6 +23,7 @@ import {
   ResetUserPasswordRequest,
   RegisterRequest,
   SendMessageRequest,
+  TwoFactorVerifyRequest,
   UpdateUserRequest,
   UserRole,
   VerifyPasswordRequest
@@ -75,11 +76,6 @@ router.post('/register', sensitiveRateLimiter, async (req: Request<{}, {}, Regis
       return;
     }
 
-    if (password.length < 12) {
-      res.status(400).json({ error: 'Password must be at least 12 characters' });
-      return;
-    }
-
     const existingUser = await AuthService.getUserByEmail(email);
     if (existingUser) {
       res.status(409).json({ error: 'An account with this email already exists' });
@@ -98,14 +94,23 @@ router.post('/register', sensitiveRateLimiter, async (req: Request<{}, {}, Regis
       group,
       district
     );
+    const setup = AuthService.createTwoFactorSetup(user);
     await AuditLogService.fromRequest(req, {
       action: 'user_registered',
       resource: 'user',
       resourceId: user.id,
       metadata: { email: user.email, role: user.role }
     });
-    const tokens = await AuthService.generateTokens(user);
-    res.status(201).json({ success: true, user, tokens });
+    res.status(201).json({
+      success: false,
+      twoFactorRequired: true,
+      setupRequired: true,
+      challengeToken: setup.challengeToken,
+      setup: {
+        secret: setup.secret,
+        otpauthUrl: setup.otpauthUrl
+      }
+    });
   } catch (error) {
     res.status(400).json({ error: getErrorMessage(error, 'Registration failed') });
   }
@@ -113,7 +118,7 @@ router.post('/register', sensitiveRateLimiter, async (req: Request<{}, {}, Regis
 
 router.post('/login', sensitiveRateLimiter, async (req: Request<{}, {}, LoginRequest>, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { email, password, twoFactorCode } = req.body;
     const rateLimitKey = `${req.ip}:${email || 'unknown'}`;
 
     if (!email || !password) {
@@ -126,8 +131,8 @@ router.post('/login', sensitiveRateLimiter, async (req: Request<{}, {}, LoginReq
       return;
     }
 
-    const user = await AuthService.authenticateUser(email, password);
-    if (!user) {
+    const loginResult = await AuthService.beginLogin(email, password, twoFactorCode);
+    if (!loginResult) {
       await AuditLogService.fromRequest(req, {
         action: 'login_failed',
         resource: 'auth',
@@ -138,6 +143,44 @@ router.post('/login', sensitiveRateLimiter, async (req: Request<{}, {}, LoginReq
       return;
     }
 
+    if (loginResult.type === 'setup') {
+      await AuditLogService.fromRequest(req, {
+        action: 'login_2fa_setup_required',
+        resource: 'auth',
+        resourceId: loginResult.user.id,
+        severity: 'warning',
+        metadata: { email: loginResult.user.email, role: loginResult.user.role }
+      });
+      res.json({
+        success: false,
+        twoFactorRequired: true,
+        setupRequired: true,
+        challengeToken: loginResult.challengeToken,
+        setup: {
+          secret: loginResult.secret,
+          otpauthUrl: loginResult.otpauthUrl
+        }
+      });
+      return;
+    }
+
+    if (loginResult.type === 'challenge') {
+      await AuditLogService.fromRequest(req, {
+        action: 'login_2fa_required',
+        resource: 'auth',
+        severity: 'warning',
+        metadata: { email }
+      });
+      res.json({
+        success: false,
+        twoFactorRequired: true,
+        setupRequired: false,
+        challengeToken: loginResult.challengeToken
+      });
+      return;
+    }
+
+    const user = loginResult.user;
     const tokens = await AuthService.generateTokens(user);
     await AuditLogService.fromRequest(req, {
       action: 'login_success',
@@ -148,6 +191,50 @@ router.post('/login', sensitiveRateLimiter, async (req: Request<{}, {}, LoginReq
     res.json({ success: true, user, tokens });
   } catch (error) {
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+router.post('/2fa/verify', sensitiveRateLimiter, async (req: Request<{}, {}, TwoFactorVerifyRequest>, res: Response): Promise<void> => {
+  try {
+    const { challengeToken, code } = req.body;
+    if (!challengeToken || !code) {
+      res.status(400).json({ error: 'Two-factor challenge and code are required' });
+      return;
+    }
+
+    const setupResult = await AuthService.completeTwoFactorSetup(challengeToken, code);
+    if (setupResult) {
+      const tokens = await AuthService.generateTokens(setupResult.user);
+      await AuditLogService.fromRequest(req, {
+        action: 'two_factor_enabled',
+        resource: 'auth',
+        resourceId: setupResult.user.id,
+        severity: 'warning'
+      });
+      res.json({ success: true, user: setupResult.user, tokens, backupCodes: setupResult.backupCodes });
+      return;
+    }
+
+    const user = await AuthService.completeTwoFactorChallenge(challengeToken, code);
+    if (!user) {
+      await AuditLogService.fromRequest(req, {
+        action: 'two_factor_failed',
+        resource: 'auth',
+        severity: 'warning'
+      });
+      res.status(401).json({ error: 'Invalid two-factor code' });
+      return;
+    }
+
+    const tokens = await AuthService.generateTokens(user);
+    await AuditLogService.fromRequest(req, {
+      action: 'two_factor_verified',
+      resource: 'auth',
+      resourceId: user.id
+    });
+    res.json({ success: true, user, tokens });
+  } catch (error) {
+    res.status(500).json({ error: 'Two-factor verification failed' });
   }
 });
 
@@ -206,8 +293,8 @@ router.post(
   async (req: Request<{}, {}, ChangePasswordRequest>, res: Response): Promise<void> => {
     try {
       const { currentPassword, newPassword } = req.body;
-      if (!currentPassword || !newPassword || newPassword.length < 12) {
-        res.status(400).json({ error: 'Current password and a new password of at least 12 characters are required' });
+      if (!currentPassword || !newPassword || newPassword.length < 14) {
+        res.status(400).json({ error: 'Current password and a new password of at least 14 characters are required' });
         return;
       }
 

@@ -79,6 +79,9 @@ export const initializeDatabase = async (): Promise<void> => {
       last_seen_at DATETIME NULL,
       password_hash VARCHAR(255) NOT NULL,
       password_changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      two_factor_secret VARCHAR(64) NULL,
+      two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      two_factor_recovery_codes JSON NULL,
       active BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -89,6 +92,7 @@ export const initializeDatabase = async (): Promise<void> => {
 
   await ensureUserLocationColumns();
   await ensureUserSecurityColumns();
+  await ensureUserTwoFactorColumns();
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -190,6 +194,25 @@ const ensureUserSecurityColumns = async (): Promise<void> => {
   }
 
   await pool.query('UPDATE users SET password_changed_at = created_at WHERE password_changed_at IS NULL');
+};
+
+const ensureUserTwoFactorColumns = async (): Promise<void> => {
+  const columns = [
+    'ADD COLUMN two_factor_secret VARCHAR(64) NULL',
+    'ADD COLUMN two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE',
+    'ADD COLUMN two_factor_recovery_codes JSON NULL'
+  ];
+
+  for (const column of columns) {
+    try {
+      await pool.query(`ALTER TABLE users ${column}`);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code !== 'ER_DUP_FIELDNAME') {
+        throw error;
+      }
+    }
+  }
 };
 
 const ensureUserLocationColumns = async (): Promise<void> => {
@@ -519,6 +542,9 @@ export type UserRow = RowDataPacket & {
   last_seen_at: Date | null;
   password_hash: string;
   password_changed_at: Date;
+  two_factor_secret: string | null;
+  two_factor_enabled: number | boolean;
+  two_factor_recovery_codes: string | object | null;
   active: number | boolean;
   created_at: Date;
   updated_at: Date;

@@ -264,7 +264,7 @@ export const AdminConfigurationPage: React.FC = () => {
   const resetUserPassword = async () => {
     if (!selectedUser) return;
     if (resetPassword.length < 12) {
-      addToast('Password too short', 'Use at least 12 characters.', 'error');
+      addToast('Password too short', 'Use at least 14 characters.', 'error');
       return;
     }
     try {
@@ -277,7 +277,7 @@ export const AdminConfigurationPage: React.FC = () => {
   };
 
   const createUser = async () => {
-    if (!newUser.email.trim() || !newUser.name.trim() || newUser.password.length < 12) {
+    if (!newUser.email.trim() || !newUser.name.trim() || newUser.password.length < 14) {
       addToast('User not created', 'Email, name, and a 12 character password are required.', 'error');
       return;
     }

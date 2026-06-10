@@ -12,13 +12,14 @@ import {
   LockKeyhole,
   Mail,
   Moon,
+  KeyRound,
   Radio,
   Shield,
   Sun,
   User,
   X
 } from 'lucide-react';
-import { UserRole } from '../types/auth';
+import { TwoFactorChallengeResponse, UserRole } from '../types/auth';
 import { useAuth } from '../context/AuthContext';
 import { authClient } from '../services/authClient';
 import { APP_NAME } from '../constants/branding';
@@ -53,10 +54,14 @@ export const LoginPage: React.FC = () => {
   const [transitioning, setTransitioning] = useState(false);
   const [registrationEnabled, setRegistrationEnabled] = useState(true);
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
-  const { login, register } = useAuth();
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState<TwoFactorChallengeResponse | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const { login, register, verifyTwoFactor } = useAuth();
   const navigate = useNavigate();
 
   const isRegistering = mode === 'register';
+  const showCredentialFields = !twoFactorChallenge && backupCodes.length === 0;
 
   useEffect(() => {
     localStorage.setItem('cad_theme', theme);
@@ -105,7 +110,33 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const success = isRegistering
+      if (backupCodes.length > 0) {
+        setTransitioning(true);
+        window.setTimeout(() => navigate('/'), 620);
+        return;
+      }
+
+      if (twoFactorChallenge) {
+        const result = await verifyTwoFactor(twoFactorChallenge.challengeToken, twoFactorCode);
+        if (result.ok) {
+          if (result.backupCodes?.length) {
+            setBackupCodes(result.backupCodes);
+            addToast('2FA enabled', 'Save your backup codes before continuing.', 'success');
+            return;
+          }
+          setTransitioning(true);
+          addToast('Signed in', 'Opening your dashboard.', 'success');
+          window.setTimeout(() => navigate('/'), 620);
+          return;
+        }
+
+        const message = 'Invalid two-factor code.';
+        setError(message);
+        addToast('Verification failed', message, 'error');
+        return;
+      }
+
+      const result = isRegistering
         ? await register({
             email,
             password,
@@ -120,10 +151,18 @@ export const LoginPage: React.FC = () => {
           })
         : await login(email, password);
 
-      if (success) {
+      if (result.ok) {
         setTransitioning(true);
         addToast(isRegistering ? 'Account created' : 'Signed in', isRegistering ? 'Taking you into Blueline CAD.' : 'Opening your dashboard.', 'success');
         window.setTimeout(() => navigate('/'), 620);
+      } else if (result.challenge) {
+        setTwoFactorChallenge(result.challenge);
+        setTwoFactorCode('');
+        addToast(
+          result.challenge.setupRequired ? 'Two-factor required' : 'Two-factor code required',
+          result.challenge.setupRequired ? 'Add Blueline CAD to your authenticator app.' : 'Enter your authenticator code to continue.',
+          'success'
+        );
       } else {
         const message = isRegistering ? 'Registration failed. Check the account details and password requirements.' : 'Invalid credentials.';
         setError(message);
@@ -205,7 +244,7 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            {isRegistering && (
+            {isRegistering && showCredentialFields && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <TextField id="name" label="Full name" value={name} onChange={setName} icon={<User size={16} />} autoComplete="name" required disabled={loading} className="sm:col-span-2" />
                 <label className="grid gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300">
@@ -232,53 +271,117 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            <TextField
-              id="email"
-              label="Email"
-              type="email"
-              value={email}
-              onChange={setEmail}
-              icon={<Mail size={16} />}
-              placeholder="name@agency.gov"
-              autoComplete="username"
-              required
-              disabled={loading}
-            />
-
-            <label className="grid gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300" htmlFor="password">
-              Password
-              <div className="relative">
-                <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Enter password"
-                  autoComplete={isRegistering ? 'new-password' : 'current-password'}
+            {showCredentialFields && (
+              <>
+                <TextField
+                  id="email"
+                  label="Email"
+                  type="email"
+                  value={email}
+                  onChange={setEmail}
+                  icon={<Mail size={16} />}
+                  placeholder="name@agency.gov"
+                  autoComplete="username"
                   required
-                  minLength={isRegistering ? 12 : undefined}
                   disabled={loading}
-                  className={`${inputBase} pl-9 pr-11`}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((value) => !value)}
-                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-cad-blue dark:hover:bg-slate-800 dark:hover:text-blue-100"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              {isRegistering && <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Minimum 12 characters with agency password policy.</span>}
-            </label>
+
+                <label className="grid gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300" htmlFor="password">
+                  Password
+                  <div className="relative">
+                    <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Enter password"
+                      autoComplete={isRegistering ? 'new-password' : 'current-password'}
+                      required
+                      minLength={isRegistering ? 14 : undefined}
+                      disabled={loading}
+                      className={`${inputBase} pl-9 pr-11`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-cad-blue dark:hover:bg-slate-800 dark:hover:text-blue-100"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  {isRegistering && <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Minimum 14 characters with uppercase, lowercase, number, and symbol.</span>}
+                </label>
+              </>
+            )}
+
+            {twoFactorChallenge && (
+              <section className="rounded-md border border-cad-line bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-cad-blue text-white">
+                    <KeyRound size={17} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-black text-cad-blue dark:text-blue-100">
+                      {twoFactorChallenge.setupRequired ? 'Set up 2FA' : 'Verify 2FA'}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">
+                      {twoFactorChallenge.setupRequired
+                        ? 'Scan or manually enter this secret in your authenticator app, then enter the 6 digit code.'
+                        : 'Enter the 6 digit code from your authenticator app.'}
+                    </p>
+                    {twoFactorChallenge.setupRequired && twoFactorChallenge.setup && (
+                      <div className="mt-3 grid gap-2">
+                        <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Manual secret
+                          <input className={`${inputBase} h-10 font-mono text-xs`} readOnly value={twoFactorChallenge.setup.secret} />
+                        </label>
+                        <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          Authenticator URL
+                          <input className={`${inputBase} h-10 font-mono text-xs`} readOnly value={twoFactorChallenge.setup.otpauthUrl} />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <label className="mt-3 grid gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300" htmlFor="twoFactorCode">
+                  2FA code
+                  <input
+                    id="twoFactorCode"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={twoFactorCode}
+                    onChange={(event) => setTwoFactorCode(event.target.value)}
+                    placeholder="123456"
+                    required
+                    disabled={loading}
+                    className={inputBase}
+                  />
+                </label>
+              </section>
+            )}
+
+            {backupCodes.length > 0 && (
+              <section className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+                <p className="text-sm font-black">Backup codes</p>
+                <p className="mt-1 text-xs font-semibold">These are shown once. Store them in a secure agency-approved location.</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-xs font-black">
+                  {backupCodes.map((code) => (
+                    <span key={code} className="rounded border border-amber-200 bg-white px-2 py-1 dark:border-amber-800 dark:bg-slate-950">
+                      {code}
+                    </span>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <button
               type="submit"
               disabled={loading || transitioning}
               className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-cad-blue px-4 text-sm font-black text-white shadow-control transition hover:bg-cad-secondary focus:outline-none focus:ring-4 focus:ring-cad-accent/30 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              <span>{loading || transitioning ? 'Opening...' : isRegistering ? 'Create Account' : 'Login'}</span>
+              <span>{loading || transitioning ? 'Opening...' : backupCodes.length > 0 ? 'Continue' : twoFactorChallenge ? 'Verify 2FA' : isRegistering ? 'Create Account' : 'Login'}</span>
               {loading || transitioning ? <Loader2 size={17} className="animate-spin" /> : <ArrowRight size={17} />}
             </button>
           </form>

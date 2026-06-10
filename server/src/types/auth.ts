@@ -25,6 +25,7 @@ export interface User {
   destinationLabel?: string;
   lastLocationAt?: Date;
   lastSeenAt?: Date;
+  twoFactorEnabled: boolean;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -60,6 +61,18 @@ export interface TokenPair {
 export interface LoginRequest {
   email: string;
   password: string;
+  twoFactorCode?: string;
+}
+
+export interface TwoFactorChallengeResponse {
+  success: false;
+  twoFactorRequired: true;
+  setupRequired: boolean;
+  challengeToken: string;
+  setup?: {
+    secret: string;
+    otpauthUrl: string;
+  };
 }
 
 export interface RegisterRequest {
@@ -379,6 +392,11 @@ export interface ResetUserPasswordRequest {
 
 export interface RefreshTokenRequest {
   refreshToken: string;
+}
+
+export interface TwoFactorVerifyRequest {
+  challengeToken: string;
+  code: string;
 }
 
 export type Permission =

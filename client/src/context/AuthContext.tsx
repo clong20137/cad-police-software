@@ -1,14 +1,19 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { User, UserRole, Permission, RegisterRequest } from '../types/auth';
+import { User, UserRole, Permission, RegisterRequest, TwoFactorChallengeResponse } from '../types/auth';
 import { authClient } from '../services/authClient';
+
+export type AuthFlowResult =
+  | { ok: true; backupCodes?: string[] }
+  | { ok: false; challenge?: TwoFactorChallengeResponse };
 
 interface AuthContextType {
   user: User | null;
   permissions: Permission[];
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (input: RegisterRequest) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<AuthFlowResult>;
+  register: (input: RegisterRequest) => Promise<AuthFlowResult>;
+  verifyTwoFactor: (challengeToken: string, code: string) => Promise<AuthFlowResult>;
   logout: () => Promise<void>;
   hasPermission: (permission: Permission) => boolean;
   hasRole: (role: UserRole) => boolean;
@@ -31,31 +36,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(false);
   }, []);
 
-  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+  const login = useCallback(async (email: string, password: string): Promise<AuthFlowResult> => {
     try {
       setIsLoading(true);
       const auth = await authClient.login(email, password);
+      if ('twoFactorRequired' in auth) {
+        return { ok: false, challenge: auth };
+      }
       setUser(auth.user);
       setPermissions(auth.permissions);
-      return true;
+      return { ok: true };
     } catch (error) {
       console.error('Login failed:', error);
-      return false;
+      return { ok: false };
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  const register = useCallback(async (input: RegisterRequest): Promise<boolean> => {
+  const register = useCallback(async (input: RegisterRequest): Promise<AuthFlowResult> => {
     try {
       setIsLoading(true);
       const auth = await authClient.register(input);
+      if ('twoFactorRequired' in auth) {
+        return { ok: false, challenge: auth };
+      }
       setUser(auth.user);
       setPermissions(auth.permissions);
-      return true;
+      return { ok: true };
     } catch (error) {
       console.error('Registration failed:', error);
-      return false;
+      return { ok: false };
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const verifyTwoFactor = useCallback(async (challengeToken: string, code: string): Promise<AuthFlowResult> => {
+    try {
+      setIsLoading(true);
+      const auth = await authClient.verifyTwoFactor({ challengeToken, code });
+      setUser(auth.user);
+      setPermissions(auth.permissions);
+      return { ok: true, backupCodes: auth.backupCodes };
+    } catch (error) {
+      console.error('Two-factor verification failed:', error);
+      return { ok: false };
     } finally {
       setIsLoading(false);
     }
@@ -84,6 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading,
     login,
     register,
+    verifyTwoFactor,
     logout,
     hasPermission,
     hasRole

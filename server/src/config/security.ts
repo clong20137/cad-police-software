@@ -43,7 +43,7 @@ export const securityConfig = {
   ipAllowlist: listFromEnv('IP_ALLOWLIST'),
   ipBlocklist: listFromEnv('IP_BLOCKLIST'),
   passwordPolicy: {
-    minLength: numberFromEnv('PASSWORD_MIN_LENGTH', 12),
+    minLength: numberFromEnv('PASSWORD_MIN_LENGTH', 14),
     historyCount: numberFromEnv('PASSWORD_HISTORY_COUNT', 5),
     maxAgeDays: numberFromEnv('PASSWORD_MAX_AGE_DAYS', 180)
   },
