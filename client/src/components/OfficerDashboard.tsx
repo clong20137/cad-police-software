@@ -459,20 +459,6 @@ const assignmentWarning = (incident: Incident | null, userId?: string): string =
   return '';
 };
 
-const workflowStatuses = (incident: Incident | null): IncidentUnitStatus[] => {
-  const type = `${incident?.type || ''}`.toLowerCase();
-  if (type.includes('ems') || type.includes('medical') || type.includes('ambulance')) {
-    return ['Acknowledged', 'En Route', 'On Scene', 'Transporting', 'At Hospital', 'Cleared'];
-  }
-  if (type.includes('fire') || type.includes('alarm') || type.includes('rescue')) {
-    return ['Acknowledged', 'En Route', 'Staged', 'On Scene', 'Cleared'];
-  }
-  if (type.includes('tow') || type.includes('impound') || type.includes('vehicle')) {
-    return ['Acknowledged', 'En Route', 'On Scene', 'Loaded', 'Delivered', 'Cleared'];
-  }
-  return ['Acknowledged', 'En Route', 'On Scene', 'Cleared'];
-};
-
 const getMyUnitStatus = (incident: Incident, userId?: string): IncidentUnitStatus | null =>
   incident.units.find((unit) => unit.userId === userId)?.status || null;
 
@@ -2364,8 +2350,6 @@ export const OfficerDashboard: React.FC = () => {
                 incidents={incidents}
                 selectedIncident={selectedIncident}
                 selectedStatus={selectedStatus}
-                workflowStatuses={workflowStatuses(selectedIncident)}
-                assignmentWarning={selectedAssignmentWarning}
                 currentLocation={currentLocation}
                 currentSpeed={currentSpeed}
                 locationState={locationState}
@@ -2420,6 +2404,11 @@ export const OfficerDashboard: React.FC = () => {
                 onDeleteThread={deleteMessageThread}
                 onSendMessage={sendMessage}
                 onAttachment={handleAttachment}
+                onMessageUnit={(unitId) => {
+                  if (unitId === user?.id) return;
+                  setSelectedMessageUserId(unitId);
+                  openDockItem('messages');
+                }}
               />
         </ModalShell>
       ))}
@@ -2485,8 +2474,6 @@ const DockContent: React.FC<{
   incidents: Incident[];
   selectedIncident: Incident | null;
   selectedStatus: IncidentUnitStatus | null;
-  workflowStatuses: IncidentUnitStatus[];
-  assignmentWarning: string;
   currentLocation: { lat: number; lon: number } | null;
   currentSpeed: number | null;
   locationState: string;
@@ -2541,13 +2528,12 @@ const DockContent: React.FC<{
   onDeleteThread: (userId: string) => void;
   onSendMessage: () => void;
   onAttachment: (file: File) => void;
+  onMessageUnit: (unitId: string) => void;
 }> = ({
   activeItem,
   incidents,
   selectedIncident,
   selectedStatus,
-  workflowStatuses,
-  assignmentWarning,
   currentLocation,
   currentSpeed,
   locationState,
@@ -2601,7 +2587,8 @@ const DockContent: React.FC<{
   onDeleteMessage,
   onDeleteThread,
   onSendMessage,
-  onAttachment
+  onAttachment,
+  onMessageUnit
 }) => {
   const [activeCallTab, setActiveCallTab] = useState<CallTabId>('all');
   const [callSearch, setCallSearch] = useState('');
@@ -2774,13 +2761,14 @@ const DockContent: React.FC<{
         <div>
           <h3 className="text-sm font-black text-slate-950 dark:text-white">Active Units</h3>
           <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            Online officers with current status and distance from your GPS.
+            Online officers with current status and distance from your GPS. Select an officer to message them.
           </p>
         </div>
         <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-700">
-          <div className="hidden grid-cols-[1fr_0.8fr_0.7fr_0.8fr] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 sm:grid">
-            <span>Unit</span>
+          <div className="hidden grid-cols-[0.85fr_0.9fr_1.25fr_0.7fr_0.8fr] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 sm:grid">
             <span>Status</span>
+            <span>Unit</span>
+            <span>Officer</span>
             <span>Miles</span>
             <span>District</span>
           </div>
@@ -2798,50 +2786,40 @@ const DockContent: React.FC<{
                     : tone === 'yellow'
                       ? 'bg-amber-100 text-amber-900 dark:bg-amber-400 dark:text-slate-950'
                       : 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-100';
+              const isCurrentUser = unit.id === currentUserId;
               return (
-                <div key={unit.id} className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-[1fr_0.8fr_0.7fr_0.8fr] sm:items-center">
-                  <div className="min-w-0">
-                    <p className="truncate font-black text-slate-950 dark:text-white">
-                      {officerMapLabel(unit)}
-                      <span className="ml-2 font-semibold text-slate-500 dark:text-slate-400">{unit.name}</span>
-                    </p>
-                    <p className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{unit.cadUnitNumber || unit.unitNumber || unit.badge || 'No CAD unit'}</p>
-                  </div>
-                  <span className={`w-fit rounded px-2 py-1 text-xs font-black ${toneClass}`}>{status}</span>
+                <button
+                  key={unit.id}
+                  type="button"
+                  onClick={() => onMessageUnit(unit.id)}
+                  disabled={isCurrentUser}
+                  className={`grid w-full gap-2 px-3 py-3 text-left text-sm transition sm:grid-cols-[0.85fr_0.9fr_1.25fr_0.7fr_0.8fr] sm:items-center ${
+                    isCurrentUser
+                      ? 'cursor-default bg-blue-50/60 dark:bg-blue-950/20'
+                      : 'hover:bg-slate-50 hover:shadow-inner focus:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-cad-blue/30 dark:hover:bg-slate-800/70 dark:focus:bg-blue-950/30'
+                  }`}
+                  title={isCurrentUser ? 'Your unit' : `Message ${unit.name}`}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${tone === 'blue' ? 'bg-cad-blue' : tone === 'green' ? 'bg-emerald-500' : tone === 'yellow' ? 'bg-amber-400' : 'bg-red-500'}`} />
+                    <span className={`truncate rounded px-2 py-1 text-xs font-black ${toneClass}`}>{status}</span>
+                  </span>
+                  <span className="truncate font-black text-slate-950 dark:text-white">{unit.cadUnitNumber || unit.unitNumber || unit.badge || 'No CAD unit'}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-semibold text-slate-700 dark:text-slate-200">{unit.name || officerMapLabel(unit)}</span>
+                    {isCurrentUser ? (
+                      <span className="rounded-full bg-cad-blue px-2 py-0.5 text-[11px] font-black text-white">You</span>
+                    ) : (
+                      <MessageCircle className="shrink-0 text-slate-400" size={14} />
+                    )}
+                  </span>
                   <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{miles === null ? '--' : `${miles.toFixed(1)} mi`}</span>
                   <span className="truncate text-xs font-bold text-slate-600 dark:text-slate-300">{unit.district || 'Unassigned'}</span>
-                </div>
+                </button>
               );
             })}
           </div>
         </div>
-        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Current status: {selectedStatus || 'No call selected'}</p>
-        {assignmentWarning && (
-          <p className="rounded-md bg-amber-50 p-3 text-sm font-bold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800">
-            {assignmentWarning}
-          </p>
-        )}
-        <div className="grid gap-2 sm:grid-cols-3">
-          {workflowStatuses.map((status) => (
-            <StatusButton
-              key={status}
-              disabled={busy || !selectedIncident}
-              onClick={() => onUpdateStatus(status)}
-              icon={status === 'Acknowledged' ? <CheckCircle2 size={18} /> : status === 'On Scene' ? <AlertTriangle size={18} /> : status === 'Cleared' ? <CheckCircle2 size={18} /> : <Siren size={18} />}
-              label={status}
-              className={
-                status === 'Cleared' || status === 'Delivered'
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
-                  : status === 'On Scene' || status === 'Staged'
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : status === 'Acknowledged'
-                      ? 'bg-slate-700 hover:bg-slate-800'
-                      : 'bg-blue-600 hover:bg-blue-700'
-              }
-            />
-          ))}
-        </div>
-        {message && <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{message}</p>}
       </div>
     );
   }
@@ -2993,19 +2971,6 @@ const DockContent: React.FC<{
     </button>
   );
 };
-
-const StatusButton: React.FC<{
-  disabled: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  className: string;
-}> = ({ disabled, onClick, icon, label, className }) => (
-  <button type="button" disabled={disabled} onClick={onClick} className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-3 text-sm font-bold text-white disabled:opacity-60 ${className}`}>
-    {icon}
-    {label}
-  </button>
-);
 
 const OfficerMessages: React.FC<{
   directory: User[];
