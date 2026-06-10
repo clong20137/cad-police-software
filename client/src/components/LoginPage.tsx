@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   ArrowRight,
   AlertCircle,
@@ -328,11 +329,20 @@ export const LoginPage: React.FC = () => {
                     </p>
                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-600 dark:text-slate-300">
                       {twoFactorChallenge.setupRequired
-                        ? 'Scan or manually enter this secret in your authenticator app, then enter the 6 digit code.'
+                        ? 'Scan this QR code with your authenticator app, then enter the 6 digit code.'
                         : 'Enter the 6 digit code from your authenticator app.'}
                     </p>
                     {twoFactorChallenge.setupRequired && twoFactorChallenge.setup && (
                       <div className="mt-3 grid gap-2">
+                        <div className="mx-auto rounded-lg border border-cad-line bg-white p-3 shadow-control dark:border-slate-700">
+                          <QRCodeSVG
+                            value={twoFactorChallenge.setup.otpauthUrl}
+                            size={176}
+                            level="M"
+                            includeMargin
+                            aria-label="Two-factor authenticator setup QR code"
+                          />
+                        </div>
                         <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
                           Manual secret
                           <input className={`${inputBase} h-10 font-mono text-xs`} readOnly value={twoFactorChallenge.setup.secret} />
