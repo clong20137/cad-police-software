@@ -1669,7 +1669,8 @@ export const Dashboard: React.FC = () => {
       { command: 'units', label: 'Unit Status', detail: 'Open active units.', target: 'units' },
       { command: 'calls', label: 'Calls', detail: 'Open all calls.', target: 'calls' },
       { command: 'msg 001 call me', label: 'Message Unit', detail: 'Open messages to a CAD unit.' },
-      { command: 'assign 001 C-2026-0001', label: 'Assign Unit', detail: 'Assign a unit to a call if both are found.' },
+      { command: 'assign 001 C-2026-0001', label: 'Assign Unit', detail: 'Assign a unit or officer to a call if both are found.' },
+      { command: 'assign Caleb Long to C-2026-0001', label: 'Assign Officer', detail: 'Assign an officer by name to a call.' },
       { command: 'close C-2026-0001 duplicate call', label: 'Close Call', detail: 'Close a call when a disposition is included.' },
       { command: '?', label: 'Command Help', detail: 'Show supported command examples.' }
     ];
@@ -2318,13 +2319,12 @@ export const Dashboard: React.FC = () => {
       setMapCommandFeedback('Opening account settings.');
       return;
     }
-    const assignMatch = rawCommand.match(/^assign\s+(\S+)\s+(.+)$/i);
-    if (assignMatch) {
-      const unit = findCommandUser(assignMatch[1]);
-      const incident = findCommandIncident(assignMatch[2]);
+    const runAssignCommand = async (unitQuery: string, incidentQuery: string) => {
+      const unit = findCommandUser(unitQuery);
+      const incident = findCommandIncident(incidentQuery);
       if (!unit || !incident) {
-        setMapCommandFeedback(!unit ? `No unit found for "${assignMatch[1]}".` : `No call found for "${assignMatch[2]}".`);
-        return;
+        setMapCommandFeedback(!unit ? `No officer or unit found for "${unitQuery}".` : `No call found for "${incidentQuery}".`);
+        return true;
       }
       try {
         const updated = await authClient.assignIncidentUnit(incident.id, unit.id, 'Assigned');
@@ -2335,8 +2335,29 @@ export const Dashboard: React.FC = () => {
         return;
       } catch {
         setMapCommandFeedback('Unable to assign unit from command line.');
+      }
+      return true;
+    };
+    const assignToMatch = rawCommand.match(/^assign\s+(.+?)\s+to\s+(.+)$/i);
+    if (assignToMatch) {
+      const firstAsUnit = findCommandUser(assignToMatch[1]);
+      const secondAsCall = findCommandIncident(assignToMatch[2]);
+      if (firstAsUnit && secondAsCall) {
+        await runAssignCommand(assignToMatch[1], assignToMatch[2]);
         return;
       }
+      const firstAsCall = findCommandIncident(assignToMatch[1]);
+      const secondAsUnit = findCommandUser(assignToMatch[2]);
+      if (firstAsCall && secondAsUnit) {
+        await runAssignCommand(assignToMatch[2], assignToMatch[1]);
+        return;
+      }
+      setMapCommandFeedback(`Could not match officer/unit and call in "${rawCommand}".`);
+      return;
+    }
+    const assignMatch = rawCommand.match(/^assign\s+(\S+)\s+(.+)$/i);
+    if (assignMatch && await runAssignCommand(assignMatch[1], assignMatch[2])) {
+      return;
     }
     const closeMatch = rawCommand.match(/^(?:close|clear)\s+(\S+)(?:\s+(.+))?$/i);
     if (closeMatch) {

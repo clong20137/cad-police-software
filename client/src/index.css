@@ -264,7 +264,7 @@
 
   .floating-window-mac-exit {
     transform-origin: bottom center;
-    animation: floatingWindowMacExit 210ms cubic-bezier(0.45, 0, 0.85, 0.25) both;
+    animation: floatingWindowMacExit 280ms cubic-bezier(0.36, 0, 0.66, -0.56) both;
     will-change: transform, opacity, filter;
   }
 
@@ -450,10 +450,16 @@
       transform: translateY(0) scale(1);
     }
 
+    42% {
+      opacity: 0.86;
+      filter: blur(1px) saturate(0.96);
+      transform: translateY(8px) scale(0.92);
+    }
+
     100% {
       opacity: 0;
-      filter: blur(8px) saturate(0.85);
-      transform: translateY(58px) scale(0.18);
+      filter: blur(12px) saturate(0.78);
+      transform: translateY(74px) scale(0.08);
     }
   }
 

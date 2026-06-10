@@ -50,7 +50,7 @@ export const ModalShell: React.FC<{
   const requestClose = useCallback(() => {
     if (isClosing) return;
     setIsClosing(true);
-    closeTimerRef.current = window.setTimeout(onClose, 210);
+    closeTimerRef.current = window.setTimeout(onClose, 280);
   }, [isClosing, onClose]);
 
   useEffect(() => {

@@ -730,6 +730,7 @@ export const OfficerDashboard: React.FC = () => {
   const [message, setMessage] = useState('');
   const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null; accuracy?: number | null } | null>(null);
   const currentLocationRef = useRef<{ lat: number; lon: number } | null>(null);
+  const previousGpsSampleRef = useRef<{ lat: number; lon: number; at: number } | null>(null);
   const uploadingLocationRef = useRef(false);
   const lastLocationUploadAtRef = useRef(0);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -1391,12 +1392,29 @@ export const OfficerDashboard: React.FC = () => {
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const accuracy = position.coords.accuracy;
-        const speedMph =
+        const sampleAt = position.timestamp || Date.now();
+        const rawSpeedMph =
           position.coords.speed === null || position.coords.speed === undefined
             ? null
             : Math.max(0, position.coords.speed * 2.23694);
+        const previousSample = previousGpsSampleRef.current;
+        const derivedSpeedMph = previousSample
+          ? (() => {
+              const elapsedHours = (sampleAt - previousSample.at) / 3600000;
+              if (elapsedHours <= 0 || elapsedHours > 0.05) return null;
+              const miles = distanceMiles(previousSample.lat, previousSample.lon, position.coords.latitude, position.coords.longitude);
+              const mph = miles / elapsedHours;
+              return Number.isFinite(mph) && mph >= 1 && mph <= 140 ? mph : null;
+            })()
+          : null;
+        const speedMph = rawSpeedMph ?? derivedSpeedMph;
         const accuracyUsable = !Number.isFinite(accuracy) || accuracy <= usableGpsAccuracyMeters;
         const accuracyAcceptable = !Number.isFinite(accuracy) || accuracy <= fallbackGpsAccuracyMeters || !currentLocationRef.current;
+        previousGpsSampleRef.current = {
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+          at: sampleAt
+        };
         latestLocationRef.current = {
           lat: position.coords.latitude,
           lon: position.coords.longitude,
@@ -1792,11 +1810,24 @@ export const OfficerDashboard: React.FC = () => {
         const position = await new Promise<GeolocationPosition>((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, liveLocationOptions);
         });
-        const speedMph =
+        const sampleAt = position.timestamp || Date.now();
+        const rawSpeedMph =
           position.coords.speed === null || position.coords.speed === undefined
             ? null
             : Math.max(0, position.coords.speed * 2.23694);
+        const previousSample = previousGpsSampleRef.current;
+        const derivedSpeedMph = previousSample
+          ? (() => {
+              const elapsedHours = (sampleAt - previousSample.at) / 3600000;
+              if (elapsedHours <= 0 || elapsedHours > 0.05) return null;
+              const miles = distanceMiles(previousSample.lat, previousSample.lon, position.coords.latitude, position.coords.longitude);
+              const mph = miles / elapsedHours;
+              return Number.isFinite(mph) && mph >= 1 && mph <= 140 ? mph : null;
+            })()
+          : null;
+        const speedMph = rawSpeedMph ?? derivedSpeedMph;
         const nextLocation = { lat: position.coords.latitude, lon: position.coords.longitude, speedMph };
+        previousGpsSampleRef.current = { lat: nextLocation.lat, lon: nextLocation.lon, at: sampleAt };
         latestLocationRef.current = nextLocation;
         setCurrentLocation({ lat: nextLocation.lat, lon: nextLocation.lon });
         setLocationAccuracy(Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null);
