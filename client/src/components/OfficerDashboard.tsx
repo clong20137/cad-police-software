@@ -1659,11 +1659,20 @@ export const OfficerDashboard: React.FC = () => {
     setBusy(true);
     setMessage('');
     try {
+      const bmvResponse = await authClient.submitBmvInquiry(submission.bmvRequest);
+      const bmvSummary = [
+        submission.description,
+        '',
+        'BMV Integration:',
+        `Status: ${bmvResponse.status}`,
+        `Message: ${bmvResponse.message}`,
+        `Request ID: ${bmvResponse.id}`
+      ].join('\n');
       const geofenceAssignment = geofenceAssignmentForPoint(currentLocation, configuredGeofences);
       const incident = await authClient.createOfficerEvent({
         type: submission.title,
         priority: 'Normal',
-        description: submission.description,
+        description: bmvSummary,
         district: geofenceAssignment.district || null,
         beat: geofenceAssignment.beat || null,
         lat: currentLocation?.lat ?? null,
@@ -1674,7 +1683,7 @@ export const OfficerDashboard: React.FC = () => {
       });
       setIncidents((current) => (current.some((item) => item.id === incident.id) ? current : [incident, ...current]));
       setSelectedIncidentId(incident.id);
-      setMessage(`${submission.type} submitted.`);
+      setMessage(`${submission.type} submitted. BMV: ${bmvResponse.status}.`);
       setActiveDockItem('call-detail');
     } catch {
       setMessage('Unable to submit inquiry.');

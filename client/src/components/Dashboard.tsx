@@ -1784,11 +1784,19 @@ export const Dashboard: React.FC = () => {
 
   const submitInquiry = async (submission: InquirySubmission) => {
     try {
+      const bmvResponse = await authClient.submitBmvInquiry(submission.bmvRequest);
+      const bmvSummary = [
+        '',
+        'BMV Integration:',
+        `Status: ${bmvResponse.status}`,
+        `Message: ${bmvResponse.message}`,
+        `Request ID: ${bmvResponse.id}`
+      ].join('\n');
       const incident = await authClient.createIncident({
         type: submission.title,
         priority: 'Normal',
         address: `${submission.type} ${submission.kind.toUpperCase()} inquiry`,
-        description: submission.description,
+        description: `${submission.description}${bmvSummary}`,
         callerName: user?.name,
         callerPhone: ''
       });

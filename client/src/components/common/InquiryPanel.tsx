@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Car, Fingerprint, IdCard, Search } from 'lucide-react';
-import { User } from '../../types/auth';
+import { BmvInquiryRequest, User } from '../../types/auth';
 
 export type InquiryKind = 'plate' | 'vin' | 'name';
 
@@ -9,6 +9,7 @@ export interface InquirySubmission {
   type: '10-27' | '10-28';
   title: string;
   description: string;
+  bmvRequest: BmvInquiryRequest;
 }
 
 interface InquiryPanelProps {
@@ -68,7 +69,19 @@ export const InquiryPanel: React.FC<InquiryPanelProps> = ({
       kind: 'name',
       type: '10-27',
       title: '10-27 Driver License Inquiry',
-      description: fields.join('\n')
+      description: fields.join('\n'),
+      bmvRequest: {
+        kind: 'driver-license',
+        reason: '10-27 Driver License Inquiry',
+        officerId: driver.officerId || undefined,
+        driver: {
+          name: driver.name.trim(),
+          dob: driver.dob,
+          sex: driver.sex,
+          state: driver.state,
+          imageRequested: driver.image
+        }
+      }
     });
   };
 
@@ -86,7 +99,18 @@ export const InquiryPanel: React.FC<InquiryPanelProps> = ({
       kind: activeTab,
       type: '10-28',
       title: `10-28 ${plateMode ? 'Plate' : 'VIN'} Inquiry`,
-      description: fields.join('\n')
+      description: fields.join('\n'),
+      bmvRequest: {
+        kind: 'vehicle-registration',
+        reason: '10-28 Vehicle Inquiry',
+        vehicle: {
+          plate: plateMode ? identifier : undefined,
+          vin: plateMode ? undefined : identifier,
+          year: vehicle.year.trim(),
+          state: vehicle.state,
+          avq: vehicle.avq.trim()
+        }
+      }
     });
   };
 

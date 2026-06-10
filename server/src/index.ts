@@ -3,6 +3,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth';
+import bmvRoutes from './routes/bmv';
 import configurationRoutes from './routes/configuration';
 import incidentRoutes from './routes/incidents';
 import urgentAlertRoutes from './routes/urgentAlerts';
@@ -32,6 +33,7 @@ app.use(requestLogger);
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/bmv', bmvRoutes);
 app.use('/api/configuration', configurationRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/urgent-alerts', urgentAlertRoutes);

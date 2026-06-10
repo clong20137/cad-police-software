@@ -246,6 +246,38 @@ export interface AddIncidentNoteRequest {
   noteType?: IncidentNote['noteType'];
 }
 
+export type BmvInquiryKind = 'driver-license' | 'vehicle-registration';
+export type BmvInquiryStatus = 'not_configured' | 'submitted' | 'error';
+
+export interface BmvInquiryRequest {
+  kind: BmvInquiryKind;
+  reason: string;
+  officerId?: string;
+  driver?: {
+    name: string;
+    dob: string;
+    sex: string;
+    state: string;
+    imageRequested: boolean;
+  };
+  vehicle?: {
+    plate?: string;
+    vin?: string;
+    year?: string;
+    state: string;
+    avq?: string;
+  };
+}
+
+export interface BmvInquiryResponse {
+  id: string;
+  status: BmvInquiryStatus;
+  source: 'BMV';
+  message: string;
+  requestedAt: Date;
+  record?: Record<string, unknown>;
+}
+
 export type UrgentAlertSeverity = 'Advisory' | 'Important' | 'Urgent' | 'Critical';
 export type UrgentAlertAudienceType = 'everyone' | 'district' | 'users';
 

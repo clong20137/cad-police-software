@@ -3,6 +3,8 @@ import {
   ChatMessage,
   ChangePasswordRequest,
   AdminConfigurationItem,
+  BmvInquiryRequest,
+  BmvInquiryResponse,
   CreateIncidentRequest,
   CreateUrgentAlertRequest,
   Incident,
@@ -280,6 +282,11 @@ class AuthClient {
       body,
       noteType: 'note'
     });
+    return response.data;
+  }
+
+  async submitBmvInquiry(input: BmvInquiryRequest): Promise<BmvInquiryResponse> {
+    const response = await this.api.post<BmvInquiryResponse>('/bmv/inquiries', input);
     return response.data;
   }
 
