@@ -592,6 +592,7 @@ export const OfficerDashboard: React.FC = () => {
   const [navigatingIncidentId, setNavigatingIncidentId] = useState<string | null>(null);
   const [navigationSummary, setNavigationSummary] = useState<NavigationSummary | null>(null);
   const [rightOpen, setRightOpen] = useState(true);
+  const [liveFeedOpen, setLiveFeedOpen] = useState(() => localStorage.getItem('cad_officer_live_feed_open') !== 'false');
   const [activeDockItem, setActiveDockItem] = useState<DockItem | null>(null);
   const [openDockItems, setOpenDockItems] = useState<DockItem[]>([]);
   const [dockZOrder, setDockZOrder] = useState<Record<DockItem, number>>({} as Record<DockItem, number>);
@@ -670,6 +671,10 @@ export const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     currentLocationRef.current = currentLocation;
   }, [currentLocation]);
+
+  useEffect(() => {
+    localStorage.setItem('cad_officer_live_feed_open', String(liveFeedOpen));
+  }, [liveFeedOpen]);
 
   const pendingCalls = useMemo(
     () =>
@@ -2084,41 +2089,65 @@ export const OfficerDashboard: React.FC = () => {
           )}
       </div>
 
-      <aside className="pointer-events-none fixed right-3 top-[4.75rem] z-30 w-[min(26rem,calc(100vw-1.5rem))] rounded-lg border border-white/40 bg-white/75 p-2 text-cad-ink opacity-90 shadow-xl dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-white sm:right-5 sm:top-[5.25rem]">
-        <div className="mb-1.5 flex items-center justify-between px-1">
-          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Live Feed</span>
-          <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]" />
-        </div>
-        <div className="grid max-h-56 gap-1 overflow-hidden">
-          {liveFeedItems.length === 0 && (
-            <div className="rounded bg-white/70 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
-              Waiting for live CAD activity.
+      {liveFeedOpen ? (
+        <aside className="pointer-events-auto fixed bottom-[6.75rem] right-3 z-30 w-[min(26rem,calc(100vw-1.5rem))] rounded-lg border border-white/40 bg-white/75 p-2 text-cad-ink opacity-90 shadow-xl transition-all duration-200 dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-white sm:right-5 md:bottom-28">
+          <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Live Feed</span>
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]" />
+              <button
+                type="button"
+                onClick={() => setLiveFeedOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white/80 text-slate-500 hover:bg-white hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-800"
+                aria-label="Hide live feed"
+                title="Hide live feed"
+              >
+                <X size={14} />
+              </button>
             </div>
-          )}
-          {liveFeedItems.map((item) => {
-            const toneClass =
-              item.tone === 'red'
-                ? 'bg-red-500'
-                : item.tone === 'yellow'
-                  ? 'bg-amber-400'
-                  : item.tone === 'green'
-                    ? 'bg-emerald-500'
-                    : item.tone === 'blue'
-                      ? 'bg-cad-blue'
-                      : 'bg-slate-400';
-            return (
-              <div key={item.id} className="grid grid-cols-[auto_1fr] gap-2 rounded border border-white/50 bg-white/70 px-3 py-2 text-xs shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
-                <span className={`mt-1 h-2.5 w-2.5 rounded-full ${toneClass}`} />
-                <p className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
-                  <strong className="font-black text-slate-950 dark:text-white">{item.actor}</strong>{' '}
-                  <strong className="font-black text-cad-blue dark:text-blue-100">{item.action}</strong>{' '}
-                  <span className="text-slate-600 dark:text-slate-300">{item.detail}</span>
-                </p>
+          </div>
+          <div className="grid max-h-56 gap-1 overflow-hidden">
+            {liveFeedItems.length === 0 && (
+              <div className="rounded bg-white/70 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
+                Waiting for live CAD activity.
               </div>
-            );
-          })}
-        </div>
-      </aside>
+            )}
+            {liveFeedItems.map((item) => {
+              const toneClass =
+                item.tone === 'red'
+                  ? 'bg-red-500'
+                  : item.tone === 'yellow'
+                    ? 'bg-amber-400'
+                    : item.tone === 'green'
+                      ? 'bg-emerald-500'
+                      : item.tone === 'blue'
+                        ? 'bg-cad-blue'
+                        : 'bg-slate-400';
+              return (
+                <div key={item.id} className="grid grid-cols-[auto_1fr] gap-2 rounded border border-white/50 bg-white/70 px-3 py-2 text-xs shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
+                  <span className={`mt-1 h-2.5 w-2.5 rounded-full ${toneClass}`} />
+                  <p className="min-w-0 leading-5 text-slate-700 dark:text-slate-200">
+                    <strong className="font-black text-slate-950 dark:text-white">{item.actor}</strong>{' '}
+                    <strong className="font-black text-cad-blue dark:text-blue-100">{item.action}</strong>{' '}
+                    <span className="text-slate-600 dark:text-slate-300">{item.detail}</span>
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setLiveFeedOpen(true)}
+          className="fixed bottom-[6.75rem] right-3 z-30 inline-flex items-center gap-2 rounded-lg border border-white/40 bg-white/85 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-cad-blue shadow-xl hover:bg-white dark:border-slate-700/70 dark:bg-slate-950/85 dark:text-blue-100 dark:hover:bg-slate-900 sm:right-5 md:bottom-28"
+          aria-label="Show live feed"
+          title="Show live feed"
+        >
+          <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]" />
+          Live Feed
+        </button>
+      )}
 
       <button
         type="button"
