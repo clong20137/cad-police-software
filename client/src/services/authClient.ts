@@ -529,6 +529,15 @@ class AuthClient {
     return response.data;
   }
 
+  async updateMyStatus(status: User['status']): Promise<User> {
+    const response = await this.api.patch<User>('/auth/me/status', { status });
+    if (this.auth && response.data.id === this.auth.user.id) {
+      this.auth.user = response.data;
+      this.saveToStorage();
+    }
+    return response.data;
+  }
+
   async updateDestination(
     destinationLat: number | null,
     destinationLon: number | null,

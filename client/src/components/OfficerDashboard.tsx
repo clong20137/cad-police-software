@@ -36,7 +36,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { authClient } from '../services/authClient';
-import { AdminConfigurationItem, ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, UrgentAlert, User, UserRole } from '../types/auth';
+import { AdminConfigurationItem, ChatMessage, Incident, IncidentPriority, IncidentUnitStatus, MessageThread, SendMessageAttachment, UnitStatus, UrgentAlert, User, UserRole } from '../types/auth';
 import { AccountSettingsModal, PasswordFormState, TwoFactorSetupState } from './common/AccountSettingsModal';
 import { MessageAttachmentPreview } from './common/MessageAttachmentPreview';
 import { ModalShell } from './common/ModalShell';
@@ -79,6 +79,13 @@ type LiveFeedItem = {
   detail: string;
   tone: 'blue' | 'green' | 'yellow' | 'red' | 'slate';
   district?: string | null;
+};
+
+type MyStatusOption = {
+  code: string;
+  label: string;
+  status: UnitStatus;
+  tone: string;
 };
 
 interface OfficerGoogleMaps {
@@ -377,7 +384,7 @@ const officerMapDisplayLabel = (officer: User): string => {
 };
 
 const officerMapStatus = (officer: User, currentUserId?: string, selectedStatus?: IncidentUnitStatus | null): string =>
-  officer.id === currentUserId && selectedStatus ? selectedStatus : officer.status || 'Available';
+  officer.id === currentUserId && selectedStatus ? selectedStatus : officer.status || 'Idle';
 
 const officerMapTone = (status: string, isCurrentUser: boolean): keyof typeof markerToneClass => {
   if (isCurrentUser) return 'blue';
@@ -497,6 +504,25 @@ const feedToneForStatus = (status: IncidentUnitStatus): LiveFeedItem['tone'] => 
   if (['On Scene', 'Transporting', 'At Hospital', 'Staged'].includes(status)) return 'red';
   if (status === 'Cleared') return 'green';
   return 'blue';
+};
+
+const myStatusOptions: MyStatusOption[] = [
+  { code: 'Idle', label: 'Idle', status: 'Idle', tone: 'bg-slate-400' },
+  { code: '10-8', label: 'In Service', status: 'In Service', tone: 'bg-emerald-500' },
+  { code: '10-76', label: 'En Route', status: 'En Route', tone: 'bg-amber-400' },
+  { code: '10-23', label: 'On Scene', status: 'On Scene', tone: 'bg-red-500' },
+  { code: '10-7', label: 'Out of Service', status: 'Out of Service', tone: 'bg-slate-700' }
+];
+
+const myStatusFor = (status?: string | null): MyStatusOption =>
+  myStatusOptions.find((option) => option.status === status) || myStatusOptions[0];
+
+const mergeUrgentAlerts = (current: UrgentAlert[], incoming: UrgentAlert[]): UrgentAlert[] => {
+  const incomingIds = new Set(incoming.map((alert) => alert.id));
+  const keepLocal = current.filter((alert) => alert.id.startsWith('local-emergency-') && !incomingIds.has(alert.id));
+  return [...incoming, ...keepLocal]
+    .filter((alert, index, alerts) => alerts.findIndex((item) => item.id === alert.id) === index)
+    .sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime());
 };
 
 const errorMessage = (error: unknown): string => {
@@ -673,6 +699,7 @@ export const OfficerDashboard: React.FC = () => {
   const [urgentAlerts, setUrgentAlerts] = useState<UrgentAlert[]>([]);
   const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(false);
   const [message, setMessage] = useState('');
   const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null; accuracy?: number | null } | null>(null);
   const currentLocationRef = useRef<{ lat: number; lon: number } | null>(null);
@@ -761,7 +788,7 @@ export const OfficerDashboard: React.FC = () => {
         lat: currentLocation.lat,
         lon: currentLocation.lon,
         speedMph: currentSpeed ?? user.speedMph,
-        status: user.status || 'Available'
+        status: user.status || 'Idle'
       });
     }
 
@@ -853,6 +880,7 @@ export const OfficerDashboard: React.FC = () => {
       : realtimeState === 'offline'
         ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/20 dark:text-red-100 dark:ring-red-300/30'
       : 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/30';
+  const currentMyStatus = myStatusFor(user?.status);
 
   useEffect(() => {
     const topItem = liveFeedItems[0];
@@ -944,7 +972,8 @@ export const OfficerDashboard: React.FC = () => {
 
   const loadUrgentAlerts = useCallback(async () => {
     try {
-      setUrgentAlerts(await authClient.getUrgentAlerts());
+      const alerts = await authClient.getUrgentAlerts();
+      setUrgentAlerts((current) => mergeUrgentAlerts(current, alerts));
     } catch {
       // Keep any cached/in-memory alerts visible if the network drops.
     }
@@ -1883,6 +1912,21 @@ export const OfficerDashboard: React.FC = () => {
     }
   };
 
+  const updateMyStatus = async (status: UnitStatus) => {
+    setStatusBusy(true);
+    setMessage('');
+    try {
+      const updatedUser = await authClient.updateMyStatus(status);
+      setDirectory((current) => current.map((item) => (item.id === updatedUser.id ? { ...item, ...updatedUser } : item)));
+      refreshAuth();
+      setMessage(`Status changed to ${myStatusFor(updatedUser.status).code}.`);
+    } catch (error) {
+      setMessage(`Unable to update your status. ${errorMessage(error)}`);
+    } finally {
+      setStatusBusy(false);
+    }
+  };
+
   const acknowledgeUrgentAlert = async (alertId: string) => {
     try {
       await authClient.acknowledgeUrgentAlert(alertId);
@@ -2498,6 +2542,25 @@ export const OfficerDashboard: React.FC = () => {
       </button>
 
       <aside className="absolute left-3 top-3 z-40 flex gap-2 sm:left-5 sm:top-4">
+        <label
+          className="inline-flex h-10 items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95"
+          title={`My Status: ${currentMyStatus.code} ${currentMyStatus.label}`}
+        >
+          <span className={`h-3 w-3 rounded-full ${currentMyStatus.tone}`} />
+          <span className="text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-300">Status</span>
+          <select
+            value={currentMyStatus.status}
+            onChange={(event) => updateMyStatus(event.target.value as UnitStatus)}
+            disabled={statusBusy}
+            className="h-7 rounded border border-cad-line bg-white px-2 text-xs font-black text-slate-950 outline-none focus:border-cad-blue focus:ring-2 focus:ring-blue-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+          >
+            {myStatusOptions.map((option) => (
+              <option key={option.code} value={option.status}>
+                {option.code}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="inline-flex h-10 items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95">
           <Navigation size={16} className="text-cad-blue dark:text-blue-100" />
           <p className="text-sm font-black text-slate-950 dark:text-white">{currentSpeed === null ? '--' : Math.round(currentSpeed)} MPH</p>

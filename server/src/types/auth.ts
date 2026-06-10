@@ -39,7 +39,10 @@ export interface LocationTrailPoint {
 }
 
 export type UnitStatus =
+  | 'Idle'
   | 'Available'
+  | 'In Service'
+  | 'Out of Service'
   | 'Dispatched'
   | 'En Route'
   | 'On Scene'

@@ -66,7 +66,7 @@ export const initializeDatabase = async (): Promise<void> => {
       badge VARCHAR(64) NULL,
       unit_number VARCHAR(64) NULL,
       cad_unit_number VARCHAR(64) NULL,
-      status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop') NULL DEFAULT NULL,
+      status ENUM('Idle', 'Available', 'In Service', 'Out of Service', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop') NULL DEFAULT NULL,
       unit_group VARCHAR(80) NULL,
       district VARCHAR(80) NULL,
       lat DECIMAL(10, 7) NULL,
@@ -219,7 +219,7 @@ const ensureUserLocationColumns = async (): Promise<void> => {
   const columns = [
     "ADD COLUMN unit_number VARCHAR(64) NULL",
     "ADD COLUMN cad_unit_number VARCHAR(64) NULL",
-    "ADD COLUMN status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop') NULL DEFAULT NULL",
+    "ADD COLUMN status ENUM('Idle', 'Available', 'In Service', 'Out of Service', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop') NULL DEFAULT NULL",
     "ADD COLUMN unit_group VARCHAR(80) NULL",
     "ADD COLUMN district VARCHAR(80) NULL",
     "ADD COLUMN lat DECIMAL(10, 7) NULL",
@@ -244,7 +244,7 @@ const ensureUserLocationColumns = async (): Promise<void> => {
   }
 
   await pool.query(
-    "ALTER TABLE users MODIFY COLUMN status ENUM('Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop') NULL DEFAULT NULL"
+    "ALTER TABLE users MODIFY COLUMN status ENUM('Idle', 'Available', 'In Service', 'Out of Service', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop') NULL DEFAULT NULL"
   );
 };
 

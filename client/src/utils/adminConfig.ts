@@ -1,7 +1,10 @@
 import { AdminConfigurationItem, IncidentPriority, UnitStatus } from '../types/auth';
 
 export const defaultUnitStatuses: UnitStatus[] = [
+  'Idle',
   'Available',
+  'In Service',
+  'Out of Service',
   'Dispatched',
   'En Route',
   'On Scene',

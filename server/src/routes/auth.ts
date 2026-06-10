@@ -28,6 +28,7 @@ import {
   UserRole,
   VerifyPasswordRequest
 } from '../types/auth';
+import type { UnitStatus } from '../types/auth';
 
 const router = Router();
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -633,6 +634,30 @@ router.post(
     const message = await MessageService.createMessage(req.user?.id || '', recipientId, body || '', attachments);
     broadcastMessage(message);
     res.status(201).json(message);
+  }
+);
+
+router.patch(
+  '/me/status',
+  authMiddleware,
+  async (req: Request<{}, {}, { status?: string | null }>, res: Response): Promise<void> => {
+    const allowedStatuses = new Set<UnitStatus>(['Idle', 'Available', 'In Service', 'Out of Service', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop']);
+    const status = req.body.status || 'Idle';
+    if (!allowedStatuses.has(status as UnitStatus)) {
+      res.status(400).json({ error: 'Valid unit status is required' });
+      return;
+    }
+
+    const user = await AuthService.updateStatus(req.user?.id || '', status as UnitStatus);
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    await AuthService.touchLastSeen(req.user?.id || '');
+    await broadcastPresence();
+    await broadcastTrackedUnits();
+    res.json(user);
   }
 );
 

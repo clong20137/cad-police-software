@@ -262,7 +262,10 @@ const emojiCatalog = (() => {
 })();
 
 const statusStyles: Record<UnitStatus, string> = {
+  Idle: 'bg-slate-50 text-slate-700 ring-slate-200',
   Available: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  'In Service': 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  'Out of Service': 'bg-slate-100 text-slate-600 ring-slate-200',
   Dispatched: 'bg-amber-50 text-amber-700 ring-amber-200',
   'En Route': 'bg-blue-50 text-blue-700 ring-blue-200',
   'On Scene': 'bg-red-50 text-red-700 ring-red-200',
@@ -271,11 +274,18 @@ const statusStyles: Record<UnitStatus, string> = {
 };
 
 const unitBoardStatusStyles = (status: UnitStatus): { row: string; pill: string; dot: string } => {
-  if (status === 'Available') {
+  if (status === 'Available' || status === 'In Service') {
     return {
       row: 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/70 dark:bg-emerald-950/30',
       pill: 'bg-emerald-600 text-white ring-emerald-700/20',
       dot: 'bg-emerald-500'
+    };
+  }
+  if (status === 'Idle' || status === 'Out of Service') {
+    return {
+      row: 'border-slate-200 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-900/40',
+      pill: 'bg-slate-600 text-white ring-slate-700/20',
+      dot: 'bg-slate-400'
     };
   }
   if (status === 'En Route') {
@@ -293,8 +303,9 @@ const unitBoardStatusStyles = (status: UnitStatus): { row: string; pill: string;
 };
 
 const unitBoardStatusRank = (status: UnitStatus): number => {
-  if (status === 'Available') return 0;
-  if (status === 'En Route') return 1;
+  if (status === 'Available' || status === 'In Service') return 0;
+  if (status === 'Idle') return 1;
+  if (status === 'En Route') return 2;
   return 2;
 };
 
@@ -394,7 +405,7 @@ const darkMapStyles = [
 const isTrackedUnit = (user: User): user is TrackedUnit =>
   typeof user.lat === 'number' && typeof user.lon === 'number';
 
-const displayStatus = (unit: User): UnitStatus => unit.status || 'Available';
+const displayStatus = (unit: User): UnitStatus => unit.status || 'Idle';
 const displayUnitNumber = (unit: User): string => unit.unitNumber || unit.badge || 'Unassigned';
 const displayCadUnitNumber = (unit: User): string =>
   unit.cadUnitNumber || (unit.unitNumber ? `CAD-${unit.unitNumber}` : unit.name);

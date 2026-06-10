@@ -492,6 +492,16 @@ export class AuthService {
     return this.getUser(userId);
   }
 
+  static async updateStatus(userId: string, status: User['status']): Promise<User | null> {
+    const existingUser = await this.getUser(userId);
+    if (!existingUser) {
+      return null;
+    }
+
+    await pool.execute('UPDATE users SET status = ? WHERE id = ?', [status || null, userId]);
+    return this.getUser(userId);
+  }
+
   static async resetUserPassword(userId: string, input: ResetUserPasswordRequest): Promise<boolean> {
     if (!input.newPassword) {
       return false;
