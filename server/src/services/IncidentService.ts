@@ -61,6 +61,19 @@ const unitStatusToIncidentStatus = (status: IncidentUnitStatus): IncidentStatus 
 };
 
 const isClosedIncidentStatus = (status: IncidentStatus): boolean => status === 'Closed' || status === 'Canceled';
+const autoEnRouteSpeedMph = Number(process.env.AUTO_EN_ROUTE_SPEED_MPH || 3);
+const autoOnSceneDistanceMiles = Number(process.env.AUTO_ON_SCENE_DISTANCE_MILES || 0.15);
+
+const distanceMilesBetween = (startLat: number, startLon: number, endLat: number, endLon: number): number => {
+  const earthRadiusMiles = 3958.8;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const deltaLat = toRadians(endLat - startLat);
+  const deltaLon = toRadians(endLon - startLon);
+  const lat1 = toRadians(startLat);
+  const lat2 = toRadians(endLat);
+  const a = Math.sin(deltaLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+  return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 
 const toIncidentNote = (row: IncidentNoteRow): IncidentNote => ({
   id: row.id,
@@ -480,6 +493,37 @@ export class IncidentService {
     }
 
     return this.getIncident(incidentId);
+  }
+
+  static async autoUpdateAssignedUnitFromLocation(
+    userId: string,
+    lat: number,
+    lon: number,
+    speedMph?: number | null
+  ): Promise<Incident | null> {
+    const activeIncidents = (await this.getActiveIncidents()).filter((incident) =>
+      incident.units.some((unit) => unit.userId === userId && !['Cleared', 'On Scene'].includes(unit.status))
+    );
+    const incident = activeIncidents[0];
+    if (!incident || incident.lat === undefined || incident.lon === undefined) {
+      return null;
+    }
+
+    const unitStatus = incident.units.find((unit) => unit.userId === userId)?.status;
+    if (!unitStatus) {
+      return null;
+    }
+
+    const distanceToIncident = distanceMilesBetween(lat, lon, incident.lat, incident.lon);
+    if ((unitStatus === 'Assigned' || unitStatus === 'Acknowledged' || unitStatus === 'En Route') && distanceToIncident <= autoOnSceneDistanceMiles) {
+      return this.updateAssignedUnitStatus(incident.id, userId, 'On Scene');
+    }
+
+    if ((unitStatus === 'Assigned' || unitStatus === 'Acknowledged') && Number(speedMph || 0) > autoEnRouteSpeedMph) {
+      return this.updateAssignedUnitStatus(incident.id, userId, 'En Route');
+    }
+
+    return null;
   }
 
   static async addAssignedUnitNote(

@@ -794,19 +794,6 @@ export const OfficerDashboard: React.FC = () => {
 
     return Array.from(byId.values());
   }, [currentLocation, currentSpeed, directory, onlineUserIds, user]);
-  const nearestUnits = useMemo(
-    () =>
-      trackedOfficers
-        .filter((officer) => officer.id !== user?.id && currentLocation && officer.lat !== undefined && officer.lon !== undefined)
-        .map((officer) => ({
-          officer,
-          status: officerMapStatus(officer, user?.id, selectedStatus),
-          miles: currentLocation ? distanceMiles(currentLocation.lat, currentLocation.lon, officer.lat as number, officer.lon as number) : Number.POSITIVE_INFINITY
-        }))
-        .sort((first, second) => first.miles - second.miles)
-        .slice(0, 3),
-    [currentLocation, selectedStatus, trackedOfficers, user?.id]
-  );
   const myDistrictKey = normalizeDistrictKey(user?.district);
   const liveFeedDistrictLabel = liveFeedDistrictFilter === 'all' ? 'All Districts' : districtLabelFor(liveFeedDistrictFilter === 'mine' ? user?.district : liveFeedDistrictFilter);
   const liveFeedRawItems = useMemo<LiveFeedItem[]>(() => {
@@ -2613,76 +2600,23 @@ export const OfficerDashboard: React.FC = () => {
         )}
       </aside>
 
-      <aside className="absolute left-3 top-[3.75rem] z-30 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-lg border border-slate-200 bg-white/95 text-cad-ink shadow-2xl dark:border-slate-700 dark:bg-slate-900/95 dark:text-white sm:left-5 sm:top-[4.25rem]">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2 dark:border-slate-700">
-          <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">Nearest Units</p>
-            <p className="mt-0.5 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-              {currentLocation ? `${nearestUnits.length} nearby online` : 'Waiting for GPS'}
-            </p>
-          </div>
-          <Radio size={16} className="text-cad-blue dark:text-blue-100" />
-        </div>
-        <div className="grid gap-1 p-2">
-          {!currentLocation && (
-            <p className="rounded bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-              GPS is required to rank nearby units.
-            </p>
-          )}
-          {currentLocation && nearestUnits.length === 0 && (
-            <p className="rounded bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-              No other online units with live GPS.
-            </p>
-          )}
-          {nearestUnits.map(({ officer, status, miles }) => {
-            const tone = officerMapTone(status, false);
-            const dotClass = tone === 'green' ? 'bg-emerald-500' : tone === 'yellow' ? 'bg-amber-400' : tone === 'red' ? 'bg-red-500' : 'bg-cad-blue';
-            return (
-              <button
-                key={officer.id}
-                type="button"
-                onClick={() => {
-                  setSelectedMessageUserId(officer.id);
-                  openDockItem('messages');
-                }}
-                className="grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded border border-slate-200 bg-white px-3 py-2 text-left text-xs shadow-sm transition hover:border-cad-blue hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-cad-blue/30 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-900"
-                title={`Message ${officer.name}`}
-              >
-                <span className={`h-2.5 w-2.5 rounded-full ${dotClass}`} />
-                <span className="min-w-0">
-                  <span className="block truncate font-black text-slate-950 dark:text-white">
-                    {officer.cadUnitNumber || officer.unitNumber || officer.badge || officerMapLabel(officer)}
-                  </span>
-                  <span className="mt-0.5 block truncate font-semibold text-slate-500 dark:text-slate-400">
-                    {officer.name} - {status}
-                  </span>
-                </span>
-                <span className="rounded bg-slate-100 px-2 py-1 font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                  {miles.toFixed(1)} mi
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </aside>
-
       {navigationSummary && (
-        <aside className="absolute bottom-24 left-1/2 z-30 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
+        <aside className="absolute left-3 top-[3.75rem] z-30 flex w-[min(25rem,calc(100vw-1.5rem))] items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95 sm:left-5 sm:top-[4.25rem]">
           <div className="min-w-0">
-            <p className="truncate text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Navigating {navigationSummary.callNumber}</p>
-            <p className="mt-1 text-lg font-black text-slate-950 dark:text-white">{navigationSummary.duration}</p>
+            <p className="truncate text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Navigating {navigationSummary.callNumber}</p>
+            <p className="mt-0.5 text-sm font-black text-slate-950 dark:text-white">{navigationSummary.duration}</p>
           </div>
           <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${trafficIndicatorClasses[navigationSummary.traffic]}`}>
             {trafficIndicatorLabels[navigationSummary.traffic]}
           </span>
           <div className="text-right">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Distance</p>
-            <p className="mt-1 text-lg font-black text-cad-blue dark:text-blue-100">{navigationSummary.distance}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Distance</p>
+            <p className="mt-0.5 text-sm font-black text-cad-blue dark:text-blue-100">{navigationSummary.distance}</p>
           </div>
           <button
             type="button"
             onClick={cancelNavigation}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-red-600 text-white shadow-sm hover:bg-red-700"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-600 text-white shadow-sm hover:bg-red-700"
             title="Cancel navigation"
           >
             <X size={17} />

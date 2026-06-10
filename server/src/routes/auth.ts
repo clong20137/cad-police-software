@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/AuthService';
 import { AuditLogService } from '../services/AuditLogService';
 import { ConfigurationService } from '../services/ConfigurationService';
+import { IncidentService } from '../services/IncidentService';
 import { MessageService } from '../services/MessageService';
 import { authMiddleware, requirePermission } from '../middleware/auth';
 import { requireRequestSignature, sensitiveRateLimiter } from '../middleware/security';
@@ -11,6 +12,8 @@ import {
   broadcastMessageRead,
   broadcastMessageTyping,
   broadcastMessageUpdated,
+  broadcastIncidents,
+  broadcastOfficerAssignment,
   broadcastPresence,
   broadcastTrackedUnits
 } from '../realtime/socket';
@@ -688,9 +691,15 @@ router.patch(
     }
 
     await AuthService.touchLastSeen(req.user?.id || '');
+    const automatedIncident = await IncidentService.autoUpdateAssignedUnitFromLocation(req.user?.id || '', lat, lon, speedMph);
+    const responseUser = automatedIncident ? await AuthService.getUser(req.user?.id || '') : user;
     await broadcastPresence();
     await broadcastTrackedUnits();
-    res.json(user);
+    if (automatedIncident) {
+      await broadcastIncidents();
+      await broadcastOfficerAssignment(req.user?.id || '');
+    }
+    res.json(responseUser || user);
   }
 );
 
