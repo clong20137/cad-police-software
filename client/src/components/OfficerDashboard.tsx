@@ -194,6 +194,21 @@ type WakeLockNavigator = Navigator & {
   };
 };
 
+type UsbGpsStatus = 'disabled' | 'unsupported' | 'disconnected' | 'connecting' | 'connected' | 'error';
+
+type SerialPortLike = {
+  open: (options: { baudRate: number }) => Promise<void>;
+  close: () => Promise<void>;
+  readable: ReadableStream<Uint8Array> | null;
+};
+
+type SerialNavigator = Navigator & {
+  serial?: {
+    requestPort: () => Promise<SerialPortLike>;
+    getPorts: () => Promise<SerialPortLike[]>;
+  };
+};
+
 const liveLocationHeartbeatMs = 5000;
 const liveLocationOptions: PositionOptions = {
   enableHighAccuracy: true,
@@ -421,6 +436,47 @@ const distanceMiles = (fromLat: number, fromLon: number, toLat: number, toLon: n
     Math.sin(dLat / 2) ** 2 +
     Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const nmeaCoordinateToDecimal = (raw: string | undefined, hemisphere: string | undefined): number | null => {
+  if (!raw || !hemisphere) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  const degrees = Math.floor(value / 100);
+  const minutes = value - degrees * 100;
+  let decimal = degrees + minutes / 60;
+  if (hemisphere === 'S' || hemisphere === 'W') decimal *= -1;
+  return Number.isFinite(decimal) ? decimal : null;
+};
+
+const parseNmeaLocation = (sentence: string): { lat: number; lon: number; speedMph: number | null } | null => {
+  const line = sentence.trim();
+  if (!line.startsWith('$')) return null;
+  const parts = line.split('*')[0].split(',');
+  const messageType = parts[0];
+
+  if (messageType.endsWith('RMC')) {
+    if (parts[2] !== 'A') return null;
+    const lat = nmeaCoordinateToDecimal(parts[3], parts[4]);
+    const lon = nmeaCoordinateToDecimal(parts[5], parts[6]);
+    if (lat === null || lon === null) return null;
+    const knots = Number(parts[7]);
+    return {
+      lat,
+      lon,
+      speedMph: Number.isFinite(knots) ? Math.max(0, knots * 1.15078) : null
+    };
+  }
+
+  if (messageType.endsWith('GGA')) {
+    const fixQuality = Number(parts[6]);
+    if (!Number.isFinite(fixQuality) || fixQuality <= 0) return null;
+    const lat = nmeaCoordinateToDecimal(parts[2], parts[3]);
+    const lon = nmeaCoordinateToDecimal(parts[4], parts[5]);
+    return lat === null || lon === null ? null : { lat, lon, speedMph: null };
+  }
+
+  return null;
 };
 
 const etaText = (
@@ -654,6 +710,8 @@ export const OfficerDashboard: React.FC = () => {
   const [offlineCacheAgeMs, setOfflineCacheAgeMs] = useState<number | null>(null);
   const [queuedActionCount, setQueuedActionCount] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState<number | null>(null);
+  const [usbGpsStatus, setUsbGpsStatus] = useState<UsbGpsStatus>('disabled');
+  const [usbGpsMessage, setUsbGpsMessage] = useState('');
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationTrail, setLocationTrail] = useState<Array<{ lat: number; lon: number; speedMph?: number | null }>>([]);
   const [mapReady, setMapReady] = useState(false);
@@ -731,6 +789,10 @@ export const OfficerDashboard: React.FC = () => {
   const latestLocationRef = useRef<{ lat: number; lon: number; speedMph?: number | null; accuracy?: number | null } | null>(null);
   const currentLocationRef = useRef<{ lat: number; lon: number } | null>(null);
   const previousGpsSampleRef = useRef<{ lat: number; lon: number; at: number } | null>(null);
+  const usbGpsConnectedRef = useRef(false);
+  const usbGpsPortRef = useRef<SerialPortLike | null>(null);
+  const usbGpsReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const usbGpsStopRef = useRef(false);
   const uploadingLocationRef = useRef(false);
   const lastLocationUploadAtRef = useRef(0);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -759,12 +821,187 @@ export const OfficerDashboard: React.FC = () => {
   }, [currentLocation]);
 
   useEffect(() => {
+    usbGpsConnectedRef.current = usbGpsStatus === 'connected';
+  }, [usbGpsStatus]);
+
+  const applyUsbGpsFix = useCallback(async (fix: { lat: number; lon: number; speedMph: number | null }) => {
+    const sampleAt = Date.now();
+    const previousSample = previousGpsSampleRef.current;
+    const derivedSpeedMph =
+      fix.speedMph === null && previousSample
+        ? (() => {
+            const elapsedHours = (sampleAt - previousSample.at) / 3600000;
+            if (elapsedHours <= 0 || elapsedHours > 0.05) return null;
+            const miles = distanceMiles(previousSample.lat, previousSample.lon, fix.lat, fix.lon);
+            const mph = miles / elapsedHours;
+            return Number.isFinite(mph) && mph >= 1 && mph <= 140 ? mph : null;
+          })()
+        : null;
+    const speedMph = fix.speedMph ?? derivedSpeedMph;
+    const nextLocation = { lat: fix.lat, lon: fix.lon };
+
+    previousGpsSampleRef.current = { lat: fix.lat, lon: fix.lon, at: sampleAt };
+    latestLocationRef.current = { ...nextLocation, speedMph, accuracy: 5 };
+    setLocationAccuracy(5);
+    setLastLocationFixAt(sampleAt);
+    setCurrentLocation(nextLocation);
+    setLocationTrail((current) => {
+      const previous = current[current.length - 1];
+      if (previous && distanceMiles(previous.lat, previous.lon, nextLocation.lat, nextLocation.lon) < 0.005) {
+        return current;
+      }
+      return [...current, { ...nextLocation, speedMph }].slice(-50);
+    });
+    setCurrentSpeed(speedMph);
+    setLocationState('live');
+
+    if (uploadingLocationRef.current || sampleAt - lastLocationUploadAtRef.current < 2500) return;
+    uploadingLocationRef.current = true;
+    try {
+      await authClient.updateLocation(nextLocation.lat, nextLocation.lon, speedMph);
+      lastLocationUploadAtRef.current = sampleAt;
+    } catch {
+      setLocationState('error');
+    } finally {
+      uploadingLocationRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('cad_officer_live_feed_open', String(liveFeedOpen));
   }, [liveFeedOpen]);
 
   useEffect(() => {
     localStorage.setItem('cad_officer_live_feed_district', liveFeedDistrictFilter);
   }, [liveFeedDistrictFilter]);
+
+  const usbGpsEnabled = useMemo(
+    () =>
+      adminConfig.find((item) => item.section === 'security' && item.code === 'USB_GPS_ENABLED')?.metadata?.value === true,
+    [adminConfig]
+  );
+  const usbGpsBaudRate = useMemo(() => {
+    const value = adminConfig.find((item) => item.section === 'security' && item.code === 'USB_GPS_BAUD_RATE')?.metadata?.value;
+    return typeof value === 'number' && Number.isFinite(value) && value >= 1200 ? value : 4800;
+  }, [adminConfig]);
+
+  const disconnectUsbGps = useCallback(async () => {
+    usbGpsStopRef.current = true;
+    const reader = usbGpsReaderRef.current;
+    const port = usbGpsPortRef.current;
+    usbGpsReaderRef.current = null;
+    usbGpsPortRef.current = null;
+
+    try {
+      await reader?.cancel();
+    } catch {}
+    try {
+      reader?.releaseLock();
+    } catch {}
+    try {
+      await port?.close();
+    } catch {}
+
+    setUsbGpsStatus(usbGpsEnabled ? 'disconnected' : 'disabled');
+    setUsbGpsMessage(usbGpsEnabled ? 'USB GPS disconnected.' : '');
+  }, [usbGpsEnabled]);
+
+  const connectUsbGps = useCallback(async () => {
+    if (!usbGpsEnabled) {
+      setUsbGpsStatus('disabled');
+      setUsbGpsMessage('USB GPS is disabled in Admin Settings.');
+      return;
+    }
+
+    const serial = (navigator as SerialNavigator).serial;
+    if (!serial) {
+      setUsbGpsStatus('unsupported');
+      setUsbGpsMessage('This browser does not support USB serial GPS. Use Chrome or Edge on a secure connection.');
+      return;
+    }
+
+    setUsbGpsStatus('connecting');
+    setUsbGpsMessage('Select the BU-353S4 GPS receiver.');
+
+    try {
+      const knownPorts = await serial.getPorts();
+      const port = knownPorts[0] || (await serial.requestPort());
+      await port.open({ baudRate: usbGpsBaudRate });
+
+      usbGpsStopRef.current = false;
+      usbGpsPortRef.current = port;
+      setUsbGpsStatus('connected');
+      setUsbGpsMessage(`BU-353S4 connected at ${usbGpsBaudRate} baud.`);
+
+      const reader = port.readable?.getReader();
+      if (!reader) {
+        throw new Error('GPS receiver did not expose a readable serial stream.');
+      }
+
+      usbGpsReaderRef.current = reader;
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      void (async () => {
+        try {
+          while (!usbGpsStopRef.current) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (!value) continue;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() || '';
+            lines.forEach((line) => {
+              const fix = parseNmeaLocation(line);
+              if (fix) {
+                void applyUsbGpsFix(fix);
+              }
+            });
+          }
+        } catch {
+          if (!usbGpsStopRef.current) {
+            setUsbGpsStatus('error');
+            setUsbGpsMessage('USB GPS stream stopped. Reconnect the receiver and try again.');
+          }
+        } finally {
+          try {
+            reader.releaseLock();
+          } catch {}
+          if (usbGpsReaderRef.current === reader) {
+            usbGpsReaderRef.current = null;
+          }
+          if (!usbGpsStopRef.current) {
+            usbGpsPortRef.current = null;
+          }
+        }
+      })();
+    } catch {
+      setUsbGpsStatus('error');
+      setUsbGpsMessage('Unable to connect to the BU-353S4 GPS receiver.');
+      usbGpsPortRef.current = null;
+      usbGpsReaderRef.current = null;
+    }
+  }, [applyUsbGpsFix, usbGpsBaudRate, usbGpsEnabled]);
+
+  useEffect(() => {
+    if (!usbGpsEnabled) {
+      void disconnectUsbGps();
+      setUsbGpsStatus('disabled');
+      setUsbGpsMessage('');
+      return;
+    }
+
+    const serial = (navigator as SerialNavigator).serial;
+    setUsbGpsStatus((current) => {
+      if (current === 'connected' || current === 'connecting') return current;
+      return serial ? 'disconnected' : 'unsupported';
+    });
+    setUsbGpsMessage(serial ? 'USB GPS is enabled. Connect the BU-353S4 from Location.' : 'USB serial is not supported by this browser.');
+
+    return () => {
+      void disconnectUsbGps();
+    };
+  }, [disconnectUsbGps, usbGpsEnabled]);
 
   const pendingCalls = useMemo(
     () =>
@@ -818,6 +1055,7 @@ export const OfficerDashboard: React.FC = () => {
     gpsConfidence === 'excellent' ? 'bg-emerald-500' : gpsConfidence === 'fair' ? 'bg-amber-400' : 'bg-red-500';
   const gpsConfidenceTitle = [
     gpsConfidenceLabel,
+    usbGpsStatus === 'connected' ? 'BU-353S4 USB GPS' : 'Browser GPS',
     locationAccuracy !== null ? `${Math.round(locationAccuracy)}m accuracy` : 'Accuracy pending',
     locationFixAgeMs !== null ? `Updated ${Math.max(0, Math.round(locationFixAgeMs / 1000))} sec ago` : 'No GPS fix yet'
   ].join(' - ');
@@ -1391,6 +1629,7 @@ export const OfficerDashboard: React.FC = () => {
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
+        if (usbGpsConnectedRef.current) return;
         const accuracy = position.coords.accuracy;
         const sampleAt = position.timestamp || Date.now();
         const rawSpeedMph =
@@ -2844,6 +3083,12 @@ export const OfficerDashboard: React.FC = () => {
                 currentLocation={currentLocation}
                 currentSpeed={currentSpeed}
                 locationState={locationState}
+                usbGpsEnabled={usbGpsEnabled}
+                usbGpsStatus={usbGpsStatus}
+                usbGpsMessage={usbGpsMessage}
+                usbGpsBaudRate={usbGpsBaudRate}
+                onConnectUsbGps={connectUsbGps}
+                onDisconnectUsbGps={disconnectUsbGps}
                 currentUserId={user?.id}
                 noteBody={noteBody}
                 setNoteBody={setNoteBody}
@@ -3007,6 +3252,12 @@ const DockContent: React.FC<{
   currentLocation: { lat: number; lon: number } | null;
   currentSpeed: number | null;
   locationState: string;
+  usbGpsEnabled: boolean;
+  usbGpsStatus: UsbGpsStatus;
+  usbGpsMessage: string;
+  usbGpsBaudRate: number;
+  onConnectUsbGps: () => Promise<void>;
+  onDisconnectUsbGps: () => Promise<void>;
   currentUserId?: string;
   noteBody: string;
   setNoteBody: (value: string) => void;
@@ -3068,6 +3319,12 @@ const DockContent: React.FC<{
   currentLocation,
   currentSpeed,
   locationState,
+  usbGpsEnabled,
+  usbGpsStatus,
+  usbGpsMessage,
+  usbGpsBaudRate,
+  onConnectUsbGps,
+  onDisconnectUsbGps,
   currentUserId,
   noteBody,
   setNoteBody,
@@ -3400,10 +3657,51 @@ const DockContent: React.FC<{
 
   if (activeItem === 'location') {
     return (
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Metric label="Tracking" value={locationState === 'live' ? 'Active' : locationState} />
-        <Metric label="Speed" value={currentSpeed === null ? '--' : `${Math.round(currentSpeed)} mph`} />
-        <Metric label="Position" value={currentLocation ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'Waiting'} />
+      <div className="grid gap-3">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Metric label="Tracking" value={locationState === 'live' ? 'Active' : locationState} />
+          <Metric label="Speed" value={currentSpeed === null ? '--' : `${Math.round(currentSpeed)} mph`} />
+          <Metric label="Source" value={usbGpsStatus === 'connected' ? 'BU-353S4' : 'Browser GPS'} />
+        </div>
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">USB GPS</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                {usbGpsStatus === 'connected'
+                  ? `Connected at ${usbGpsBaudRate} baud`
+                  : usbGpsStatus === 'connecting'
+                    ? 'Connecting'
+                    : usbGpsStatus === 'unsupported'
+                      ? 'Unsupported browser'
+                      : usbGpsStatus === 'disabled'
+                        ? 'Disabled by admin'
+                        : usbGpsStatus === 'error'
+                          ? 'Connection error'
+                          : 'Ready to connect'}
+              </p>
+              {usbGpsMessage && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{usbGpsMessage}</p>}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void onConnectUsbGps()}
+                disabled={!usbGpsEnabled || usbGpsStatus === 'connecting' || usbGpsStatus === 'connected'}
+                className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Connect
+              </button>
+              <button
+                type="button"
+                onClick={() => void onDisconnectUsbGps()}
+                disabled={usbGpsStatus !== 'connected' && usbGpsStatus !== 'connecting'}
+                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

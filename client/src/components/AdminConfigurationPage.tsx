@@ -49,6 +49,8 @@ type SecurityConfig = {
   requireDbSsl: boolean;
   locationStaleSeconds: number;
   websocketHeartbeatSeconds: number;
+  usbGpsEnabled: boolean;
+  usbGpsBaudRate: number;
 };
 
 const configSections: EditableConfigSection[] = ['agencies', 'districts', 'units', 'calls', 'statuses'];
@@ -58,7 +60,9 @@ const defaultSecurity: SecurityConfig = {
   requireHttps: true,
   requireDbSsl: true,
   locationStaleSeconds: 45,
-  websocketHeartbeatSeconds: 20
+  websocketHeartbeatSeconds: 20,
+  usbGpsEnabled: false,
+  usbGpsBaudRate: 4800
 };
 
 const sections: Array<{ id: AdminSection; label: string; icon: React.ReactNode }> = [
@@ -154,7 +158,9 @@ export const AdminConfigurationPage: React.FC = () => {
           configItems,
           'WEBSOCKET_HEARTBEAT_SECONDS',
           defaultSecurity.websocketHeartbeatSeconds
-        )
+        ),
+        usbGpsEnabled: getSecurityBoolean(configItems, 'USB_GPS_ENABLED', defaultSecurity.usbGpsEnabled),
+        usbGpsBaudRate: getSecurityNumber(configItems, 'USB_GPS_BAUD_RATE', defaultSecurity.usbGpsBaudRate)
       });
       setUsers(adminUsers);
       setSelectedUserId((current) => current || adminUsers[0]?.id || '');
@@ -666,6 +672,8 @@ export const AdminConfigurationPage: React.FC = () => {
               <NumberSetting label="Idle timeout minutes" value={security.idleTimeoutMinutes} min={1} onChange={(value) => updateSecurity('idleTimeoutMinutes', 'IDLE_TIMEOUT_MINUTES', value)} />
               <NumberSetting label="Location stale seconds" value={security.locationStaleSeconds} min={10} onChange={(value) => updateSecurity('locationStaleSeconds', 'LOCATION_STALE_SECONDS', value)} />
               <NumberSetting label="Websocket heartbeat seconds" value={security.websocketHeartbeatSeconds} min={5} onChange={(value) => updateSecurity('websocketHeartbeatSeconds', 'WEBSOCKET_HEARTBEAT_SECONDS', value)} />
+              <NumberSetting label="USB GPS baud rate" value={security.usbGpsBaudRate} min={1200} onChange={(value) => updateSecurity('usbGpsBaudRate', 'USB_GPS_BAUD_RATE', value)} />
+              <ToggleSetting label="Enable BU-353S4 USB GPS" checked={security.usbGpsEnabled} onChange={(value) => updateSecurity('usbGpsEnabled', 'USB_GPS_ENABLED', value)} />
               <ToggleSetting label="Allow public registration" checked={security.registrationEnabled} onChange={(value) => updateSecurity('registrationEnabled', 'ALLOW_PUBLIC_REGISTRATION', value)} />
               <ToggleSetting label="Require HTTPS" checked={security.requireHttps} onChange={(value) => updateSecurity('requireHttps', 'REQUIRE_HTTPS', value)} />
               <ToggleSetting label="Require DB SSL" checked={security.requireDbSsl} onChange={(value) => updateSecurity('requireDbSsl', 'REQUIRE_DB_SSL', value)} />
