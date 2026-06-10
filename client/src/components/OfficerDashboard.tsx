@@ -499,6 +499,11 @@ const feedToneForStatus = (status: IncidentUnitStatus): LiveFeedItem['tone'] => 
   return 'blue';
 };
 
+const errorMessage = (error: unknown): string => {
+  const responseError = error as { response?: { data?: { error?: string; message?: string } }; message?: string };
+  return responseError.response?.data?.error || responseError.response?.data?.message || responseError.message || 'Please try again.';
+};
+
 const addOfficerOverlay = ({
   map,
   lat,
@@ -1848,13 +1853,31 @@ export const OfficerDashboard: React.FC = () => {
   const sendOfficerEmergency = async () => {
     setBusy(true);
     setMessage('');
+    const temporaryAlert: UrgentAlert = {
+      id: `local-emergency-${Date.now()}`,
+      title: `Officer Emergency - ${user?.cadUnitNumber || user?.unitNumber || user?.badge || user?.name || 'Unit'}`,
+      message: `${user?.name || 'Officer'} activated an emergency alert. ${
+        currentLocation ? `GPS ${currentLocation.lat.toFixed(5)}, ${currentLocation.lon.toFixed(5)}` : 'GPS location unavailable'
+      }`,
+      severity: 'Critical',
+      audienceType: 'everyone',
+      audienceLabel: 'Sending...',
+      targetUserIds: [],
+      requireAcknowledgement: true,
+      createdBy: user?.id,
+      createdByName: user?.name,
+      createdAt: new Date()
+    };
+    setUrgentAlerts((current) => [temporaryAlert, ...current.filter((alert) => alert.id !== temporaryAlert.id)]);
+    playCadAlertSound('urgent', 'call');
     try {
       const alert = await authClient.sendOfficerEmergency(currentLocation?.lat ?? null, currentLocation?.lon ?? null);
-      setUrgentAlerts((current) => (current.some((item) => item.id === alert.id) ? current : [alert, ...current]));
-      loadUrgentAlerts();
+      setUrgentAlerts((current) => [alert, ...current.filter((item) => item.id !== alert.id && item.id !== temporaryAlert.id)]);
+      notifyIfAllowed('Officer Emergency Sent', alert.message, { ...accountPreferences, pushNotifications: true });
       setMessage('Officer emergency alert sent.');
-    } catch {
-      setMessage('Unable to send officer emergency alert.');
+    } catch (error) {
+      setUrgentAlerts((current) => current.filter((alert) => alert.id !== temporaryAlert.id));
+      setMessage(`Unable to send officer emergency alert. ${errorMessage(error)}`);
     } finally {
       setBusy(false);
     }

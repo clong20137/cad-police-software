@@ -143,7 +143,7 @@ export class UrgentAlertService {
   static async createOfficerEmergency(officer: User, lat?: number | null, lon?: number | null): Promise<UrgentAlert & { recipientIds: string[] }> {
     const unit = officer.cadUnitNumber || officer.unitNumber || officer.badge || officer.name;
     const location = Number.isFinite(lat) && Number.isFinite(lon) ? `GPS ${Number(lat).toFixed(5)}, ${Number(lon).toFixed(5)}` : 'GPS location unavailable';
-    return this.create(
+    const alert = await this.create(
       {
         title: `Officer Emergency - ${unit}`,
         message: `${officer.name} activated an emergency alert. ${location}`,
@@ -154,6 +154,14 @@ export class UrgentAlertService {
       },
       officer
     );
+    if (!alert.recipientIds.includes(officer.id)) {
+      await pool.execute<ResultSetHeader>(
+        'INSERT IGNORE INTO urgent_alert_acknowledgements (alert_id, user_id) VALUES (?, ?)',
+        [alert.id, officer.id]
+      );
+      alert.recipientIds.push(officer.id);
+    }
+    return alert;
   }
 
   static async get(id: string): Promise<UrgentAlert | null> {
