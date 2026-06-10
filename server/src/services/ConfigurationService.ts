@@ -245,6 +245,21 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
       counties: ['Clay', 'Parke', 'Putnam', 'Sullivan', 'Vermillion', 'Vigo'],
       boundaries: districtBoundariesForCounties(['Clay', 'Parke', 'Putnam', 'Sullivan', 'Vermillion', 'Vigo'])
     }
+  },
+  {
+    id: 'district-isp-76-capitol-police',
+    section: 'districts',
+    name: 'ISP District 76 - Capitol Police',
+    code: 'ISP-76',
+    agency: 'Indiana State Police',
+    category: 'District',
+    active: true,
+    sortOrder: 150,
+    metadata: {
+      fillColor: '#0f172a',
+      counties: ['Marion'],
+      boundaries: districtBoundariesForCounties(['Marion'])
+    }
   }
 ];
 

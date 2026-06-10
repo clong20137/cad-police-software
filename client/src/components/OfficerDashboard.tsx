@@ -47,6 +47,7 @@ import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
 import { UrgentAlertOverlay } from './common/UrgentAlertOverlay';
 import { callTypesFromConfig } from '../utils/adminConfig';
 import { geofenceAssignmentForPoint, geofencesFromConfig } from '../utils/mapGeofences';
+import { districtLabelFor, indianaDistricts, normalizeDistrictKey } from '../utils/indianaDistricts';
 import { offlineAgeLabel } from '../utils/offlineStatus';
 import {
   AccountPreferences,
@@ -77,6 +78,7 @@ type LiveFeedItem = {
   action: string;
   detail: string;
   tone: 'blue' | 'green' | 'yellow' | 'red' | 'slate';
+  district?: string | null;
 };
 
 interface OfficerGoogleMaps {
@@ -602,6 +604,7 @@ export const OfficerDashboard: React.FC = () => {
   const [navigationSummary, setNavigationSummary] = useState<NavigationSummary | null>(null);
   const [rightOpen, setRightOpen] = useState(true);
   const [liveFeedOpen, setLiveFeedOpen] = useState(() => localStorage.getItem('cad_officer_live_feed_open') !== 'false');
+  const [liveFeedDistrictFilter, setLiveFeedDistrictFilter] = useState(() => localStorage.getItem('cad_officer_live_feed_district') || 'all');
   const [mapLayerMenuOpen, setMapLayerMenuOpen] = useState(false);
   const [mapLayers, setMapLayers] = useState<OfficerMapLayers>({
     units: true,
@@ -698,6 +701,10 @@ export const OfficerDashboard: React.FC = () => {
     localStorage.setItem('cad_officer_live_feed_open', String(liveFeedOpen));
   }, [liveFeedOpen]);
 
+  useEffect(() => {
+    localStorage.setItem('cad_officer_live_feed_district', liveFeedDistrictFilter);
+  }, [liveFeedDistrictFilter]);
+
   const pendingCalls = useMemo(
     () =>
       incidents
@@ -755,41 +762,49 @@ export const OfficerDashboard: React.FC = () => {
 
     return Array.from(byId.values());
   }, [currentLocation, currentSpeed, directory, onlineUserIds, user]);
-  const liveFeedItems = useMemo<LiveFeedItem[]>(() => {
+  const myDistrictKey = normalizeDistrictKey(user?.district);
+  const liveFeedDistrictLabel = liveFeedDistrictFilter === 'all' ? 'All Districts' : districtLabelFor(liveFeedDistrictFilter === 'mine' ? user?.district : liveFeedDistrictFilter);
+  const liveFeedRawItems = useMemo<LiveFeedItem[]>(() => {
     const usersById = new Map(directory.map((item) => [item.id, item]));
     const items: LiveFeedItem[] = [];
 
     urgentAlerts.forEach((alert) => {
+      const district = alert.audienceType === 'district' ? alert.targetDistrict || null : null;
       items.push({
         id: `alert-${alert.id}`,
         at: alert.createdAt,
         actor: alert.createdByName || 'CAD',
         action: `sent a ${alert.severity.toLowerCase()} alert`,
         detail: alert.title,
-        tone: alert.severity === 'Critical' || alert.severity === 'Urgent' ? 'red' : alert.severity === 'Important' ? 'yellow' : 'blue'
+        tone: alert.severity === 'Critical' || alert.severity === 'Urgent' ? 'red' : alert.severity === 'Important' ? 'yellow' : 'blue',
+        district
       });
     });
 
     incidents.forEach((incident) => {
       const creator = usersById.get(incident.createdBy);
       const firstUnit = incident.units[0];
+      const incidentDistrict = incident.district || creator?.district || null;
       items.push({
         id: `call-${incident.id}`,
         at: incident.createdAt,
         actor: unitDisplayName(creator?.name || firstUnit?.name, creator?.cadUnitNumber || creator?.unitNumber || firstUnit?.cadUnitNumber),
         action: callActionText(incident.type),
         detail: `${incident.callNumber} ${incident.address || ''}`.trim(),
-        tone: incident.priority === 'Emergency' || incident.priority === 'High' ? 'red' : incident.status === 'Pending' ? 'yellow' : 'blue'
+        tone: incident.priority === 'Emergency' || incident.priority === 'High' ? 'red' : incident.status === 'Pending' ? 'yellow' : 'blue',
+        district: incidentDistrict
       });
 
       incident.units.forEach((unit) => {
+        const unitUser = usersById.get(unit.userId);
         items.push({
           id: `unit-${incident.id}-${unit.userId}-${unit.status}`,
           at: unit.statusUpdatedAt || unit.assignedAt,
           actor: unitDisplayName(unit.name, unit.cadUnitNumber),
           action: unitStatusActionText(unit.status),
           detail: `${incident.callNumber} ${incident.type}`.trim(),
-          tone: feedToneForStatus(unit.status)
+          tone: feedToneForStatus(unit.status),
+          district: unitUser?.district || incidentDistrict
         });
       });
 
@@ -800,7 +815,8 @@ export const OfficerDashboard: React.FC = () => {
           actor: note.userName || 'CAD',
           action: note.noteType === 'status' ? 'updated' : note.noteType === 'assignment' ? 'assigned units on' : 'added a note to',
           detail: `${incident.callNumber}${note.body ? ` - ${note.body}` : ''}`,
-          tone: note.noteType === 'status' ? 'blue' : 'slate'
+          tone: note.noteType === 'status' ? 'blue' : 'slate',
+          district: incidentDistrict
         });
       });
     });
@@ -808,8 +824,16 @@ export const OfficerDashboard: React.FC = () => {
     return items
       .filter((item) => item.at && !Number.isNaN(new Date(item.at).getTime()))
       .sort((first, second) => new Date(second.at).getTime() - new Date(first.at).getTime())
-      .slice(0, 8);
+      .slice(0, 24);
   }, [directory, incidents, urgentAlerts]);
+  const liveFeedItems = useMemo(() => {
+    if (liveFeedDistrictFilter === 'all') return liveFeedRawItems.slice(0, 8);
+    const selectedDistrictKey = liveFeedDistrictFilter === 'mine' ? myDistrictKey : normalizeDistrictKey(liveFeedDistrictFilter);
+    if (!selectedDistrictKey) return liveFeedRawItems.slice(0, 8);
+    return liveFeedRawItems
+      .filter((item) => !item.district || normalizeDistrictKey(item.district) === selectedDistrictKey)
+      .slice(0, 8);
+  }, [liveFeedDistrictFilter, liveFeedRawItems, myDistrictKey]);
   const realtimeStatusLabel =
     realtimeState === 'live'
       ? `Live${lastRealtimeSync ? ` - synced ${lastRealtimeSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`
@@ -2318,7 +2342,7 @@ export const OfficerDashboard: React.FC = () => {
             <span className="min-w-0">
               <span className="block text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">Live Feed</span>
               <span className="mt-0.5 block truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {liveFeedItems.length} updates
+                {liveFeedItems.length} updates - {liveFeedDistrictLabel}
               </span>
             </span>
             <span
@@ -2334,10 +2358,27 @@ export const OfficerDashboard: React.FC = () => {
             }`}
           >
             <div className="min-h-0 overflow-hidden">
+              <div className="border-t border-slate-200 p-2 dark:border-slate-700">
+                <label className="sr-only" htmlFor="live-feed-district-filter">Live feed district filter</label>
+                <select
+                  id="live-feed-district-filter"
+                  value={liveFeedDistrictFilter}
+                  onChange={(event) => setLiveFeedDistrictFilter(event.target.value)}
+                  className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 outline-none focus:border-cad-blue focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                >
+                  <option value="all">All Districts</option>
+                  <option value="mine" disabled={!myDistrictKey}>
+                    {myDistrictKey ? `My District - ${districtLabelFor(user?.district)}` : 'My District - Unassigned'}
+                  </option>
+                  {indianaDistricts.map((district) => (
+                    <option key={district.number} value={district.number}>{district.label}</option>
+                  ))}
+                </select>
+              </div>
               <div className="grid max-h-56 gap-1 overflow-y-auto border-t border-slate-200 p-2 pr-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent dark:border-slate-700 dark:scrollbar-thumb-slate-700">
                 {liveFeedItems.length === 0 && (
                   <div className="rounded bg-white px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-                    Waiting for live CAD activity.
+                    No live CAD activity for {liveFeedDistrictLabel.toLowerCase()}.
                   </div>
                 )}
                 {liveFeedItems.map((item) => {
