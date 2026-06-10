@@ -54,7 +54,7 @@ import { ModalShell } from './common/ModalShell';
 import { QuickLaunchDock, QuickLaunchSlot as DockSlotValue } from './common/QuickLaunchDock';
 import { InquiryPanel, InquirySubmission } from './common/InquiryPanel';
 import { ShieldSidebar, ShieldSidebarItem } from './common/ShieldSidebar';
-import { callTypesFromConfig, defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
+import { callTypesFromConfig } from '../utils/adminConfig';
 import { geofenceAssignmentForPoint, geofencesFromConfig, MapGeofence } from '../utils/mapGeofences';
 import { APP_NAME } from '../constants/branding';
 
@@ -686,7 +686,6 @@ export const Dashboard: React.FC = () => {
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
   const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || incidents[0] || null;
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
-  const configuredUnitStatuses = useMemo(() => unitStatusesFromConfig(adminConfig), [adminConfig]);
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
   const configuredGeofences = useMemo(() => geofencesFromConfig(adminConfig), [adminConfig]);
 
@@ -707,25 +706,6 @@ export const Dashboard: React.FC = () => {
     }
   }, []);
 
-  const statusCounts = useMemo(
-    () =>
-      units.reduce<Record<UnitStatus, number>>((counts, unit) => {
-        const status = displayStatus(unit);
-        return { ...counts, [status]: (counts[status] || 0) + 1 };
-      }, Object.fromEntries(Array.from(new Set([...defaultUnitStatuses, ...configuredUnitStatuses])).map((status) => [status, 0])) as Record<UnitStatus, number>),
-    [configuredUnitStatuses, units]
-  );
-  const locationReliabilityCounts = useMemo(
-    () =>
-      units.reduce<Record<UnitLocationReliability, number>>(
-        (counts, unit) => ({
-          ...counts,
-          [locationReliability(unit, locationClock)]: counts[locationReliability(unit, locationClock)] + 1
-        }),
-        { live: 0, stale: 0, offline: 0 }
-      ),
-    [locationClock, units]
-  );
   const unitBoardUnits = useMemo<UnitBoardUser[]>(() => {
     const trackedById = new Map(units.map((unit) => [unit.id, unit]));
     return directory
@@ -3034,18 +3014,6 @@ export const Dashboard: React.FC = () => {
           />
         )}
 
-        <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-wrap justify-center gap-2">
-          <MetricCard icon={<Radio size={14} />} label="Available" value={statusCounts.Available} />
-          <MetricCard icon={<Shield size={14} />} label="Dispatched" value={statusCounts.Dispatched} />
-          <MetricCard icon={<Layers size={14} />} label="En Route" value={statusCounts['En Route']} />
-          <MetricCard
-            icon={<MapPin size={14} />}
-            label="Red Status"
-            value={statusCounts['On Scene'] + statusCounts['Traffic Stop']}
-          />
-          <MetricCard icon={<MapPin size={14} />} label="Stale GPS" value={locationReliabilityCounts.stale + locationReliabilityCounts.offline} />
-        </div>
-
         <button
           type="button"
           onClick={recenterToCurrentLocation}
@@ -3329,20 +3297,6 @@ export const Dashboard: React.FC = () => {
     </div>
   );
 };
-
-const MetricCard: React.FC<{ icon: React.ReactNode; label: string; value: number }> = ({
-  icon,
-  label,
-  value
-}) => (
-  <div className="flex min-h-12 min-w-36 items-center justify-between rounded-md border border-cad-line bg-white/95 px-3 py-2 shadow-control dark:border-slate-700 dark:bg-slate-900/95">
-    <div className="flex min-w-0 items-center gap-2">
-      <span className="text-cad-blue">{icon}</span>
-      <p className="truncate text-xs font-semibold text-slate-600 dark:text-slate-300">{label}</p>
-    </div>
-    <p className="text-lg font-bold">{value}</p>
-  </div>
-);
 
 const SortHeader: React.FC<{
   label: string;
