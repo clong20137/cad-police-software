@@ -185,6 +185,7 @@ type TrackedUnit = User & { lat: number; lon: number };
 type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'inquiries' | 'protective-orders' | 'settings';
 type QuickLaunchSlot = DockSlotValue<QuickLaunchId>;
 type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
+type MapCommandSuggestion = { command: string; label: string; detail: string; target?: QuickLaunchId };
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
 type UnitBoardSortKey = 'status' | 'unit' | 'name' | 'cadUnit' | 'district';
 type SortDirection = 'asc' | 'desc';
@@ -388,6 +389,7 @@ const markerPulseClass = {
 
 const realtimeUrl = runtimeConfig.socketUrl;
 const googleMapsApiKey = runtimeConfig.googleMapsApiKey;
+const MAP_COMMAND_HISTORY_KEY = 'cad_dispatch_command_history';
 
 const darkMapStyles = [
   { elementType: 'geometry', stylers: [{ color: '#1f2937' }] },
@@ -648,6 +650,17 @@ export const Dashboard: React.FC = () => {
   const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [callBadgeCount, setCallBadgeCount] = useState(0);
   const [mapCommand, setMapCommand] = useState('');
+  const [mapCommandFeedback, setMapCommandFeedback] = useState('Try "new call crash 123 main", "10-28 ABC123", "units", or "?".');
+  const [mapCommandHistory, setMapCommandHistory] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(MAP_COMMAND_HISTORY_KEY) || '[]') as string[];
+    } catch {
+      return [];
+    }
+  });
+  const [mapCommandHistoryIndex, setMapCommandHistoryIndex] = useState<number | null>(null);
+  const [activeMapCommandSuggestion, setActiveMapCommandSuggestion] = useState(0);
+  const [mapCommandFocused, setMapCommandFocused] = useState(false);
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
   const [messageBody, setMessageBody] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -718,6 +731,7 @@ export const Dashboard: React.FC = () => {
   const trafficLayerRef = useRef<GoogleTrafficLayerInstance | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const latestMessageRef = useRef<HTMLDivElement | null>(null);
+  const mapCommandInputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const selectedMessageUserIdRef = useRef('');
   const typingStopTimerRef = useRef<number | null>(null);
@@ -1617,11 +1631,84 @@ export const Dashboard: React.FC = () => {
   const searchedMessages = visibleMessages.slice(-200);
   const selectedTyping = selectedMessageUserId ? typingByThread[selectedMessageUserId] : null;
   const filteredEmojis = emojiCatalog.filter((emoji) => !emojiSearch.trim() || emoji.includes(emojiSearch.trim()));
+  const findCommandIncident = useCallback((query: string) => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return null;
+    return incidents.find((incident) =>
+      [
+        incident.callNumber,
+        incident.id,
+        incident.type,
+        incident.address
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalized))
+    ) || null;
+  }, [incidents]);
+  const findCommandUser = useCallback((query: string) => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return null;
+    return directory.find((item) =>
+      [
+        item.cadUnitNumber,
+        item.unitNumber,
+        item.badge,
+        item.name,
+        item.email
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalized))
+    ) || null;
+  }, [directory]);
+  const mapCommandSuggestions = useMemo<MapCommandSuggestion[]>(() => {
+    const baseSuggestions: MapCommandSuggestion[] = [
+      { command: 'new call', label: 'New Call', detail: 'Open a blank new call form.', target: 'new-call' },
+      { command: 'new call crash 123 main', label: 'Prefill New Call', detail: 'Open New Call with type and address filled.', target: 'new-call' },
+      { command: '10-28 ABC123 IN', label: 'Plate Inquiry', detail: 'Open CJIS inquiries for a plate lookup.', target: 'inquiries' },
+      { command: '10-27 John Smith 01/01/1980', label: 'Driver Inquiry', detail: 'Open CJIS inquiries for a driver lookup.', target: 'inquiries' },
+      { command: 'units', label: 'Unit Status', detail: 'Open active units.', target: 'units' },
+      { command: 'calls', label: 'Calls', detail: 'Open all calls.', target: 'calls' },
+      { command: 'msg 001 call me', label: 'Message Unit', detail: 'Open messages to a CAD unit.' },
+      { command: 'assign 001 C-2026-0001', label: 'Assign Unit', detail: 'Assign a unit to a call if both are found.' },
+      { command: 'close C-2026-0001 duplicate call', label: 'Close Call', detail: 'Close a call when a disposition is included.' },
+      { command: '?', label: 'Command Help', detail: 'Show supported command examples.' }
+    ];
+    const query = mapCommand.trim().toLowerCase();
+    if (!query) return baseSuggestions.slice(0, 6);
+    return baseSuggestions
+      .filter((item) => `${item.command} ${item.label} ${item.detail}`.toLowerCase().includes(query))
+      .slice(0, 6);
+  }, [mapCommand]);
 
   useEffect(() => {
     if (activeQuickModal !== 'messages' || !selectedMessageUserId) return;
     window.setTimeout(() => latestMessageRef.current?.scrollIntoView({ block: 'end' }), 0);
   }, [activeQuickModal, searchedMessages.length, selectedMessageUserId]);
+
+  useEffect(() => {
+    localStorage.setItem(MAP_COMMAND_HISTORY_KEY, JSON.stringify(mapCommandHistory.slice(0, 20)));
+  }, [mapCommandHistory]);
+
+  useEffect(() => {
+    const handleCommandFocus = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable) return;
+      }
+      event.preventDefault();
+      mapCommandInputRef.current?.focus();
+    };
+
+    document.addEventListener('keydown', handleCommandFocus);
+    return () => document.removeEventListener('keydown', handleCommandFocus);
+  }, []);
+
+  useEffect(() => {
+    setActiveMapCommandSuggestion(0);
+    setMapCommandHistoryIndex(null);
+  }, [mapCommand]);
 
   const sidebarItems: ShieldSidebarItem[] = [
     { id: 'cjis', label: 'CJIS', icon: Shield, iconClassName: 'text-blue-700', onClick: () => setActiveQuickModal('inquiries') },
@@ -2121,33 +2208,99 @@ export const Dashboard: React.FC = () => {
     return () => window.removeEventListener('cad:quick-access-open', handleQuickAccess);
   }, [openQuickLaunch]);
 
-  const submitMapCommand = (event: React.FormEvent) => {
-    event.preventDefault();
-    const command = mapCommand.trim().toLowerCase();
-    if (!command) return;
+  const submitMapCommand = async (event?: React.FormEvent, overrideCommand?: string) => {
+    event?.preventDefault();
+    const rawCommand = (overrideCommand ?? mapCommand).trim();
+    const command = rawCommand.toLowerCase();
+    if (!command) {
+      setMapCommandFeedback('Type a command or ? for examples.');
+      return;
+    }
+
+    setMapCommandHistory((current) => [rawCommand, ...current.filter((item) => item !== rawCommand)].slice(0, 20));
 
     const openAndClear = (target: QuickLaunchId) => {
       openQuickLaunch(target);
       setMapCommand('');
+      setMapCommandFeedback(`Opening ${quickLaunchOptions.find((item) => item.id === target)?.label || target}.`);
     };
+
+    const prefillNewCall = (typeText: string, addressText: string) => {
+      const matchedType = configuredCallTypes.find((item) =>
+        typeText && item.label.toLowerCase().includes(typeText.toLowerCase())
+      );
+      setIncidentForm((current) => ({
+        ...current,
+        type: matchedType?.label || current.type,
+        priority: matchedType?.priority || current.priority,
+        address: addressText || current.address,
+        description: typeText && !matchedType ? typeText : current.description
+      }));
+      openAndClear('new-call');
+    };
+
+    if (command === '?') {
+      setMapCommandFeedback('Commands: new call crash 123 main, 10-28 ABC123 IN, 10-27 John Smith 01/01/1980, units, calls, msg 001 call me, assign 001 C-2026-0001, close C-2026-0001 disposition.');
+      return;
+    }
 
     if (['new', 'new call', 'call new', 'create call', 'dispatch'].includes(command)) {
       openAndClear('new-call');
+      return;
+    }
+    const newCallMatch = rawCommand.match(/^(?:new call|call)\s+(.+?)\s+(.+)$/i);
+    if (newCallMatch) {
+      prefillNewCall(newCallMatch[1], newCallMatch[2]);
       return;
     }
     if (['calls', 'call', 'active calls', 'pending calls', 'queue'].includes(command)) {
       openAndClear('calls');
       return;
     }
+    const callMatch = rawCommand.match(/^(?:call|open)\s+(.+)$/i);
+    if (callMatch) {
+      const incident = findCommandIncident(callMatch[1]);
+      if (incident) {
+        setSelectedIncidentId(incident.id);
+        setActiveCallTab('all');
+        openAndClear('call-detail');
+        return;
+      }
+    }
     if (['units', 'unit', 'unit status', 'status board'].includes(command)) {
       openAndClear('units');
       return;
+    }
+    const unitMatch = rawCommand.match(/^unit\s+(.+)$/i);
+    if (unitMatch) {
+      const unit = findCommandUser(unitMatch[1]);
+      if (unit) {
+        setSelectedUnitId(unit.id);
+        openAndClear('units');
+        return;
+      }
     }
     if (['messages', 'message', 'msg', 'chat'].includes(command)) {
       openAndClear('messages');
       return;
     }
+    const messageMatch = rawCommand.match(/^(?:msg|message)\s+(\S+)(?:\s+(.+))?$/i);
+    if (messageMatch) {
+      const recipient = findCommandUser(messageMatch[1]);
+      if (recipient) {
+        setSelectedMessageUserId(recipient.id);
+        if (messageMatch[2]) setMessageBody(messageMatch[2]);
+        openAndClear('messages');
+        return;
+      }
+      setMapCommandFeedback(`No unit found for "${messageMatch[1]}".`);
+      return;
+    }
     if (['cjis', 'inquiry', 'inquiries', '10-27', '10-28', 'plate', 'vin', 'name'].includes(command)) {
+      openAndClear('inquiries');
+      return;
+    }
+    if (/^(?:10-27|10-28|plate|vin|name)\b/i.test(rawCommand)) {
       openAndClear('inquiries');
       return;
     }
@@ -2155,19 +2308,123 @@ export const Dashboard: React.FC = () => {
       openAndClear('protective-orders');
       return;
     }
+    if (/^(?:protective order|protective orders|protect ord|po)\b/i.test(rawCommand)) {
+      openAndClear('protective-orders');
+      return;
+    }
     if (['settings', 'account', 'account settings'].includes(command)) {
       setAccountSettingsOpen(true);
       setMapCommand('');
+      setMapCommandFeedback('Opening account settings.');
       return;
+    }
+    const assignMatch = rawCommand.match(/^assign\s+(\S+)\s+(.+)$/i);
+    if (assignMatch) {
+      const unit = findCommandUser(assignMatch[1]);
+      const incident = findCommandIncident(assignMatch[2]);
+      if (!unit || !incident) {
+        setMapCommandFeedback(!unit ? `No unit found for "${assignMatch[1]}".` : `No call found for "${assignMatch[2]}".`);
+        return;
+      }
+      try {
+        const updated = await authClient.assignIncidentUnit(incident.id, unit.id, 'Assigned');
+        setIncidents((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        setSelectedIncidentId(updated.id);
+        openAndClear('call-detail');
+        setMapCommandFeedback(`Assigned ${unit.cadUnitNumber || unit.unitNumber || unit.name} to ${updated.callNumber}.`);
+        return;
+      } catch {
+        setMapCommandFeedback('Unable to assign unit from command line.');
+        return;
+      }
+    }
+    const closeMatch = rawCommand.match(/^(?:close|clear)\s+(\S+)(?:\s+(.+))?$/i);
+    if (closeMatch) {
+      const incident = findCommandIncident(closeMatch[1]);
+      if (!incident) {
+        setMapCommandFeedback(`No call found for "${closeMatch[1]}".`);
+        return;
+      }
+      setSelectedIncidentId(incident.id);
+      if (!closeMatch[2]) {
+        setIncidentDisposition('');
+        openAndClear('call-detail');
+        setMapCommandFeedback('Disposition required. Add it in the selected call before closing.');
+        return;
+      }
+      try {
+        const updated = await authClient.updateIncidentStatus(incident.id, 'Closed', closeMatch[2]);
+        setIncidents((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        openAndClear('calls');
+        setMapCommandFeedback(`Closed ${updated.callNumber}.`);
+        return;
+      } catch {
+        setMapCommandFeedback('Unable to close call from command line.');
+        return;
+      }
     }
 
     const toast: ToastNotice = {
       id: `map-command-${Date.now()}`,
       title: 'Command not found',
-      message: `No dispatch command matches "${mapCommand.trim()}".`,
+        message: `No dispatch command matches "${rawCommand}".`,
       tone: 'warning'
     };
     setToasts((current) => [toast, ...current].slice(0, 4));
+    setMapCommandFeedback(`Unknown command: ${rawCommand}`);
+  };
+
+  const handleMapCommandKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setMapCommand('');
+      setMapCommandFeedback('Command cleared.');
+      mapCommandInputRef.current?.blur();
+      return;
+    }
+
+    if (event.key === 'Tab' && mapCommandSuggestions[activeMapCommandSuggestion]) {
+      event.preventDefault();
+      setMapCommand(mapCommandSuggestions[activeMapCommandSuggestion].command);
+      setMapCommandFeedback(mapCommandSuggestions[activeMapCommandSuggestion].detail);
+      return;
+    }
+
+    if (event.key === 'ArrowUp' && mapCommandHistory.length > 0 && (!mapCommand.trim() || mapCommandHistoryIndex !== null)) {
+      event.preventDefault();
+      const nextIndex = mapCommandHistoryIndex === null
+        ? 0
+        : Math.min(mapCommandHistory.length - 1, mapCommandHistoryIndex + 1);
+      setMapCommandHistoryIndex(nextIndex);
+      setMapCommand(mapCommandHistory[nextIndex]);
+      setMapCommandFeedback('Command history.');
+      return;
+    }
+
+    if (event.key === 'ArrowDown' && mapCommandHistoryIndex !== null) {
+      event.preventDefault();
+      const nextIndex = mapCommandHistoryIndex - 1;
+      if (nextIndex < 0) {
+        setMapCommandHistoryIndex(null);
+        setMapCommand('');
+      } else {
+        setMapCommandHistoryIndex(nextIndex);
+        setMapCommand(mapCommandHistory[nextIndex]);
+      }
+      setMapCommandFeedback('Command history.');
+      return;
+    }
+
+    if (event.key === 'ArrowDown' && mapCommandSuggestions.length > 0) {
+      event.preventDefault();
+      setActiveMapCommandSuggestion((index) => (index + 1) % mapCommandSuggestions.length);
+      return;
+    }
+
+    if (event.key === 'ArrowUp' && mapCommandSuggestions.length > 0) {
+      event.preventDefault();
+      setActiveMapCommandSuggestion((index) => (index - 1 + mapCommandSuggestions.length) % mapCommandSuggestions.length);
+    }
   };
 
   const setUnitBoardSortKey = (key: UnitBoardSortKey) => {
@@ -3546,20 +3803,62 @@ export const Dashboard: React.FC = () => {
           <MapPin size={18} />
         </button>
 
-        <form
-          onSubmit={submitMapCommand}
-          className="absolute bottom-4 left-4 z-20 flex h-11 w-[min(22rem,calc(100vw-2rem))] items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95"
-        >
-          <Terminal size={16} className="shrink-0 text-cad-blue dark:text-blue-100" />
-          <span className="text-sm font-semibold text-slate-400">&gt;</span>
-          <input
-            value={mapCommand}
-            onChange={(event) => setMapCommand(event.target.value)}
-            placeholder="Command"
-            className="min-w-0 flex-1 appearance-none bg-transparent text-sm font-medium text-cad-ink outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-white"
-            aria-label="Dispatch command line"
-          />
-        </form>
+        <div className="absolute bottom-4 left-4 z-20 w-[min(22rem,calc(100vw-2rem))]">
+          {mapCommandFocused && (
+            <div className="absolute bottom-14 left-0 right-0 overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
+              <div className="border-b border-cad-line px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-700 dark:text-slate-300">
+                {mapCommandFeedback}
+              </div>
+              <div className="max-h-64 overflow-y-auto p-1.5">
+                {mapCommandSuggestions.length === 0 ? (
+                  <p className="px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-300">No command suggestions.</p>
+                ) : (
+                  mapCommandSuggestions.map((suggestion, index) => (
+                    <button
+                      key={suggestion.command}
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => setActiveMapCommandSuggestion(index)}
+                      onClick={() => {
+                        setMapCommand(suggestion.command);
+                        submitMapCommand(undefined, suggestion.command);
+                      }}
+                      className={`flex w-full items-start gap-2 rounded px-2.5 py-2 text-left transition ${
+                        activeMapCommandSuggestion === index
+                          ? 'bg-blue-50 text-cad-blue dark:bg-blue-950/70 dark:text-blue-100'
+                          : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <span className="mt-0.5 text-xs font-semibold text-slate-400">&gt;</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold">{suggestion.command}</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400">{suggestion.detail}</span>
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+          <form
+            onSubmit={submitMapCommand}
+            className="flex h-11 items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95"
+          >
+            <Terminal size={16} className="shrink-0 text-cad-blue dark:text-blue-100" />
+            <span className="text-sm font-semibold text-slate-400">&gt;</span>
+            <input
+              ref={mapCommandInputRef}
+              value={mapCommand}
+              onChange={(event) => setMapCommand(event.target.value)}
+              onKeyDown={handleMapCommandKeyDown}
+              onFocus={() => setMapCommandFocused(true)}
+              onBlur={() => window.setTimeout(() => setMapCommandFocused(false), 120)}
+              placeholder="Command"
+              className="min-w-0 flex-1 appearance-none bg-transparent text-sm font-medium text-cad-ink outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-white"
+              aria-label="Dispatch command line"
+            />
+          </form>
+        </div>
 
         <div className="hidden">
           <OverlayPanel
