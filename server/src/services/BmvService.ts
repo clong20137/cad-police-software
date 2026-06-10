@@ -1,9 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { BmvInquiryRequest, BmvInquiryResponse } from '../types/auth';
-
-const bmvEndpoint = process.env.BMV_API_URL || '';
-const bmvApiKey = process.env.BMV_API_KEY || '';
-const requestTimeoutMs = Number(process.env.BMV_API_TIMEOUT_MS || 12000);
+import { AuditLogService } from './AuditLogService';
+import { IntegrationSettingsService } from './IntegrationSettingsService';
 
 const validateInquiry = (input: BmvInquiryRequest): void => {
   if (!input.reason?.trim()) throw new Error('BMV inquiry reason is required');
@@ -23,25 +21,35 @@ const validateInquiry = (input: BmvInquiryRequest): void => {
 export class BmvService {
   static async submitInquiry(input: BmvInquiryRequest, requestedBy: string): Promise<BmvInquiryResponse> {
     validateInquiry(input);
+    const settings = await IntegrationSettingsService.get('BMV');
 
-    if (!bmvEndpoint) {
-      return {
+    if (!settings.enabled || !settings.endpoint) {
+      const response = {
         id: uuidv4(),
         status: 'not_configured',
         source: 'BMV',
         message: 'BMV integration is ready, but no approved BMV endpoint is configured.',
         requestedAt: new Date()
-      };
+      } as BmvInquiryResponse;
+      await AuditLogService.record({
+        userId: requestedBy,
+        action: 'bmv_inquiry',
+        resource: 'sensitive_inquiry',
+        resourceId: response.id,
+        severity: 'warning',
+        metadata: { kind: input.kind, reason: input.reason, status: response.status }
+      });
+      return response;
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+    const timeout = setTimeout(() => controller.abort(), settings.timeoutMs);
     try {
-      const response = await fetch(bmvEndpoint, {
+      const response = await fetch(settings.endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(bmvApiKey ? { Authorization: `Bearer ${bmvApiKey}` } : {})
+          ...(settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : {})
         },
         body: JSON.stringify({
           ...input,
@@ -53,32 +61,58 @@ export class BmvService {
 
       const record = (await response.json().catch(() => ({}))) as Record<string, unknown>;
       if (!response.ok) {
-        return {
+        const inquiryResponse = {
           id: uuidv4(),
           status: 'error',
           source: 'BMV',
           message: typeof record.error === 'string' ? record.error : 'BMV inquiry was rejected by the configured endpoint.',
           requestedAt: new Date(),
           record
-        };
+        } as BmvInquiryResponse;
+        await AuditLogService.record({
+          userId: requestedBy,
+          action: 'bmv_inquiry',
+          resource: 'sensitive_inquiry',
+          resourceId: inquiryResponse.id,
+          severity: 'error',
+          metadata: { kind: input.kind, reason: input.reason, status: inquiryResponse.status }
+        });
+        return inquiryResponse;
       }
 
-      return {
+      const inquiryResponse = {
         id: uuidv4(),
         status: 'submitted',
         source: 'BMV',
         message: 'BMV inquiry submitted to configured endpoint.',
         requestedAt: new Date(),
         record
-      };
+      } as BmvInquiryResponse;
+      await AuditLogService.record({
+        userId: requestedBy,
+        action: 'bmv_inquiry',
+        resource: 'sensitive_inquiry',
+        resourceId: inquiryResponse.id,
+        metadata: { kind: input.kind, reason: input.reason, status: inquiryResponse.status }
+      });
+      return inquiryResponse;
     } catch (error) {
-      return {
+      const inquiryResponse = {
         id: uuidv4(),
         status: 'error',
         source: 'BMV',
         message: error instanceof Error && error.name === 'AbortError' ? 'BMV inquiry timed out.' : 'Unable to reach configured BMV endpoint.',
         requestedAt: new Date()
-      };
+      } as BmvInquiryResponse;
+      await AuditLogService.record({
+        userId: requestedBy,
+        action: 'bmv_inquiry',
+        resource: 'sensitive_inquiry',
+        resourceId: inquiryResponse.id,
+        severity: 'error',
+        metadata: { kind: input.kind, reason: input.reason, status: inquiryResponse.status }
+      });
+      return inquiryResponse;
     } finally {
       clearTimeout(timeout);
     }

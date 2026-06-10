@@ -8,7 +8,7 @@ const router = Router();
 router.post(
   '/inquiries',
   authMiddleware,
-  requirePermission('view_dispatch'),
+  requirePermission('query_idacs'),
   async (req: Request<{}, {}, IdacsInquiryRequest>, res: Response): Promise<void> => {
     try {
       res.json(await IdacsService.submitInquiry(req.body, req.user?.id || ''));

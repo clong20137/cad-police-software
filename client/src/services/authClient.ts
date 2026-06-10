@@ -3,16 +3,19 @@ import {
   ChatMessage,
   ChangePasswordRequest,
   AdminConfigurationItem,
+  AuditLogEntry,
   BmvInquiryRequest,
   BmvInquiryResponse,
   CreateIncidentRequest,
   CreateUrgentAlertRequest,
+  CourtLookupAuditRequest,
   Incident,
   IncidentNote,
   IncidentStatus,
   IncidentUnitStatus,
   IdacsInquiryRequest,
   IdacsInquiryResponse,
+  IntegrationStatus,
   LoginResponse,
   Permission,
   PublicAuthSettings,
@@ -176,6 +179,25 @@ class AuthClient {
 
   async deleteAdminConfigurationItem(itemId: string): Promise<void> {
     await this.api.delete(`/configuration/${itemId}`);
+  }
+
+  async getIntegrationStatuses(): Promise<IntegrationStatus[]> {
+    const response = await this.api.get<IntegrationStatus[]>('/integrations/status');
+    return response.data;
+  }
+
+  async testIntegration(code: IntegrationStatus['code']): Promise<IntegrationStatus> {
+    const response = await this.api.post<IntegrationStatus>(`/integrations/${code}/test`);
+    return response.data;
+  }
+
+  async auditCourtLookup(input: CourtLookupAuditRequest): Promise<void> {
+    await this.api.post('/integrations/court-lookups', input);
+  }
+
+  async getInquiryHistory(limit = 200): Promise<AuditLogEntry[]> {
+    const response = await this.api.get<AuditLogEntry[]>('/integrations/inquiries/history', { params: { limit } });
+    return response.data;
   }
 
   async getMessages(userId: string, search = ''): Promise<ChatMessage[]> {

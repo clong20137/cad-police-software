@@ -310,6 +310,23 @@ export interface IdacsInquiryResponse {
   record?: Record<string, unknown>;
 }
 
+export interface IntegrationStatus {
+  code: 'BMV' | 'IDACS' | 'COURTS';
+  label: string;
+  enabled: boolean;
+  configured: boolean;
+  message: string;
+}
+
+export interface CourtLookupAuditRequest {
+  mode: 'protective-orders' | 'mycase';
+  reason: string;
+  name?: string;
+  dob?: string;
+  caseNumber?: string;
+  sourceUrl: string;
+}
+
 export type UrgentAlertSeverity = 'Advisory' | 'Important' | 'Urgent' | 'Critical';
 export type UrgentAlertAudienceType = 'everyone' | 'district' | 'users';
 
@@ -369,6 +386,9 @@ export type Permission =
   | 'create_dispatch'
   | 'update_dispatch'
   | 'delete_dispatch'
+  | 'query_bmv'
+  | 'query_idacs'
+  | 'query_courts'
   | 'view_officers'
   | 'update_officers'
   | 'manage_users'
@@ -381,6 +401,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'create_dispatch',
     'update_dispatch',
     'delete_dispatch',
+    'query_bmv',
+    'query_idacs',
+    'query_courts',
     'view_officers',
     'update_officers',
     'manage_users',
@@ -391,9 +414,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'view_dispatch',
     'create_dispatch',
     'update_dispatch',
+    'query_bmv',
+    'query_idacs',
+    'query_courts',
     'view_officers',
     'view_reports'
   ],
-  [UserRole.OFFICER]: ['view_dispatch', 'view_officers'],
+  [UserRole.OFFICER]: ['view_dispatch', 'query_bmv', 'query_idacs', 'query_courts', 'view_officers'],
   [UserRole.VIEWER]: ['view_dispatch', 'view_officers']
 };

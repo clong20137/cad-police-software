@@ -93,4 +93,18 @@ export class AuditLogService {
     );
     return rows.map(toAuditLog);
   }
+
+  static async sensitiveInquiryHistory(limit = 200): Promise<AuditLogEntry[]> {
+    const [rows] = await pool.execute<AuditLogRow[]>(
+      `
+        SELECT *
+        FROM audit_logs
+        WHERE action IN ('bmv_inquiry', 'idacs_inquiry', 'court_lookup')
+        ORDER BY created_at DESC
+        LIMIT ?
+      `,
+      [Math.min(Math.max(limit, 1), 500)]
+    );
+    return rows.map(toAuditLog);
+  }
 }

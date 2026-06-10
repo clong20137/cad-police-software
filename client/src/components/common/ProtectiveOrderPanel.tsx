@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ExternalLink, RefreshCw, Search, ShieldAlert } from 'lucide-react';
+import { authClient } from '../../services/authClient';
 
 const courtPortalUrl = 'https://public.courts.in.gov/';
 const myCaseUrl = 'https://public.courts.in.gov/mycase/';
@@ -20,14 +21,34 @@ export const ProtectiveOrderPanel: React.FC = () => {
   const [name, setName] = useState('');
   const [dob, setDob] = useState('');
   const [caseNumber, setCaseNumber] = useState('');
+  const [reason, setReason] = useState('Protective order / court record check');
+  const [message, setMessage] = useState('');
   const sourceUrl = useMemo(() => buildCourtSearchUrl(mode, name, dob, caseNumber), [caseNumber, dob, mode, name]);
   const [embeddedUrl, setEmbeddedUrl] = useState(courtPortalUrl);
   const [frameKey, setFrameKey] = useState(0);
   const title = mode === 'mycase' ? 'MyCase' : 'Protective Orders';
 
-  const loadInCad = (nextMode = mode) => {
-    setEmbeddedUrl(buildCourtSearchUrl(nextMode, name, dob, caseNumber));
+  const loadInCad = async (nextMode = mode) => {
+    const nextUrl = buildCourtSearchUrl(nextMode, name, dob, caseNumber);
+    if (!reason.trim()) {
+      setMessage('Court lookup reason is required.');
+      return;
+    }
+    setEmbeddedUrl(nextUrl);
     setFrameKey((value) => value + 1);
+    try {
+      await authClient.auditCourtLookup({
+        mode: nextMode,
+        reason: reason.trim(),
+        name: name.trim() || undefined,
+        dob: dob || undefined,
+        caseNumber: caseNumber.trim() || undefined,
+        sourceUrl: nextUrl
+      });
+      setMessage('Court lookup audited.');
+    } catch {
+      setMessage('Court lookup opened, but audit logging failed.');
+    }
   };
 
   return (
@@ -92,13 +113,23 @@ export const ProtectiveOrderPanel: React.FC = () => {
             className="h-10 rounded border border-cad-line bg-white px-3 text-sm font-normal uppercase outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
           />
         </label>
+        <label className="grid gap-1 text-sm font-bold text-slate-700 dark:text-slate-300 sm:col-span-3">
+          Query Reason
+          <input
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Reason required"
+            className="h-10 rounded border border-cad-line bg-white px-3 text-sm font-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+          />
+        </label>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => loadInCad()}
-          className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-blue-800"
+          disabled={!reason.trim()}
+          className="inline-flex items-center gap-2 rounded-md bg-cad-blue px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-blue-800 disabled:opacity-50"
         >
           <Search size={16} />
           Search In CAD
@@ -121,6 +152,7 @@ export const ProtectiveOrderPanel: React.FC = () => {
           <ExternalLink size={15} />
         </a>
       </div>
+      {message && <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{message}</p>}
 
       <div className="overflow-hidden rounded-lg border border-cad-line bg-white shadow-inner dark:border-slate-700 dark:bg-slate-950">
         <div className="border-b border-cad-line bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900">

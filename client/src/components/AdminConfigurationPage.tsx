@@ -21,6 +21,7 @@ import { authClient } from '../services/authClient';
 import {
   AdminConfigSection,
   AdminConfigurationItem,
+  IntegrationStatus,
   UnitStatus,
   UpdateUserRequest,
   User,
@@ -29,8 +30,8 @@ import {
 import { defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
 import { APP_NAME } from '../constants/branding';
 
-type EditableConfigSection = Exclude<AdminConfigSection, 'security'>;
-type AdminSection = EditableConfigSection | 'users' | 'security';
+type EditableConfigSection = Exclude<AdminConfigSection, 'security' | 'integrations'>;
+type AdminSection = EditableConfigSection | 'users' | 'security' | 'integrations';
 type ToastTone = 'success' | 'error';
 
 type ToastNotice = {
@@ -66,6 +67,7 @@ const sections: Array<{ id: AdminSection; label: string; icon: React.ReactNode }
   { id: 'units', label: 'Units', icon: <Truck size={17} /> },
   { id: 'calls', label: 'Call Types', icon: <ClipboardList size={17} /> },
   { id: 'statuses', label: 'Statuses', icon: <Radio size={17} /> },
+  { id: 'integrations', label: 'Integrations', icon: <Shield size={17} /> },
   { id: 'security', label: 'Security', icon: <Shield size={17} /> }
 ];
 
@@ -180,6 +182,10 @@ export const AdminConfigurationPage: React.FC = () => {
   const activeItems = useMemo(
     () => (isConfigSection(activeSection) ? items.filter((item) => item.section === activeSection) : []),
     [activeSection, items]
+  );
+  const integrationItems = useMemo(
+    () => items.filter((item) => item.section === 'integrations'),
+    [items]
   );
 
   const selectedUser = users.find((item) => item.id === selectedUserId) || null;
@@ -327,6 +333,29 @@ export const AdminConfigurationPage: React.FC = () => {
     } catch {
       addToast('Security update failed', 'Unable to save security configuration.', 'error');
       loadAdmin();
+    }
+  };
+
+  const updateIntegrationMetadata = async (item: AdminConfigurationItem, metadata: Record<string, unknown>) => {
+    setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, metadata: { ...entry.metadata, ...metadata } } : entry)));
+    try {
+      const updated = await authClient.updateAdminConfigurationItem(item.id, {
+        metadata: { ...item.metadata, ...metadata }
+      });
+      setItems((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+      addToast('Integration updated', `${updated.name} was saved.`);
+    } catch {
+      addToast('Integration update failed', 'Unable to save integration settings.', 'error');
+      loadAdmin();
+    }
+  };
+
+  const testIntegration = async (code: IntegrationStatus['code']) => {
+    try {
+      const status = await authClient.testIntegration(code);
+      addToast('Integration test', status.message, status.configured ? 'success' : 'error');
+    } catch {
+      addToast('Integration test failed', 'Unable to test that integration.', 'error');
     }
   };
 
@@ -537,6 +566,97 @@ export const AdminConfigurationPage: React.FC = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {activeSection === 'integrations' && (
+            <div className="grid gap-4">
+              {integrationItems.map((item) => {
+                const endpoint = typeof item.metadata.endpoint === 'string' ? item.metadata.endpoint : '';
+                const apiKey = typeof item.metadata.apiKey === 'string' ? item.metadata.apiKey : '';
+                const timeoutMs = Number(item.metadata.timeoutMs || 12000);
+                const requireReason = typeof item.metadata.requireReason === 'boolean' ? item.metadata.requireReason : true;
+                const enabled = typeof item.metadata.enabled === 'boolean' ? item.metadata.enabled : item.active;
+                return (
+                  <section key={item.id} className="rounded-lg border border-cad-line p-4 dark:border-slate-700">
+                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-cad-line pb-3 dark:border-slate-700">
+                      <div>
+                        <h3 className="text-base font-black">{item.name}</h3>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{item.category}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => testIntegration(item.code as IntegrationStatus['code'])}
+                          className="rounded-md border border-cad-line px-3 py-2 text-sm font-bold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                        >
+                          Test
+                        </button>
+                        <label className="inline-flex items-center gap-2 rounded-md border border-cad-line px-3 py-2 text-sm font-bold dark:border-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={enabled}
+                            onChange={(event) => updateIntegrationMetadata(item, { enabled: event.target.checked })}
+                          />
+                          Enabled
+                        </label>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 lg:grid-cols-[1.4fr_1fr_10rem]">
+                      <label className="grid gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
+                        Endpoint
+                        <input
+                          value={endpoint}
+                          onChange={(event) => updateIntegrationMetadata(item, { endpoint: event.target.value })}
+                          placeholder={item.code === 'COURTS' ? 'https://public.courts.in.gov/' : 'Approved endpoint URL'}
+                          className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm font-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </label>
+                      {item.code !== 'COURTS' && (
+                        <label className="grid gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
+                          API Key
+                          <input
+                            type="password"
+                            value={apiKey}
+                            onChange={(event) => updateIntegrationMetadata(item, { apiKey: event.target.value })}
+                            placeholder="Approved credential"
+                            className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm font-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          />
+                        </label>
+                      )}
+                      <label className="grid gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
+                        Timeout MS
+                        <input
+                          type="number"
+                          min={1000}
+                          value={timeoutMs}
+                          onChange={(event) => updateIntegrationMetadata(item, { timeoutMs: Number(event.target.value) })}
+                          className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm font-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                        />
+                      </label>
+                      {item.code === 'COURTS' && (
+                        <label className="grid gap-1 text-sm font-bold text-slate-700 dark:text-slate-300 lg:col-span-2">
+                          MyCase Endpoint
+                          <input
+                            value={typeof item.metadata.myCaseEndpoint === 'string' ? item.metadata.myCaseEndpoint : ''}
+                            onChange={(event) => updateIntegrationMetadata(item, { myCaseEndpoint: event.target.value })}
+                            placeholder="https://public.courts.in.gov/mycase/"
+                            className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm font-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                          />
+                        </label>
+                      )}
+                      <label className="inline-flex items-center gap-2 rounded-md border border-cad-line px-3 py-2 text-sm font-bold dark:border-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={requireReason}
+                          onChange={(event) => updateIntegrationMetadata(item, { requireReason: event.target.checked })}
+                        />
+                        Require reason
+                      </label>
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           )}
 

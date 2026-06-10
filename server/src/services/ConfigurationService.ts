@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { indianaCountyBoundaries } from '../data/indianaCountyBoundaries';
 import { AdminConfigurationRow, pool } from '../db/mysql';
 
-export type AdminConfigSection = 'agencies' | 'districts' | 'units' | 'calls' | 'statuses' | 'security';
+export type AdminConfigSection = 'agencies' | 'districts' | 'units' | 'calls' | 'statuses' | 'security' | 'integrations';
 
 export interface AdminConfigurationItem {
   id: string;
@@ -30,7 +30,7 @@ export interface UpsertConfigurationItemRequest {
   metadata?: Record<string, unknown>;
 }
 
-const allowedSections = new Set<AdminConfigSection>(['agencies', 'districts', 'units', 'calls', 'statuses', 'security']);
+const allowedSections = new Set<AdminConfigSection>(['agencies', 'districts', 'units', 'calls', 'statuses', 'security', 'integrations']);
 
 const districtBoundariesForCounties = (counties: string[]) =>
   counties.flatMap((county) => indianaCountyBoundaries[county] || []);
@@ -271,7 +271,10 @@ const defaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'updatedAt'>> =
   { id: 'security-heartbeat', section: 'security', name: 'Websocket heartbeat seconds', code: 'WEBSOCKET_HEARTBEAT_SECONDS', agency: 'All', category: 'Realtime', active: true, sortOrder: 30, metadata: { value: 20, type: 'number', min: 5 } },
   { id: 'security-https', section: 'security', name: 'Require HTTPS', code: 'REQUIRE_HTTPS', agency: 'All', category: 'Transport', active: true, sortOrder: 40, metadata: { value: true, type: 'boolean' } },
   { id: 'security-db-ssl', section: 'security', name: 'Require DB SSL', code: 'REQUIRE_DB_SSL', agency: 'All', category: 'Database', active: true, sortOrder: 50, metadata: { value: true, type: 'boolean' } },
-  { id: 'security-registration-enabled', section: 'security', name: 'Allow public registration', code: 'ALLOW_PUBLIC_REGISTRATION', agency: 'All', category: 'Access', active: true, sortOrder: 60, metadata: { value: true, type: 'boolean' } }
+  { id: 'security-registration-enabled', section: 'security', name: 'Allow public registration', code: 'ALLOW_PUBLIC_REGISTRATION', agency: 'All', category: 'Access', active: true, sortOrder: 60, metadata: { value: true, type: 'boolean' } },
+  { id: 'integration-bmv', section: 'integrations', name: 'BMV', code: 'BMV', agency: 'Indiana', category: 'Sensitive Lookup', active: true, sortOrder: 10, metadata: { enabled: false, endpoint: '', apiKey: '', timeoutMs: 12000, requireReason: true } },
+  { id: 'integration-idacs', section: 'integrations', name: 'IDACS', code: 'IDACS', agency: 'Indiana', category: 'Sensitive Lookup', active: true, sortOrder: 20, metadata: { enabled: false, endpoint: '', apiKey: '', timeoutMs: 12000, requireReason: true } },
+  { id: 'integration-courts', section: 'integrations', name: 'Indiana Courts', code: 'COURTS', agency: 'Indiana', category: 'Court Lookup', active: true, sortOrder: 30, metadata: { enabled: true, endpoint: 'https://public.courts.in.gov/', myCaseEndpoint: 'https://public.courts.in.gov/mycase/', requireReason: true } }
 ];
 
 const toItem = (row: AdminConfigurationRow): AdminConfigurationItem => ({
@@ -355,6 +358,15 @@ export class ConfigurationService {
     const item = rows[0] ? toItem(rows[0]) : null;
     const value = item?.metadata?.value;
     return item?.active !== false && typeof value === 'boolean' ? value : fallback;
+  }
+
+  static async getBySectionCode(section: AdminConfigSection, code: string): Promise<AdminConfigurationItem | null> {
+    await this.ensureDefaults();
+    const [rows] = await pool.execute<AdminConfigurationRow[]>(
+      'SELECT * FROM admin_configuration_items WHERE section = ? AND code = ? LIMIT 1',
+      [section, code]
+    );
+    return rows[0] ? toItem(rows[0]) : null;
   }
 
   static async create(input: UpsertConfigurationItemRequest): Promise<AdminConfigurationItem> {

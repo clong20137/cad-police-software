@@ -8,7 +8,7 @@ const router = Router();
 router.post(
   '/inquiries',
   authMiddleware,
-  requirePermission('view_dispatch'),
+  requirePermission('query_bmv'),
   async (req: Request<{}, {}, BmvInquiryRequest>, res: Response): Promise<void> => {
     try {
       res.json(await BmvService.submitInquiry(req.body, req.user?.id || ''));
