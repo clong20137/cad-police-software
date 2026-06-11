@@ -1030,6 +1030,12 @@ export const Dashboard: React.FC = () => {
     setModalZOrder((current) => ({ ...current, [modalId]: modalZCounterRef.current }));
   }, []);
 
+  const openIncidentDetail = useCallback((incidentId: string) => {
+    setSelectedIncidentId(incidentId);
+    setCallBadgeCount(0);
+    focusQuickModal('call-detail');
+  }, [focusQuickModal]);
+
   const closeQuickModal = useCallback((modalId: QuickLaunchId) => {
     setOpenQuickModals((current) => current.filter((item) => item !== modalId));
     setActiveQuickModal((current) => {
@@ -1571,7 +1577,7 @@ export const Dashboard: React.FC = () => {
             lon: incident.lon as number,
             label: incident.callNumber,
             tone: incident.priority === 'Emergency' || incident.priority === 'High' ? 'red' : 'yellow',
-            onClick: () => setSelectedIncidentId(incident.id)
+            onClick: () => openIncidentDetail(incident.id)
           });
           if (incidentOverlay) mapOverlaysRef.current.push(incidentOverlay);
         });
@@ -1590,7 +1596,7 @@ export const Dashboard: React.FC = () => {
     script.async = true;
     script.onload = initializeMap;
     document.head.appendChild(script);
-  }, [center.lat, center.lon, configuredGeofences, deferredCurrentLocation, incidents, locationClock, mapLayers, theme, units, user?.id]);
+  }, [center.lat, center.lon, configuredGeofences, deferredCurrentLocation, incidents, locationClock, mapLayers, openIncidentDetail, theme, units, user?.id]);
 
   const recenterToCurrentLocation = () => {
     const target = currentLocation || center;
@@ -2701,23 +2707,31 @@ export const Dashboard: React.FC = () => {
     const recommendedNextDisabled = recommendedNextStatus === 'Closed' && !incidentDisposition.trim();
 
     return (
-    <div className={`grid h-[min(74vh,760px)] min-h-[560px] overflow-hidden rounded-lg border border-cad-line bg-white text-cad-ink dark:border-slate-700 dark:bg-slate-900 dark:text-white ${showCallList ? 'lg:grid-cols-[360px_1fr]' : ''}`}>
+    <div className={`grid h-[min(74vh,760px)] min-h-[560px] overflow-hidden rounded-lg border border-cad-line bg-white text-cad-ink dark:border-slate-700 dark:bg-slate-900 dark:text-white ${showCallList ? 'lg:grid-cols-[340px_1fr]' : ''}`}>
       {showCallList && (
         <div className="flex min-h-0 flex-col border-r border-cad-line bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
-          <div className="shrink-0 border-b border-cad-line p-3 dark:border-slate-700">
-            <div className="mb-3 grid grid-cols-3 gap-2">
-              <div className="rounded-md border border-cad-line bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Active</p>
-                <p className="mt-1 text-lg font-black text-cad-blue dark:text-blue-100">{activeCount}</p>
-              </div>
-              <div className="rounded-md border border-cad-line bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Pending</p>
-                <p className="mt-1 text-lg font-black text-amber-700 dark:text-amber-200">{pendingCount}</p>
-              </div>
-              <div className="rounded-md border border-cad-line bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Assigned</p>
-                <p className="mt-1 text-lg font-black text-emerald-700 dark:text-emerald-200">{assignedCount}</p>
-              </div>
+          <div className="shrink-0 border-b border-cad-line bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-cad-blue dark:bg-blue-950 dark:text-blue-100">{activeCount} active</span>
+              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700 dark:bg-amber-950 dark:text-amber-200">{pendingCount} pending</span>
+              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">{assignedCount} assigned</span>
+            </div>
+            <div className="mb-3 grid grid-cols-4 gap-1 rounded-md bg-slate-100 p-1 dark:bg-slate-950">
+              {callTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveCallTab(tab.id)}
+                  className={`flex min-w-0 flex-col items-center justify-center rounded px-1.5 py-2 text-center text-[10px] font-black uppercase tracking-[0.06em] transition ${
+                    activeCallTab === tab.id
+                      ? 'bg-white text-cad-blue shadow-sm ring-1 ring-cad-blue/15 dark:bg-slate-800 dark:text-blue-100'
+                      : 'text-slate-500 hover:bg-white/70 hover:text-cad-blue dark:text-slate-400 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="flex items-center gap-1">{tab.icon}{tab.calls.length}</span>
+                  <span className="mt-0.5 truncate">{tab.label.replace(' Calls', '')}</span>
+                </button>
+              ))}
             </div>
             <label className="relative mb-3 block">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
@@ -2728,23 +2742,6 @@ export const Dashboard: React.FC = () => {
                 className="h-10 w-full rounded-md border border-cad-line bg-white pl-9 pr-3 text-sm outline-none focus:border-cad-accent focus:ring-4 focus:ring-cad-accent/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
               />
             </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {callTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveCallTab(tab.id)}
-                  className={`rounded-md border px-2 py-2 text-left text-[11px] font-black uppercase tracking-[0.08em] transition ${
-                    activeCallTab === tab.id
-                      ? 'border-cad-accent bg-white text-cad-blue shadow-sm dark:border-cad-accent dark:bg-slate-900 dark:text-blue-100'
-                      : 'border-cad-line bg-white text-slate-600 hover:border-cad-accent/60 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5 truncate">{tab.icon}{tab.label}</span>
-                  <span className="mt-0.5 block text-xs opacity-80">{tab.calls.length} calls</span>
-                </button>
-              ))}
-            </div>
           </div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
             {incidentsLoading && incidents.length === 0 && (
@@ -2794,21 +2791,12 @@ export const Dashboard: React.FC = () => {
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                     {incident.units.length} unit{incident.units.length === 1 ? '' : 's'}
                   </span>
-                  {incident.units.length === 0 ? (
+                  {incident.units.length === 0 && (
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
                       Unassigned
                     </span>
-                  ) : (
-                    incident.units.map((assignedUnit) => (
-                      <span key={assignedUnit.userId} className="rounded-full bg-cad-blue/10 px-2 py-0.5 text-[11px] font-bold text-cad-blue dark:bg-blue-950 dark:text-blue-100">
-                        {assignedUnit.cadUnitNumber || assignedUnit.name}: {assignedUnit.status}
-                      </span>
-                    ))
                   )}
                 </div>
-                <p className="mt-2 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  {[incident.district, incident.beat].filter(Boolean).join(' / ') || 'No district assigned'}
-                </p>
               </button>
             ))}
           </div>
@@ -3667,7 +3655,7 @@ export const Dashboard: React.FC = () => {
         onProfile={() => setSettingsOpen(true)}
       />
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="pointer-events-auto fixed right-3 top-3 z-40 flex select-none items-center gap-1.5 rounded-2xl border border-cad-line bg-white/90 p-2 text-cad-ink shadow-[0_16px_45px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950/85 dark:text-white sm:right-5 sm:top-4 sm:gap-2">
+        <div className="pointer-events-auto fixed right-3 top-3 z-40 flex select-none items-center gap-1.5 rounded-2xl border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_22px_60px_rgba(15,23,42,0.26)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/92 dark:text-white dark:ring-blue-300/10 sm:right-5 sm:top-4 sm:gap-2">
           <span
             className={`inline-flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white shadow-sm ring-1 transition dark:border-slate-700 dark:bg-slate-800 ${realtimeStatusClass}`}
             title={realtimeStatusLabel}
@@ -3687,7 +3675,7 @@ export const Dashboard: React.FC = () => {
                 setMapFilterOpen((value) => !value);
                 setSettingsOpen(false);
               }}
-              className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
+              className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-md ring-1 ring-cad-blue/10 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
               aria-label="Map filters"
               aria-expanded={mapFilterOpen}
               title="Map filters"
@@ -3695,7 +3683,7 @@ export const Dashboard: React.FC = () => {
               <SlidersHorizontal size={19} />
             </button>
             {mapFilterOpen && (
-              <div className="absolute right-0 top-12 z-40 w-56 rounded border border-cad-line bg-white p-2 text-cad-ink shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+              <div className="absolute right-0 top-12 z-40 w-56 rounded border border-cad-blue/20 bg-white p-2 text-cad-ink shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-slate-100">
                 <div className="border-b border-slate-100 px-2 pb-2 dark:border-slate-800">
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Map Layers</p>
                 </div>
@@ -3752,13 +3740,13 @@ export const Dashboard: React.FC = () => {
               setSettingsOpen((value) => !value);
               setMapFilterOpen(false);
             }}
-            className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
+            className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-md ring-1 ring-cad-blue/10 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
             aria-label="Settings"
           >
             <Settings size={19} />
           </button>
           {settingsOpen && (
-            <div className="absolute right-0 top-12 z-40 w-[calc(100vw-6.5rem)] max-w-64 origin-top-right rounded border border-cad-line bg-white py-1 text-cad-ink shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 sm:w-64">
+            <div className="absolute right-0 top-12 z-40 w-[calc(100vw-6.5rem)] max-w-64 origin-top-right rounded border border-cad-blue/20 bg-white py-1 text-cad-ink shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-slate-100 sm:w-64">
               <div className="border-b border-slate-100 px-3 py-2">
                 <p className="truncate text-sm font-semibold">{user?.name}</p>
                 <p className="truncate text-xs text-slate-500">{user?.email}</p>
@@ -3822,14 +3810,14 @@ export const Dashboard: React.FC = () => {
             currentUserId={user?.id}
             locationClock={locationClock}
             onSelectUnit={(unit) => setSelectedUnitId(unit.id)}
-            onSelectIncident={(incident) => setSelectedIncidentId(incident.id)}
+            onSelectIncident={(incident) => openIncidentDetail(incident.id)}
           />
         )}
 
         <button
           type="button"
           onClick={recenterToCurrentLocation}
-          className="absolute bottom-20 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-line bg-white/95 text-cad-blue shadow-xl transition hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
+          className="absolute bottom-20 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-blue/20 bg-white/95 text-cad-blue shadow-[0_16px_40px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 transition hover:bg-blue-50 dark:border-blue-400/20 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
           aria-label="Return to my location"
           title="My location"
         >
@@ -3838,7 +3826,7 @@ export const Dashboard: React.FC = () => {
 
         <div className="absolute bottom-4 left-4 z-20 w-[min(26rem,calc(100vw-2rem))]">
           {mapCommandFocused && (
-            <div className="absolute bottom-16 left-0 right-0 overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
+            <div className="absolute bottom-16 left-0 right-0 overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-900/95">
               <div className="max-h-64 overflow-y-auto p-1.5">
                 {mapCommandSuggestions.length === 0 ? (
                   <p className="px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-300">No command suggestions.</p>
@@ -3872,7 +3860,7 @@ export const Dashboard: React.FC = () => {
           )}
           <form
             onSubmit={submitMapCommand}
-            className="flex h-[3.25rem] min-h-[3.25rem] items-center gap-2 rounded-md border border-cad-line bg-white/95 px-4 py-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95"
+            className="flex h-[3.25rem] min-h-[3.25rem] items-center gap-2 rounded-md border border-cad-blue/20 bg-white/95 px-4 py-3 shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-900/95"
           >
             <Terminal size={18} className="shrink-0 text-cad-blue dark:text-blue-100" />
             <span className="text-sm font-semibold text-slate-400">&gt;</span>
