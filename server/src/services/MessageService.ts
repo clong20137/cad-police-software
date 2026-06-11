@@ -64,9 +64,14 @@ const decryptText = (value: string, iv: string | null, tag: string | null, encry
     return value;
   }
 
-  const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(iv, 'base64'));
-  decipher.setAuthTag(Buffer.from(tag, 'base64'));
-  return Buffer.concat([decipher.update(Buffer.from(value, 'base64')), decipher.final()]).toString('utf8');
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(iv, 'base64'));
+    decipher.setAuthTag(Buffer.from(tag, 'base64'));
+    return Buffer.concat([decipher.update(Buffer.from(value, 'base64')), decipher.final()]).toString('utf8');
+  } catch (error) {
+    console.warn('Unable to decrypt message body. Check MESSAGE_ENCRYPTION_KEY for legacy messages.', error);
+    return '[Encrypted message unavailable]';
+  }
 };
 
 const encryptBuffer = (buffer: Buffer): { data: Buffer; iv: string; tag: string } => {
@@ -94,15 +99,20 @@ const parseDataUrl = (dataUrl: string): Buffer => {
   return Buffer.from(base64, 'base64');
 };
 
-const toAttachment = (row: AttachmentRow): MessageAttachment => {
-  const data = decryptBuffer(row.data, row.data_iv, row.data_tag, row.encrypted);
-  return {
-    id: row.id,
-    fileName: row.file_name,
-    mimeType: row.mime_type,
-    size: row.size_bytes,
-    dataUrl: `data:${row.mime_type};base64,${data.toString('base64')}`
-  };
+const toAttachment = (row: AttachmentRow): MessageAttachment | null => {
+  try {
+    const data = decryptBuffer(row.data, row.data_iv, row.data_tag, row.encrypted);
+    return {
+      id: row.id,
+      fileName: row.file_name,
+      mimeType: row.mime_type,
+      size: row.size_bytes,
+      dataUrl: `data:${row.mime_type};base64,${data.toString('base64')}`
+    };
+  } catch (error) {
+    console.warn('Unable to decrypt message attachment. Check MESSAGE_ENCRYPTION_KEY for legacy attachments.', error);
+    return null;
+  }
 };
 
 const toMessage = (row: MessageRow, attachments: MessageAttachment[] = []): ChatMessage => ({
@@ -375,8 +385,12 @@ export class MessageService {
     );
 
     return rows.reduce<Record<string, MessageAttachment[]>>((groups, row) => {
+      const attachment = toAttachment(row);
+      if (!attachment) {
+        return groups;
+      }
       groups[row.message_id] = groups[row.message_id] || [];
-      groups[row.message_id].push(toAttachment(row));
+      groups[row.message_id].push(attachment);
       return groups;
     }, {});
   }
