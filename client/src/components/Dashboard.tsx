@@ -3856,7 +3856,7 @@ export const Dashboard: React.FC = () => {
           )}
           <form
             onSubmit={submitMapCommand}
-            className={`dispatch-command-shell flex h-[3.75rem] min-h-[3.75rem] items-center gap-2 rounded-md px-5 py-3.5 shadow-[0_18px_48px_rgba(15,23,42,0.28)] backdrop-blur-md ${mapCommandFocused ? 'dispatch-command-shell-active' : ''}`}
+            className={`dispatch-command-shell flex h-[4.5rem] min-h-[4.5rem] items-center gap-2 rounded-md px-5 py-3.5 shadow-[0_18px_48px_rgba(15,23,42,0.28)] backdrop-blur-md ${mapCommandFocused ? 'dispatch-command-shell-active' : ''}`}
           >
             <Terminal size={18} className="shrink-0 text-cad-blue dark:text-blue-100" />
             <span className="text-sm font-semibold text-slate-400">&gt;</span>
