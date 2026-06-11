@@ -62,6 +62,7 @@ type SecurityConfig = {
 };
 
 const configSections: EditableConfigSection[] = ['agencies', 'districts', 'units', 'calls', 'statuses'];
+const MAX_LOGO_UPLOAD_BYTES = 5 * 1024 * 1024;
 const defaultSecurity: SecurityConfig = {
   idleTimeoutMinutes: 30,
   registrationEnabled: true,
@@ -410,8 +411,8 @@ export const AdminConfigurationPage: React.FC = () => {
       addToast('Logo not uploaded', 'Choose a PNG, JPG, GIF, SVG, or WebP image.', 'error');
       return;
     }
-    if (file.size > 1024 * 1024) {
-      addToast('Logo not uploaded', 'Use an image smaller than 1 MB.', 'error');
+    if (file.size > MAX_LOGO_UPLOAD_BYTES) {
+      addToast('Logo not uploaded', 'Use an image smaller than 5 MB.', 'error');
       return;
     }
 
