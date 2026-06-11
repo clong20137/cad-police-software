@@ -49,7 +49,9 @@ export const ModalShell: React.FC<{
 
   const requestClose = useCallback(() => {
     if (isClosing) return;
+    setIsDragging(false);
     setIsClosing(true);
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
     closeTimerRef.current = window.setTimeout(onClose, 280);
   }, [isClosing, onClose]);
 
@@ -110,6 +112,7 @@ export const ModalShell: React.FC<{
   }, [isDragging, isMobileLayout]);
 
   const startDragging = (event: React.PointerEvent<HTMLElement>) => {
+    if (isClosing) return;
     if (event.button !== 0 || isMobileLayout || placement === 'bottom') return;
     if ((event.target as HTMLElement).closest(dragIgnoreSelector)) return;
     onFocus?.();
@@ -145,6 +148,7 @@ export const ModalShell: React.FC<{
         style={floatingStyle}
         onMouseDown={(event) => {
           event.stopPropagation();
+          if (isClosing) return;
           onFocus?.();
         }}
       >
@@ -158,7 +162,7 @@ export const ModalShell: React.FC<{
             {placement === 'center' && !isMobileLayout && <GripHorizontal size={17} className="shrink-0 text-blue-100" />}
             <h2 className="truncate text-lg font-bold">{title}</h2>
           </div>
-          <button type="button" onClick={requestClose} className="rounded-md bg-red-600 p-2 text-white shadow-sm hover:bg-red-700">
+          <button type="button" onClick={requestClose} disabled={isClosing} className="rounded-md bg-red-600 p-2 text-white shadow-sm hover:bg-red-700 disabled:opacity-70">
             <X size={18} />
           </button>
         </div>

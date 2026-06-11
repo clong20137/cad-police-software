@@ -906,7 +906,7 @@ export const OfficerDashboard: React.FC = () => {
     setUsbGpsMessage(usbGpsEnabled ? 'USB GPS disconnected.' : '');
   }, [usbGpsEnabled]);
 
-  const connectUsbGps = useCallback(async () => {
+  const connectUsbGps = useCallback(async (allowPortPrompt = true) => {
     if (!usbGpsEnabled) {
       setUsbGpsStatus('disabled');
       setUsbGpsMessage('USB GPS is disabled in Admin Settings.');
@@ -925,7 +925,12 @@ export const OfficerDashboard: React.FC = () => {
 
     try {
       const knownPorts = await serial.getPorts();
-      const port = knownPorts[0] || (await serial.requestPort());
+      const port = knownPorts[0] || (allowPortPrompt ? await serial.requestPort() : null);
+      if (!port) {
+        setUsbGpsStatus('disconnected');
+        setUsbGpsMessage('Approve the BU-353S4 once with Connect, then it will auto-connect after refresh.');
+        return;
+      }
       await port.open({ baudRate: usbGpsBaudRate });
 
       usbGpsStopRef.current = false;
@@ -992,16 +997,18 @@ export const OfficerDashboard: React.FC = () => {
     }
 
     const serial = (navigator as SerialNavigator).serial;
-    setUsbGpsStatus((current) => {
-      if (current === 'connected' || current === 'connecting') return current;
-      return serial ? 'disconnected' : 'unsupported';
-    });
-    setUsbGpsMessage(serial ? 'USB GPS is enabled. Connect the BU-353S4 from Location.' : 'USB serial is not supported by this browser.');
+    if (!serial) {
+      setUsbGpsStatus('unsupported');
+      setUsbGpsMessage('USB serial is not supported by this browser.');
+      return;
+    }
+
+    void connectUsbGps(false);
 
     return () => {
       void disconnectUsbGps();
     };
-  }, [disconnectUsbGps, usbGpsEnabled]);
+  }, [connectUsbGps, disconnectUsbGps, usbGpsEnabled]);
 
   const pendingCalls = useMemo(
     () =>
