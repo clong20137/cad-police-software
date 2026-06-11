@@ -72,6 +72,23 @@ type OfficerMapLayers = {
   traffic: boolean;
   trails: boolean;
 };
+
+const useAnimatedPresence = (open: boolean, durationMs = 160) => {
+  const [present, setPresent] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setPresent(true);
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => setPresent(false), durationMs);
+    return () => window.clearTimeout(timeout);
+  }, [durationMs, open]);
+
+  return present;
+};
+
 type LiveFeedItem = {
   id: string;
   at: Date | string;
@@ -228,10 +245,9 @@ const dockItems: Array<{ id: DockItem; label: string; icon: React.ReactNode }> =
   { id: 'inquiries', label: 'Inquiries', icon: <Search size={18} /> },
   { id: 'protective-orders', label: 'Protective Orders', icon: <Search size={18} /> },
   { id: 'navigation', label: 'Navigate', icon: <Navigation size={18} /> },
-  { id: 'status', label: 'Status', icon: <Radio size={18} /> },
-  { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
+  { id: 'status', label: 'Status', icon: <Radio size={18} /> }
 ];
-const defaultDockSlots: DockSlot[] = ['calls', 'call-detail', 'notes', 'messages', 'inquiries', 'protective-orders', 'status', 'settings'];
+const defaultDockSlots: DockSlot[] = ['calls', 'call-detail', 'notes', 'messages', 'inquiries', 'protective-orders', 'status', 'navigation'];
 const emojiCatalog = (() => {
   const priorityEmoji = ['😀', '😂', '👍', '🙏', '🚓', '🚑', '🚒', '📍', '✅', '⚠', '❗'];
   const ranges = [
@@ -722,6 +738,7 @@ export const OfficerDashboard: React.FC = () => {
   const [liveFeedOpen, setLiveFeedOpen] = useState(() => localStorage.getItem('cad_officer_live_feed_open') !== 'false');
   const [liveFeedDistrictFilter, setLiveFeedDistrictFilter] = useState(() => localStorage.getItem('cad_officer_live_feed_district') || 'all');
   const [mapLayerMenuOpen, setMapLayerMenuOpen] = useState(false);
+  const mapLayerMenuVisible = useAnimatedPresence(mapLayerMenuOpen);
   const [mapLayers, setMapLayers] = useState<OfficerMapLayers>({
     units: true,
     calls: true,
@@ -746,6 +763,7 @@ export const OfficerDashboard: React.FC = () => {
   const [customizingSlot, setCustomizingSlot] = useState<number | null>(null);
   const [draggedSlotIndex, setDraggedSlotIndex] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsMenuVisible = useAnimatedPresence(settingsOpen);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [passwordForm, setPasswordForm] = useState<PasswordFormState>({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordMessage, setPasswordMessage] = useState('');
@@ -2749,8 +2767,8 @@ export const OfficerDashboard: React.FC = () => {
             >
               <Layers size={19} />
             </button>
-            {mapLayerMenuOpen && (
-              <div className="absolute right-0 top-12 z-50 w-56 rounded border border-slate-200 bg-white p-2 text-slate-950 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+            {mapLayerMenuVisible && (
+              <div className={`absolute right-0 top-12 z-50 w-56 rounded border border-slate-200 bg-white p-2 text-slate-950 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-white ${mapLayerMenuOpen ? 'cad-fade-pop-enter' : 'cad-fade-pop-exit'}`}>
                 <p className="px-2 pb-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Map Layers</p>
                 {([
                   ['units', 'Units'],
@@ -2800,8 +2818,8 @@ export const OfficerDashboard: React.FC = () => {
           >
             <Settings size={19} />
           </button>
-          {settingsOpen && (
-            <div className="absolute right-0 top-12 z-40 w-[calc(100vw-6.5rem)] max-w-64 origin-top-right rounded border border-slate-200 bg-white py-1 text-slate-950 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-white sm:w-64">
+          {settingsMenuVisible && (
+            <div className={`absolute right-0 top-12 z-40 w-[calc(100vw-6.5rem)] max-w-64 origin-top-right rounded border border-slate-200 bg-white py-1 text-slate-950 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-white sm:w-64 ${settingsOpen ? 'cad-fade-pop-enter' : 'cad-fade-pop-exit'}`}>
               <div className="border-b border-slate-100 px-3 py-2 dark:border-slate-800">
                 <p className="truncate text-sm font-semibold">{user?.name}</p>
                 <p className="truncate text-xs text-slate-500 dark:text-slate-400">{user?.email}</p>

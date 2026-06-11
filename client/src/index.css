@@ -397,6 +397,19 @@
     will-change: transform, opacity, filter;
   }
 
+  .cad-fade-pop-enter {
+    animation: cadFadePopEnter 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    transform-origin: top right;
+    will-change: opacity, transform, filter;
+  }
+
+  .cad-fade-pop-exit {
+    animation: cadFadePopExit 140ms ease both;
+    pointer-events: none;
+    transform-origin: top right;
+    will-change: opacity, transform, filter;
+  }
+
   .dispatch-command-shell {
     border: 1px solid rgba(26, 54, 93, 0.2);
     background:
@@ -706,6 +719,34 @@
       opacity: 1;
       filter: blur(0);
       transform: scale(1);
+    }
+  }
+
+  @keyframes cadFadePopEnter {
+    0% {
+      opacity: 0;
+      filter: blur(4px);
+      transform: translateY(-6px) scale(0.98);
+    }
+
+    100% {
+      opacity: 1;
+      filter: blur(0);
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes cadFadePopExit {
+    0% {
+      opacity: 1;
+      filter: blur(0);
+      transform: translateY(0) scale(1);
+    }
+
+    100% {
+      opacity: 0;
+      filter: blur(4px);
+      transform: translateY(-6px) scale(0.98);
     }
   }
 }

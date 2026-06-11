@@ -201,6 +201,22 @@ type DispatchMapLayers = {
   traffic: boolean;
 };
 
+const useAnimatedPresence = (open: boolean, durationMs = 160) => {
+  const [present, setPresent] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setPresent(true);
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => setPresent(false), durationMs);
+    return () => window.clearTimeout(timeout);
+  }, [durationMs, open]);
+
+  return present;
+};
+
 const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.ReactNode }> = [
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
   { id: 'calls', label: 'Calls', icon: <ClipboardList size={18} /> },
@@ -209,8 +225,7 @@ const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.
   { id: 'unit-detail', label: 'Unit', icon: <Radio size={18} /> },
   { id: 'call-detail', label: 'Call', icon: <Shield size={18} /> },
   { id: 'inquiries', label: 'Inquiries', icon: <Search size={18} /> },
-  { id: 'protective-orders', label: 'Protective Orders', icon: <Search size={18} /> },
-  { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
+  { id: 'protective-orders', label: 'Protective Orders', icon: <Search size={18} /> }
 ];
 
 const defaultQuickLaunchSlots: QuickLaunchSlot[] = [
@@ -221,7 +236,7 @@ const defaultQuickLaunchSlots: QuickLaunchSlot[] = [
   'unit-detail',
   'call-detail',
   'inquiries',
-  'settings'
+  'protective-orders'
 ];
 
 const normalizeQuickLaunchSlots = (slots: Array<DockSlotValue<string>>): QuickLaunchSlot[] =>
@@ -663,6 +678,7 @@ export const Dashboard: React.FC = () => {
   const [mapCommandHistoryIndex, setMapCommandHistoryIndex] = useState<number | null>(null);
   const [activeMapCommandSuggestion, setActiveMapCommandSuggestion] = useState(0);
   const [mapCommandFocused, setMapCommandFocused] = useState(false);
+  const commandSuggestionsVisible = useAnimatedPresence(mapCommandFocused);
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
   const [messageBody, setMessageBody] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -679,6 +695,7 @@ export const Dashboard: React.FC = () => {
   const [activeCallTab, setActiveCallTab] = useState<CallTabId>('all');
   const [callSearch, setCallSearch] = useState('');
   const [mapFilterOpen, setMapFilterOpen] = useState(false);
+  const mapFilterVisible = useAnimatedPresence(mapFilterOpen);
   const [mapLayers, setMapLayers] = useState<DispatchMapLayers>({
     units: true,
     calls: true,
@@ -716,6 +733,7 @@ export const Dashboard: React.FC = () => {
   const [openQuickModals, setOpenQuickModals] = useState<QuickLaunchId[]>([]);
   const [customizingSlot, setCustomizingSlot] = useState<number | null>(null);
   const [draggedSlotIndex, setDraggedSlotIndex] = useState<number | null>(null);
+  const settingsMenuVisible = useAnimatedPresence(settingsOpen);
   const [unitBoardSearch, setUnitBoardSearch] = useState('');
   const [unitBoardStatusFilter, setUnitBoardStatusFilter] = useState<UnitStatus | 'all'>('all');
   const [unitBoardDistrictFilter, setUnitBoardDistrictFilter] = useState('all');
@@ -3687,8 +3705,8 @@ export const Dashboard: React.FC = () => {
             >
               <Layers size={19} />
             </button>
-            {mapFilterOpen && (
-              <div className="absolute right-0 top-12 z-40 w-56 rounded border border-cad-blue/20 bg-white p-2 text-cad-ink shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-slate-100">
+            {mapFilterVisible && (
+              <div className={`absolute right-0 top-12 z-40 w-56 rounded border border-cad-blue/20 bg-white p-2 text-cad-ink shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-slate-100 ${mapFilterOpen ? 'cad-fade-pop-enter' : 'cad-fade-pop-exit'}`}>
                 <div className="border-b border-slate-100 px-2 pb-2 dark:border-slate-800">
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Map Layers</p>
                 </div>
@@ -3741,8 +3759,8 @@ export const Dashboard: React.FC = () => {
           >
             <Settings size={19} />
           </button>
-          {settingsOpen && (
-            <div className="absolute right-0 top-12 z-40 w-[calc(100vw-6.5rem)] max-w-64 origin-top-right rounded border border-cad-blue/20 bg-white py-1 text-cad-ink shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-slate-100 sm:w-64">
+          {settingsMenuVisible && (
+            <div className={`absolute right-0 top-12 z-40 w-[calc(100vw-6.5rem)] max-w-64 origin-top-right rounded border border-cad-blue/20 bg-white py-1 text-cad-ink shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-slate-100 sm:w-64 ${settingsOpen ? 'cad-fade-pop-enter' : 'cad-fade-pop-exit'}`}>
               <div className="border-b border-slate-100 px-3 py-2">
                 <p className="truncate text-sm font-semibold">{user?.name}</p>
                 <p className="truncate text-xs text-slate-500">{user?.email}</p>
@@ -3821,8 +3839,8 @@ export const Dashboard: React.FC = () => {
         </button>
 
         <div className="dispatch-command-enter absolute bottom-4 left-4 z-20 w-[min(28rem,calc(100vw-2rem))]">
-          {mapCommandFocused && (
-            <div className="absolute bottom-[4.75rem] left-0 right-0 overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-900/95">
+          {commandSuggestionsVisible && (
+            <div className={`absolute bottom-[4.75rem] left-0 right-0 overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-900/95 ${mapCommandFocused ? 'cad-fade-pop-enter' : 'cad-fade-pop-exit'}`}>
               <div className="max-h-64 overflow-y-auto p-1.5">
                 {mapCommandSuggestions.length === 0 ? (
                   <p className="px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-300">No command suggestions.</p>
