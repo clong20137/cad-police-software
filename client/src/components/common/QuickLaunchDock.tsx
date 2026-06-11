@@ -207,8 +207,8 @@ export const QuickLaunchDock = <T extends string>({
     onCustomize(customizingSlot === index ? null : index);
   };
 
-  const renderCustomizeMenu = (index: number) => {
-    if (renderedCustomizeSlot !== index) return null;
+  const renderCustomizeMenu = () => {
+    if (renderedCustomizeSlot === null) return null;
 
     const animationClass = customizeMenuClosing ? 'quick-launch-picker-exit' : 'quick-launch-picker-enter pointer-events-auto';
     const style: CSSProperties | undefined = customizeMenuPosition
@@ -234,13 +234,13 @@ export const QuickLaunchDock = <T extends string>({
         />
         <div className="relative grid max-h-72 gap-1 overflow-y-auto pr-1">
           {options.map((option) => {
-            const alreadyUsed = slots.some((slot, slotIndex) => slotIndex !== index && slot === option.id);
+            const alreadyUsed = slots.some((slot, slotIndex) => slotIndex !== renderedCustomizeSlot && slot === option.id);
             return (
               <button
                 key={option.id}
                 type="button"
                 disabled={alreadyUsed}
-                onClick={() => onAssignSlot(index, option.id)}
+                onClick={() => onAssignSlot(renderedCustomizeSlot, option.id)}
                 className="flex w-full items-center gap-3 rounded px-2.5 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-cad-blue disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-blue-100 dark:disabled:bg-slate-950"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-cad-blue/10 bg-blue-50 text-cad-blue dark:border-blue-300/10 dark:bg-blue-950/70 dark:text-blue-100">
@@ -287,7 +287,7 @@ export const QuickLaunchDock = <T extends string>({
 
         <button
           type="button"
-          onClick={() => clearSlot(index)}
+          onClick={() => clearSlot(renderedCustomizeSlot)}
           className="mt-2 flex w-full items-center gap-3 rounded px-2.5 py-2 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950"
         >
           <Trash2 size={16} />
@@ -398,7 +398,6 @@ export const QuickLaunchDock = <T extends string>({
                     </button>
                   )}
 
-                  {renderCustomizeMenu(index)}
                 </div>
               );
             })}
@@ -438,13 +437,13 @@ export const QuickLaunchDock = <T extends string>({
                   {option?.icon || (external ? <ExternalLink size={18} /> : <Plus size={18} />)}
                   <span className="max-w-full truncate px-1">{label}</span>
                 </button>
-
-                {renderCustomizeMenu(index)}
               </div>
             );
           })}
         </div>
       </section>
+
+      {renderCustomizeMenu()}
 
       {contextMenu && (
         <div
