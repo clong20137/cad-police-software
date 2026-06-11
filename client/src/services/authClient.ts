@@ -50,6 +50,7 @@ const SIGNED_REQUESTS = [
   { method: 'PATCH', pathPattern: /^\/api\/auth\/users\/[^/]+$/ },
   { method: 'POST', pathPattern: /^\/api\/auth\/users\/[^/]+\/reset-password$/ },
   { method: 'POST', pathPattern: /^\/api\/configuration$/ },
+  { method: 'POST', pathPattern: /^\/api\/configuration\/branding\/logo$/ },
   { method: 'PATCH', pathPattern: /^\/api\/configuration\/[^/]+$/ },
   { method: 'DELETE', pathPattern: /^\/api\/configuration\/[^/]+$/ }
 ];
@@ -232,6 +233,17 @@ class AuthClient {
     input: UpsertConfigurationItemRequest
   ): Promise<AdminConfigurationItem> {
     const response = await this.api.patch<AdminConfigurationItem>(`/configuration/${itemId}`, input);
+    void this.clearConfigurationCache();
+    return response.data;
+  }
+
+  async uploadApplicationLogo(input: {
+    fileName: string;
+    mimeType: string;
+    dataUrl: string;
+    logoAlt?: string;
+  }): Promise<AdminConfigurationItem> {
+    const response = await this.api.post<AdminConfigurationItem>('/configuration/branding/logo', input);
     void this.clearConfigurationCache();
     return response.data;
   }

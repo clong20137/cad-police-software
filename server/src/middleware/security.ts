@@ -44,7 +44,7 @@ const createRateLimiter = (name: string, windowMs: number, maxRequests: number) 
 };
 
 const maxStringLengthForPath = (path: string[]): number =>
-  path.join('.') === 'metadata.logoUrl' ? MAX_LOGO_DATA_URL_LENGTH : MAX_STRING_LENGTH;
+  ['metadata.logoUrl', 'dataUrl'].includes(path.join('.')) ? MAX_LOGO_DATA_URL_LENGTH : MAX_STRING_LENGTH;
 
 const sanitizeValue = (value: unknown, path: string[] = []): unknown => {
   if (typeof value === 'string') {

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import axios from 'axios';
 import { Link, Navigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -417,12 +418,24 @@ export const AdminConfigurationPage: React.FC = () => {
     }
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       if (typeof reader.result === 'string') {
-        void updateBrandingMetadata({
-          logoUrl: reader.result,
-          logoAlt: branding.logoAlt || `${APP_NAME} logo`
-        });
+        try {
+          const updated = await authClient.uploadApplicationLogo({
+            fileName: file.name,
+            mimeType: file.type,
+            dataUrl: reader.result,
+            logoAlt: branding.logoAlt || `${APP_NAME} logo`
+          });
+          setItems((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+          addToast('Branding updated', 'Application logo was saved.');
+        } catch (error) {
+          const message = axios.isAxiosError(error) && typeof error.response?.data?.error === 'string'
+            ? error.response.data.error
+            : 'Unable to save application logo.';
+          addToast('Branding update failed', message, 'error');
+          loadAdmin();
+        }
       }
     };
     reader.onerror = () => addToast('Logo not uploaded', 'Unable to read that image file.', 'error');

@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import http from 'http';
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth';
@@ -27,6 +28,7 @@ const server = http.createServer(app);
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '12mb' }));
+app.use('/uploads', express.static(path.resolve(__dirname, '..', 'uploads')));
 app.use(cors({ origin: securityConfig.frontendUrls, credentials: true }));
 app.use(cspMiddleware);
 app.use(enforceHttps);
