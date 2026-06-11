@@ -1701,11 +1701,11 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     const handleCommandFocus = (event: KeyboardEvent) => {
-      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
       const target = event.target;
       if (target instanceof HTMLElement) {
         const tag = target.tagName.toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable) return;
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target.isContentEditable) return;
       }
       event.preventDefault();
       mapCommandInputRef.current?.focus();
@@ -4082,7 +4082,7 @@ export const Dashboard: React.FC = () => {
         activeItem={activeQuickModal}
         customizingSlot={customizingSlot}
         sidebarCollapsed={appSidebarCollapsed}
-        desktopLeftClass={appSidebarCollapsed ? 'left-[25rem]' : 'left-[36rem]'}
+        desktopLeftClass={appSidebarCollapsed ? 'left-[33rem]' : 'left-[42rem]'}
         badges={{
           messages: messageBadgeCount,
           calls: callBadgeCount,
@@ -4099,7 +4099,7 @@ export const Dashboard: React.FC = () => {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto overflow-hidden rounded-md border bg-white/96 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 backdrop-blur-md animate-[dockModalIn_120ms_ease-out] dark:bg-slate-950/96 ${
+            className={`pointer-events-auto overflow-hidden rounded-md border bg-white shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 animate-[dockModalIn_120ms_ease-out] dark:bg-slate-950 ${
               toast.tone === 'warning'
                 ? 'border-red-200 text-red-950 ring-red-200/70 dark:border-red-800 dark:text-white dark:ring-red-900/70'
                 : toast.tone === 'success'

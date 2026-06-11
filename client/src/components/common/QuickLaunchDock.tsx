@@ -167,20 +167,20 @@ export const QuickLaunchDock = <T extends string>({
                       }
                       onCustomize(index);
                     }}
-                    className={`flex h-12 w-16 flex-col items-center justify-center gap-1 rounded border border-dashed text-[10px] font-medium transition duration-200 ease-out hover:scale-[1.04] hover:shadow-lg ${
+                    className={`flex h-12 w-12 flex-col items-center justify-center gap-1 rounded border text-[10px] font-medium transition duration-200 ease-out hover:scale-[1.03] hover:shadow-md ${
                       visible
                         ? `${draggingSlot === index ? 'scale-95 opacity-50' : ''} ${
                             isActive
                               ? '-translate-y-1 border-cad-blue bg-blue-50 text-cad-blue shadow-md dark:bg-blue-950/70 dark:text-blue-200'
-                              : 'border-slate-200 bg-white text-cad-ink shadow-sm hover:-translate-y-1 hover:border-cad-blue hover:bg-blue-50 hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100 dark:hover:bg-blue-950/70'
+                              : 'border-slate-200 bg-white text-cad-ink shadow-sm hover:-translate-y-1 hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100 dark:hover:bg-slate-800'
                           } cursor-grab active:cursor-grabbing`
-                        : 'border-slate-300 bg-white/60 text-slate-400 hover:-translate-y-1 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900/60'
+                        : 'border-slate-300 bg-white/60 text-slate-400 hover:-translate-y-1 hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900/60 dark:hover:bg-slate-800'
                     }`}
                     aria-label={visible ? `Open ${label}` : `Customize slot ${index + 1}`}
                     title={label}
                   >
                     {option?.icon || (external ? <ExternalLink size={18} /> : <Plus size={20} />)}
-                    <span className="max-w-14 truncate">{label}</span>
+                    <span className="max-w-10 truncate">{label}</span>
                   </button>
 
                   {isActive && <span className="absolute -bottom-2 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-cad-blue shadow" />}
