@@ -112,7 +112,7 @@ export const QuickLaunchDock = <T extends string>({
   return (
     <>
       <section className={`dispatch-quick-launch-enter pointer-events-none fixed bottom-4 right-4 z-40 hidden select-none transition-all duration-300 ease-out md:block ${desktopLeftClass || (sidebarCollapsed ? 'left-24' : 'left-[19.5rem]')}`}>
-        <div className="pointer-events-auto mx-auto flex h-[3.75rem] w-fit max-w-full items-center overflow-hidden rounded-md border border-cad-blue/20 bg-white/95 p-1 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
+        <div className="pointer-events-auto mx-auto flex h-[3.75rem] w-fit max-w-full items-center overflow-hidden rounded-md border border-cad-blue/20 bg-white/95 p-0.5 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
           <div className="flex max-w-full flex-nowrap items-center justify-center gap-2">
             {slots.map((slot, index) => {
               const option = typeof slot === 'string' ? options.find((item) => item.id === slot) || null : null;
@@ -171,7 +171,7 @@ export const QuickLaunchDock = <T extends string>({
                       }
                       onCustomize(index);
                     }}
-                    className={`flex h-[3.25rem] w-[3.25rem] flex-col items-center justify-center gap-1 rounded border text-[10px] font-medium transition duration-200 ease-out hover:shadow-md ${
+                    className={`flex h-[calc(3.75rem-4px)] w-[calc(3.75rem-4px)] flex-col items-center justify-center gap-1 rounded border text-[10px] font-medium transition duration-200 ease-out hover:shadow-md ${
                       visible
                         ? `${draggingSlot === index ? 'scale-95 opacity-50' : ''} ${
                             isActive
