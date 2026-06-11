@@ -1,8 +1,9 @@
-// Optional runtime override. The preferred configuration path is client/.env before build.
-// To override a deployed IIS build without rebuilding, uncomment and edit this object,
-// then add <script src="%PUBLIC_URL%/config.js"></script> to public/index.html.
-// window.CAD_CONFIG = {
-//   API_URL: 'http://localhost:5001/api',
-//   SOCKET_URL: 'http://localhost:5001',
-//   GOOGLE_API_KEY: ''
-// };
+// Optional runtime override. Edit this file in a deployed build when the API is
+// hosted somewhere other than the default local development backend.
+window.CAD_CONFIG = {
+  // Example: 'https://api.your-domain.com/api'
+  API_URL: '',
+  // Optional. If blank, this is derived from API_URL by removing the trailing /api.
+  SOCKET_URL: '',
+  GOOGLE_API_KEY: ''
+};

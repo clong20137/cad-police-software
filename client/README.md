@@ -105,7 +105,7 @@ Default: `http://localhost:5001/api`
 
 `REACT_APP_GOOGLE_API_KEY` or `REACT_APP_GOOGLE_MAPS_API_KEY` enables the dashboard Google Map. Without it, the dashboard shows a local coordinate map fallback. `REACT_APP_SOCKET_URL` controls the live unit WebSocket endpoint.
 
-## Runtime IIS Config
+## Runtime API Config
 
 Preferred setup is through `.env` before building:
 
@@ -117,15 +117,17 @@ REACT_APP_GOOGLE_API_KEY=
 
 Then run `npm run build` and deploy the build folder to IIS.
 
-Optional: `config.js` can still be used as a runtime override if you explicitly load it in `public/index.html`.
+For a deployed build, edit `build/config.js` without rebuilding:
 
 ```js
 window.CAD_CONFIG = {
-  API_URL: 'http://localhost:5001/api',
-  SOCKET_URL: 'http://localhost:5001',
+  API_URL: 'https://api.your-domain.com/api',
+  SOCKET_URL: 'https://api.your-domain.com',
   GOOGLE_API_KEY: ''
 };
 ```
+
+Blank values are ignored. If `SOCKET_URL` is blank, it is derived from `API_URL` by removing the trailing `/api`.
 
 ## TypeScript
 

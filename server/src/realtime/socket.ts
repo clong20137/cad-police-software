@@ -14,7 +14,7 @@ const UNIT_RELIABILITY_BROADCAST_MS = 15000;
 export const initializeRealtime = (server: HttpServer): Server => {
   io = new Server(server, {
     cors: {
-      origin: securityConfig.frontendUrl,
+      origin: securityConfig.frontendUrls,
       credentials: true
     }
   });

@@ -77,7 +77,7 @@ export const cspMiddleware = (
     "style-src 'self'; " +
     "img-src 'self' data: https:; " +
     "font-src 'self'; " +
-    "connect-src 'self' " + securityConfig.frontendUrl + "; " +
+    "connect-src 'self' " + securityConfig.frontendUrls.join(' ') + "; " +
     "frame-ancestors 'none'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +

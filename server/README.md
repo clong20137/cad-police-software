@@ -64,6 +64,12 @@ NODE_ENV=development
 FRONTEND_URL=http://localhost:3000
 ```
 
+Use `FRONTEND_URLS` when more than one hosted frontend should be allowed through CORS/WebSocket checks:
+
+```env
+FRONTEND_URLS=https://cad.your-domain.com,https://admin.your-domain.com
+```
+
 ## Demo Users
 
 For development, these users are pre-created:

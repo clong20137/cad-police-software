@@ -25,7 +25,7 @@ const server = http.createServer(app);
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '12mb' }));
-app.use(cors({ origin: securityConfig.frontendUrl, credentials: true }));
+app.use(cors({ origin: securityConfig.frontendUrls, credentials: true }));
 app.use(cspMiddleware);
 app.use(enforceHttps);
 app.use(ipAccessControl);

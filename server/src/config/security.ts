@@ -14,6 +14,16 @@ const listFromEnv = (name: string): Set<string> =>
       .filter(Boolean)
   );
 
+const listFromValue = (value: string): string[] =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const frontendUrls = listFromValue(
+  process.env.FRONTEND_URLS || process.env.FRONTEND_URL || 'http://localhost:3000'
+);
+
 const getSecret = (name: 'JWT_SECRET' | 'REFRESH_TOKEN_SECRET'): string => {
   const value = process.env[name];
 
@@ -38,7 +48,8 @@ export const securityConfig = {
   isProduction,
   jwtSecret: getSecret('JWT_SECRET'),
   refreshTokenSecret: getSecret('REFRESH_TOKEN_SECRET'),
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+  frontendUrl: frontendUrls[0],
+  frontendUrls,
   enforceHttps: process.env.ENFORCE_HTTPS === 'true' || (isProduction && process.env.ENFORCE_HTTPS !== 'false'),
   ipAllowlist: listFromEnv('IP_ALLOWLIST'),
   ipBlocklist: listFromEnv('IP_BLOCKLIST'),
