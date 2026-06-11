@@ -62,6 +62,7 @@ export const LoginPage: React.FC = () => {
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const twoFactorSubmittingRef = useRef(false);
+  const twoFactorCodeInputRef = useRef<HTMLInputElement | null>(null);
   const { login, register, verifyTwoFactor } = useAuth();
   const navigate = useNavigate();
 
@@ -71,6 +72,12 @@ export const LoginPage: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('cad_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (twoFactorChallenge && !loading && !transitioning) {
+      window.setTimeout(() => twoFactorCodeInputRef.current?.focus(), 0);
+    }
+  }, [loading, transitioning, twoFactorChallenge]);
 
   const addToast = useCallback((title: string, message: string, tone: ToastNotice['tone'] = 'success') => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -240,7 +247,7 @@ export const LoginPage: React.FC = () => {
         <section className={`login-card-border mx-auto w-full rounded-lg bg-white/95 p-px shadow-shield transition-all duration-300 dark:bg-slate-900/95 ${isRegistering ? 'max-w-xl' : 'max-w-sm'} ${transitioning ? 'translate-y-1 scale-[0.985] opacity-75' : ''}`}>
           <div className="overflow-hidden rounded-[7px] bg-white/95 dark:bg-slate-900/95">
           <div className="border-b border-cad-line p-5 text-center dark:border-slate-800 sm:p-6">
-            <div className={`mx-auto flex items-center justify-center ${branding.logoUrl ? 'h-28 w-56' : 'login-logo-pulse h-14 w-14 overflow-hidden rounded-lg bg-cad-blue text-white shadow-control'}`}>
+            <div className={`mx-auto flex items-center justify-center ${branding.logoUrl ? 'h-36 w-72 max-w-full' : 'login-logo-pulse h-14 w-14 overflow-hidden rounded-lg bg-cad-blue text-white shadow-control'}`}>
               {branding.logoUrl ? (
                 <img src={branding.logoUrl} alt={branding.logoAlt} className="max-h-full max-w-full object-contain" />
               ) : (
@@ -398,6 +405,7 @@ export const LoginPage: React.FC = () => {
                 <label className="mt-3 grid gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300" htmlFor="twoFactorCode">
                   2FA code
                   <input
+                    ref={twoFactorCodeInputRef}
                     id="twoFactorCode"
                     inputMode="numeric"
                     autoComplete="one-time-code"

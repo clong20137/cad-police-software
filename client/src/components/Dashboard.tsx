@@ -652,7 +652,7 @@ export const Dashboard: React.FC = () => {
   const [messageBadgeCount, setMessageBadgeCount] = useState(0);
   const [callBadgeCount, setCallBadgeCount] = useState(0);
   const [mapCommand, setMapCommand] = useState('');
-  const [mapCommandFeedback, setMapCommandFeedback] = useState('Try "new call crash 123 main", "10-28 ABC123", "units", or "?".');
+  const [, setMapCommandFeedback] = useState('Try "new call crash 123 main", "10-28 ABC123", "units", or "?".');
   const [mapCommandHistory, setMapCommandHistory] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem(MAP_COMMAND_HISTORY_KEY) || '[]') as string[];
@@ -3836,12 +3836,9 @@ export const Dashboard: React.FC = () => {
           <MapPin size={18} />
         </button>
 
-        <div className="absolute bottom-4 left-4 z-20 w-[min(22rem,calc(100vw-2rem))]">
+        <div className="absolute bottom-4 left-4 z-20 w-[min(26rem,calc(100vw-2rem))]">
           {mapCommandFocused && (
-            <div className="absolute bottom-14 left-0 right-0 overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
-              <div className="border-b border-cad-line px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-700 dark:text-slate-300">
-                {mapCommandFeedback}
-              </div>
+            <div className="absolute bottom-16 left-0 right-0 overflow-hidden rounded-lg border border-cad-line bg-white/95 shadow-2xl dark:border-slate-700 dark:bg-slate-900/95">
               <div className="max-h-64 overflow-y-auto p-1.5">
                 {mapCommandSuggestions.length === 0 ? (
                   <p className="px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-300">No command suggestions.</p>
@@ -3875,9 +3872,9 @@ export const Dashboard: React.FC = () => {
           )}
           <form
             onSubmit={submitMapCommand}
-            className="flex h-11 items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95"
+            className="flex h-[3.25rem] min-h-[3.25rem] items-center gap-2 rounded-md border border-cad-line bg-white/95 px-4 py-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95"
           >
-            <Terminal size={16} className="shrink-0 text-cad-blue dark:text-blue-100" />
+            <Terminal size={18} className="shrink-0 text-cad-blue dark:text-blue-100" />
             <span className="text-sm font-semibold text-slate-400">&gt;</span>
             <input
               ref={mapCommandInputRef}
@@ -3887,7 +3884,7 @@ export const Dashboard: React.FC = () => {
               onFocus={() => setMapCommandFocused(true)}
               onBlur={() => window.setTimeout(() => setMapCommandFocused(false), 120)}
               placeholder="Command"
-              className="min-w-0 flex-1 appearance-none bg-transparent text-sm font-medium text-cad-ink outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-white"
+              className="min-w-0 flex-1 appearance-none bg-transparent text-base font-medium text-cad-ink outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-white"
               aria-label="Dispatch command line"
             />
           </form>
