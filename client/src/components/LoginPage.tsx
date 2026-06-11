@@ -240,14 +240,14 @@ export const LoginPage: React.FC = () => {
         <section className={`login-card-border mx-auto w-full rounded-lg bg-white/95 p-px shadow-shield transition-all duration-300 dark:bg-slate-900/95 ${isRegistering ? 'max-w-xl' : 'max-w-sm'} ${transitioning ? 'translate-y-1 scale-[0.985] opacity-75' : ''}`}>
           <div className="overflow-hidden rounded-[7px] bg-white/95 dark:bg-slate-900/95">
           <div className="border-b border-cad-line p-5 text-center dark:border-slate-800 sm:p-6">
-            <div className="login-logo-pulse mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg bg-cad-blue text-white shadow-control">
+            <div className={`mx-auto flex items-center justify-center ${branding.logoUrl ? 'h-28 w-56' : 'login-logo-pulse h-14 w-14 overflow-hidden rounded-lg bg-cad-blue text-white shadow-control'}`}>
               {branding.logoUrl ? (
-                <img src={branding.logoUrl} alt={branding.logoAlt} className="h-full w-full object-contain bg-white p-1" />
+                <img src={branding.logoUrl} alt={branding.logoAlt} className="max-h-full max-w-full object-contain" />
               ) : (
                 <Radio size={25} />
               )}
             </div>
-            <h1 className="mt-4 text-2xl font-black text-cad-blue dark:text-blue-100">{APP_NAME}</h1>
+            {!branding.logoUrl && <h1 className="mt-4 text-2xl font-black text-cad-blue dark:text-blue-100">{APP_NAME}</h1>}
             <div className="mx-auto mt-4 h-1 w-16 rounded-full bg-cad-accent" />
 
             {registrationEnabled && (

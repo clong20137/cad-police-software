@@ -50,20 +50,32 @@ export const ShieldSidebar: React.FC<{
     <div className="shield-sidebar flex h-[100dvh] flex-col overflow-y-auto overflow-x-hidden">
       <div className="flex h-16 shrink-0 items-center border-b border-white/10 px-4">
         {!collapsed && (
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded bg-white text-cad-blue">
-              {logoUrl ? <img src={logoUrl} alt={logoAlt} className="h-full w-full object-contain p-0.5" /> : <Shield size={20} />}
+          logoUrl ? (
+            <div className="flex h-full w-full items-center justify-center py-2">
+              <img src={logoUrl} alt={logoAlt} className="max-h-full max-w-[13rem] object-contain" />
             </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-xl font-bold tracking-wider text-white">{title}</h1>
-              <p className="truncate text-xs text-blue-100">{subtitle}</p>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded bg-white text-cad-blue">
+                <Shield size={20} />
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-bold tracking-wider text-white">{title}</h1>
+                <p className="truncate text-xs text-blue-100">{subtitle}</p>
+              </div>
             </div>
-          </div>
+          )
         )}
         {collapsed && (
-          <div className="mx-auto flex h-10 w-10 items-center justify-center overflow-hidden rounded bg-white text-cad-blue">
-            {logoUrl ? <img src={logoUrl} alt={logoAlt} className="h-full w-full object-contain p-0.5" /> : <Shield size={22} />}
-          </div>
+          logoUrl ? (
+            <div className="mx-auto flex h-12 w-12 items-center justify-center">
+              <img src={logoUrl} alt={logoAlt} className="max-h-full max-w-full object-contain" />
+            </div>
+          ) : (
+            <div className="mx-auto flex h-10 w-10 items-center justify-center overflow-hidden rounded bg-white text-cad-blue">
+              <Shield size={22} />
+            </div>
+          )
         )}
       </div>
 
