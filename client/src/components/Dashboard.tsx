@@ -192,6 +192,7 @@ type MapCommandState = {
   label: string;
   detail: string;
 };
+type MapCommandChip = { label: string; value: string; tone?: 'neutral' | 'ready' | 'warning' | 'invalid' };
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
 type UnitBoardSortKey = 'status' | 'unit' | 'name' | 'cadUnit' | 'district';
 type SortDirection = 'asc' | 'desc';
@@ -1692,6 +1693,18 @@ export const Dashboard: React.FC = () => {
         .some((value) => String(value).toLowerCase().includes(normalized))
     ) || null;
   }, [directory]);
+  const commandSuggestionScore = useCallback((suggestion: MapCommandSuggestion, query: string) => {
+    const command = suggestion.command.toLowerCase();
+    const label = suggestion.label.toLowerCase();
+    const detail = suggestion.detail.toLowerCase();
+    if (command === query) return 0;
+    if (command.startsWith(query)) return 1;
+    if (label.startsWith(query)) return 2;
+    if (command.split(/\s+/).some((word) => word.startsWith(query))) return 3;
+    if (`${command} ${label}`.includes(query)) return 4;
+    if (detail.includes(query)) return 5;
+    return 99;
+  }, []);
   const mapCommandSuggestions = useMemo<MapCommandSuggestion[]>(() => {
     const baseSuggestions: MapCommandSuggestion[] = [
       { command: 'new call', label: 'New Call', detail: 'Open a blank new call form.', target: 'new-call' },
@@ -1707,11 +1720,62 @@ export const Dashboard: React.FC = () => {
       { command: '?', label: 'Command Help', detail: 'Show supported command examples.' }
     ];
     const query = mapCommand.trim().toLowerCase();
+    const suggestions = [...baseSuggestions];
+
+    const unitQuery = mapCommand.match(/^(?:unit|msg|message|assign)\s+(.+)$/i)?.[1]?.trim();
+    if (unitQuery) {
+      directory
+        .filter((item) =>
+          [item.cadUnitNumber, item.unitNumber, item.badge, item.name]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(unitQuery.toLowerCase()))
+        )
+        .slice(0, 4)
+        .forEach((item) => {
+          const unitLabel = item.cadUnitNumber || item.unitNumber || item.name;
+          suggestions.push(
+            { command: `unit ${unitLabel}`, label: `Open ${unitLabel}`, detail: item.name, target: 'units' },
+            { command: `msg ${unitLabel}`, label: `Message ${unitLabel}`, detail: 'Open messages to this unit.' }
+          );
+        });
+    }
+
+    const callQuery = mapCommand.match(/^(?:call|open|close|clear)\s+(.+)$/i)?.[1]?.trim();
+    if (callQuery) {
+      incidents
+        .filter((incident) =>
+          [incident.callNumber, incident.type, incident.address]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(callQuery.toLowerCase()))
+        )
+        .slice(0, 4)
+        .forEach((incident) => {
+          suggestions.push(
+            { command: `call ${incident.callNumber}`, label: `Open ${incident.callNumber}`, detail: `${incident.type} - ${incident.address}`, target: 'call-detail' },
+            { command: `close ${incident.callNumber} `, label: `Close ${incident.callNumber}`, detail: 'Add disposition after the call number.' }
+          );
+        });
+    }
+
+    const inquiryQuery = mapCommand.match(/^(?:plate|vin|name|10-27|10-28)\s+(.+)$/i)?.[1]?.trim();
+    if (inquiryQuery) {
+      suggestions.push({
+        command: mapCommand.trim(),
+        label: 'Run Inquiry',
+        detail: 'Open CJIS inquiries with this command context.',
+        target: 'inquiries'
+      });
+    }
+
     if (!query) return baseSuggestions.slice(0, 6);
-    return baseSuggestions
-      .filter((item) => `${item.command} ${item.label} ${item.detail}`.toLowerCase().includes(query))
-      .slice(0, 6);
-  }, [mapCommand]);
+    return suggestions
+      .map((item) => ({ item, score: commandSuggestionScore(item, query) }))
+      .filter(({ score }) => score < 99)
+      .sort((first, second) => first.score - second.score || first.item.command.length - second.item.command.length)
+      .map(({ item }) => item)
+      .filter((item, index, all) => all.findIndex((candidate) => candidate.command === item.command) === index)
+      .slice(0, 7);
+  }, [commandSuggestionScore, directory, incidents, mapCommand]);
   const mapCommandState = useMemo<MapCommandState>(() => {
     const raw = mapCommand.trim();
     const command = raw.toLowerCase();
@@ -1898,6 +1962,126 @@ export const Dashboard: React.FC = () => {
       label: 'Unknown',
       detail: 'No command matches. Press ? for examples.'
     };
+  }, [findCommandIncident, findCommandUser, mapCommand]);
+  const mapCommandChips = useMemo<MapCommandChip[]>(() => {
+    const raw = mapCommand.trim();
+    const command = raw.toLowerCase();
+    if (!command) return [];
+
+    if (command === '?') return [{ label: 'Action', value: 'Help', tone: 'ready' }];
+
+    if (['new', 'new call', 'call new', 'create call', 'dispatch'].includes(command)) {
+      return [{ label: 'Action', value: 'New Call', tone: command === 'new' ? 'warning' : 'ready' }];
+    }
+
+    const newCallMatch = raw.match(/^(?:new call|call)\s+(.+?)(?:\s+(.+))?$/i);
+    if (newCallMatch) {
+      return [
+        { label: 'Action', value: 'New Call', tone: 'ready' },
+        { label: 'Type', value: newCallMatch[1], tone: 'ready' },
+        { label: 'Address', value: newCallMatch[2] || 'Needed', tone: newCallMatch[2] ? 'ready' : 'warning' }
+      ];
+    }
+
+    if (['calls', 'call', 'active calls', 'pending calls', 'queue'].includes(command)) {
+      return [{ label: 'Action', value: 'Open Calls', tone: 'ready' }];
+    }
+
+    const callMatch = raw.match(/^(?:call|open)\s+(.+)$/i);
+    if (callMatch) {
+      const incident = findCommandIncident(callMatch[1]);
+      return [
+        { label: 'Action', value: 'Open Call', tone: 'ready' },
+        { label: 'Call', value: incident?.callNumber || callMatch[1], tone: incident ? 'ready' : 'invalid' }
+      ];
+    }
+
+    if (['units', 'unit status', 'status board'].includes(command)) {
+      return [{ label: 'Action', value: 'Open Units', tone: 'ready' }];
+    }
+
+    const unitMatch = raw.match(/^unit\s+(.+)$/i);
+    if (unitMatch) {
+      const unit = findCommandUser(unitMatch[1]);
+      return [
+        { label: 'Action', value: 'Open Unit', tone: 'ready' },
+        { label: 'Unit', value: unit?.cadUnitNumber || unit?.unitNumber || unit?.name || unitMatch[1], tone: unit ? 'ready' : 'invalid' }
+      ];
+    }
+
+    if (['messages', 'message', 'msg', 'chat'].includes(command)) {
+      return [{ label: 'Action', value: 'Messages', tone: 'ready' }];
+    }
+
+    const messageMatch = raw.match(/^(?:msg|message)\s+(\S+)(?:\s+(.+))?$/i);
+    if (messageMatch) {
+      const recipient = findCommandUser(messageMatch[1]);
+      return [
+        { label: 'Action', value: 'Message', tone: 'ready' },
+        { label: 'Unit', value: recipient?.cadUnitNumber || recipient?.unitNumber || recipient?.name || messageMatch[1], tone: recipient ? 'ready' : 'invalid' },
+        { label: 'Text', value: messageMatch[2] || 'Optional', tone: messageMatch[2] ? 'ready' : 'neutral' }
+      ];
+    }
+
+    if (['cjis', 'inquiry', 'inquiries', '10-27', '10-28', 'plate', 'vin', 'name'].includes(command) || /^(?:10-27|10-28|plate|vin|name)\b/i.test(raw)) {
+      const inquiryMatch = raw.match(/^(\S+)(?:\s+(.+))?$/);
+      return [
+        { label: 'Action', value: 'CJIS Inquiry', tone: 'ready' },
+        { label: 'Type', value: inquiryMatch?.[1] || command, tone: 'ready' },
+        ...(inquiryMatch?.[2] ? [{ label: 'Query', value: inquiryMatch[2], tone: 'ready' } as MapCommandChip] : [])
+      ];
+    }
+
+    if (['protective orders', 'protective order', 'protect ord', 'po', 'order'].includes(command) || /^(?:protective order|protective orders|protect ord|po)\b/i.test(raw)) {
+      return [{ label: 'Action', value: 'Protective Orders', tone: 'ready' }];
+    }
+
+    if (['settings', 'account', 'account settings'].includes(command)) {
+      return [{ label: 'Action', value: 'Account Settings', tone: 'ready' }];
+    }
+
+    const assignToMatch = raw.match(/^assign\s+(.+?)\s+to\s+(.+)$/i);
+    const assignMatch = raw.match(/^assign\s+(\S+)\s+(.+)$/i);
+    if (command === 'assign') {
+      return [{ label: 'Action', value: 'Assign', tone: 'warning' }];
+    }
+    if (assignToMatch) {
+      const firstAsUnit = findCommandUser(assignToMatch[1]);
+      const secondAsCall = findCommandIncident(assignToMatch[2]);
+      const firstAsCall = findCommandIncident(assignToMatch[1]);
+      const secondAsUnit = findCommandUser(assignToMatch[2]);
+      const unit = firstAsUnit || secondAsUnit;
+      const incident = secondAsCall || firstAsCall;
+      return [
+        { label: 'Action', value: 'Assign', tone: 'ready' },
+        { label: 'Unit', value: unit?.cadUnitNumber || unit?.unitNumber || unit?.name || assignToMatch[1], tone: unit ? 'ready' : 'invalid' },
+        { label: 'Call', value: incident?.callNumber || assignToMatch[2], tone: incident ? 'ready' : 'invalid' }
+      ];
+    }
+    if (assignMatch) {
+      const unit = findCommandUser(assignMatch[1]);
+      const incident = findCommandIncident(assignMatch[2]);
+      return [
+        { label: 'Action', value: 'Assign', tone: 'ready' },
+        { label: 'Unit', value: unit?.cadUnitNumber || unit?.unitNumber || unit?.name || assignMatch[1], tone: unit ? 'ready' : 'invalid' },
+        { label: 'Call', value: incident?.callNumber || assignMatch[2], tone: incident ? 'ready' : 'invalid' }
+      ];
+    }
+
+    const closeMatch = raw.match(/^(?:close|clear)\s+(\S+)(?:\s+(.+))?$/i);
+    if (['close', 'clear'].includes(command)) {
+      return [{ label: 'Action', value: 'Close Call', tone: 'warning' }];
+    }
+    if (closeMatch) {
+      const incident = findCommandIncident(closeMatch[1]);
+      return [
+        { label: 'Action', value: 'Close Call', tone: 'ready' },
+        { label: 'Call', value: incident?.callNumber || closeMatch[1], tone: incident ? 'ready' : 'invalid' },
+        { label: 'Disposition', value: closeMatch[2] || 'Needed', tone: closeMatch[2] ? 'ready' : 'warning' }
+      ];
+    }
+
+    return [{ label: 'Command', value: raw, tone: 'invalid' }];
   }, [findCommandIncident, findCommandUser, mapCommand]);
 
   useEffect(() => {
@@ -3876,6 +4060,12 @@ export const Dashboard: React.FC = () => {
     mapCommandState.tone === 'ready' ? CheckCircle2 :
     mapCommandState.tone === 'invalid' ? X :
     Terminal;
+  const mapCommandChipClass = (tone: MapCommandChip['tone'] = 'neutral') => ({
+    neutral: 'border-slate-200 bg-white/80 text-slate-600 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-300',
+    ready: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200',
+    warning: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/70 dark:text-amber-200',
+    invalid: 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/70 dark:text-red-200'
+  }[tone]);
 
   return (
     <div className={`dashboard-enter flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-gray-100' : 'bg-gray-50 text-cad-ink'}`}>
@@ -4069,6 +4259,19 @@ export const Dashboard: React.FC = () => {
                     <span className="mt-0.5 block text-xs opacity-80">{mapCommandState.detail}</span>
                   </span>
                 </div>
+                {mapCommandChips.length > 0 && (
+                  <div className="mb-1 flex flex-wrap gap-1.5 px-0.5 py-1">
+                    {mapCommandChips.map((chip) => (
+                      <span
+                        key={`${chip.label}-${chip.value}`}
+                        className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold ${mapCommandChipClass(chip.tone)}`}
+                      >
+                        <span className="uppercase opacity-60">{chip.label}</span>
+                        <span className="max-w-36 truncate">{chip.value}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {mapCommandSuggestions.length === 0 ? (
                   <p className="px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-300">No command suggestions.</p>
                 ) : (
