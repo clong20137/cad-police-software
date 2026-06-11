@@ -1,6 +1,5 @@
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
-import { ExternalLink, Pencil, Plus, Settings, Trash2, X } from 'lucide-react';
-import { ModalShell } from './ModalShell';
+import { ExternalLink, Pencil, Plus, Trash2, X } from 'lucide-react';
 
 export type QuickLaunchOption<T extends string> = {
   id: T;
@@ -53,6 +52,7 @@ export const QuickLaunchDock = <T extends string>({
   const [externalLabel, setExternalLabel] = useState('');
   const [externalUrlText, setExternalUrlText] = useState('');
   const didDragRef = useRef(false);
+  const customizeMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!contextMenu) return undefined;
@@ -82,6 +82,23 @@ export const QuickLaunchDock = <T extends string>({
     }
   }, [customizingSlot, slots]);
 
+  useEffect(() => {
+    if (customizingSlot === null) return undefined;
+
+    const closeFromPointer = (event: MouseEvent) => {
+      if (customizeMenuRef.current?.contains(event.target as Node)) return;
+      onCustomize(null);
+    };
+    const closeFromScroll = () => onCustomize(null);
+
+    window.addEventListener('mousedown', closeFromPointer);
+    window.addEventListener('scroll', closeFromScroll, true);
+    return () => {
+      window.removeEventListener('mousedown', closeFromPointer);
+      window.removeEventListener('scroll', closeFromScroll, true);
+    };
+  }, [customizingSlot, onCustomize]);
+
   const assignExternal = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (customizingSlot === null || !externalLabel.trim() || !externalUrlText.trim()) return;
@@ -95,6 +112,7 @@ export const QuickLaunchDock = <T extends string>({
   const clearSlot = (index: number) => {
     onAssignSlot(index, null);
     setContextMenu(null);
+    onCustomize(null);
   };
 
   const clearAllSlots = () => {
@@ -106,13 +124,104 @@ export const QuickLaunchDock = <T extends string>({
   const openContextMenu = (event: React.MouseEvent, index: number) => {
     event.preventDefault();
     event.stopPropagation();
+    onCustomize(null);
     setContextMenu({ index, x: event.clientX, y: event.clientY });
+  };
+
+  const openCustomizeMenu = (event: React.MouseEvent, index: number) => {
+    event.stopPropagation();
+    setContextMenu(null);
+    onCustomize(customizingSlot === index ? null : index);
+  };
+
+  const customizeMenuPosition = (index: number, totalSlots: number) => {
+    if (index <= 1) return { panel: 'left-0', arrow: 'left-7' };
+    if (index >= totalSlots - 2) return { panel: 'right-0', arrow: 'right-7' };
+    return { panel: 'left-1/2 -translate-x-1/2', arrow: 'left-1/2 -translate-x-1/2' };
+  };
+
+  const renderCustomizeMenu = (index: number, totalSlots: number) => {
+    if (customizingSlot !== index) return null;
+
+    const position = customizeMenuPosition(index, totalSlots);
+
+    return (
+      <div
+        ref={customizeMenuRef}
+        className={`cad-fade-pop-enter pointer-events-auto absolute bottom-[calc(100%+0.75rem)] z-[75] w-72 rounded-md border border-cad-blue/20 bg-white p-2 text-cad-ink shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-white ${position.panel}`}
+        onClick={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <span className={`absolute -bottom-1.5 h-3 w-3 rotate-45 border-b border-r border-cad-blue/20 bg-white dark:border-blue-400/20 dark:bg-slate-900 ${position.arrow}`} />
+        <div className="relative grid max-h-72 gap-1 overflow-y-auto pr-1">
+          {options.map((option) => {
+            const alreadyUsed = slots.some((slot, slotIndex) => slotIndex !== index && slot === option.id);
+            return (
+              <button
+                key={option.id}
+                type="button"
+                disabled={alreadyUsed}
+                onClick={() => onAssignSlot(index, option.id)}
+                className="flex w-full items-center gap-3 rounded px-2.5 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-blue-50 hover:text-cad-blue disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-blue-100 dark:disabled:bg-slate-950"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-cad-blue/10 bg-blue-50 text-cad-blue dark:border-blue-300/10 dark:bg-blue-950/70 dark:text-blue-100">
+                  {option.icon}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                {alreadyUsed && <span className="text-xs text-slate-400">Added</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        <form onSubmit={assignExternal} className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+          <div className="mb-2 flex items-center gap-2 px-1 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <ExternalLink size={14} />
+            External Site
+          </div>
+          <div className="grid gap-2">
+            <input
+              value={externalLabel}
+              onChange={(event) => setExternalLabel(event.target.value)}
+              placeholder="Name"
+              className="rounded border border-slate-200 bg-white px-2.5 py-2 text-sm outline-none focus:border-cad-blue focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+            />
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <input
+                value={externalUrlText}
+                onChange={(event) => setExternalUrlText(event.target.value)}
+                placeholder="https://example.com"
+                className="min-w-0 rounded border border-slate-200 bg-white px-2.5 py-2 text-sm outline-none focus:border-cad-blue focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              />
+              <button
+                type="submit"
+                className="flex h-10 w-10 items-center justify-center rounded bg-cad-blue text-white shadow-sm hover:bg-blue-800 disabled:opacity-50"
+                disabled={!externalLabel.trim() || !externalUrlText.trim()}
+                aria-label="Add external site"
+                title="Add external site"
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <button
+          type="button"
+          onClick={() => clearSlot(index)}
+          className="mt-2 flex w-full items-center gap-3 rounded px-2.5 py-2 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950"
+        >
+          <Trash2 size={16} />
+          Remove
+        </button>
+      </div>
+    );
   };
 
   return (
     <>
       <section className={`dispatch-quick-launch-enter pointer-events-none fixed bottom-4 right-4 z-40 hidden select-none transition-all duration-300 ease-out md:block ${desktopLeftClass || (sidebarCollapsed ? 'left-24' : 'left-[19.5rem]')}`}>
-        <div className="pointer-events-auto mx-auto flex h-[4.5rem] w-fit max-w-full items-center overflow-hidden rounded-md border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
+        <div className="pointer-events-auto mx-auto flex h-[4.5rem] w-fit max-w-full items-center overflow-visible rounded-md border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
           <div className="flex max-w-full flex-nowrap items-center justify-center gap-2">
             {slots.map((slot, index) => {
               const option = typeof slot === 'string' ? options.find((item) => item.id === slot) || null : null;
@@ -159,7 +268,7 @@ export const QuickLaunchDock = <T extends string>({
                   <button
                     type="button"
                     onContextMenu={(event) => openContextMenu(event, index)}
-                    onClick={() => {
+                    onClick={(event) => {
                       if (didDragRef.current) return;
                       if (option) {
                         onOpen(option.id);
@@ -169,7 +278,7 @@ export const QuickLaunchDock = <T extends string>({
                         window.open(externalUrl(external.url), '_blank', 'noopener,noreferrer');
                         return;
                       }
-                      onCustomize(index);
+                      openCustomizeMenu(event, index);
                     }}
                     className={`flex h-14 w-14 flex-col items-center justify-center gap-1 rounded border text-[10px] font-medium transition duration-200 ease-out hover:shadow-md ${
                       visible
@@ -198,7 +307,7 @@ export const QuickLaunchDock = <T extends string>({
                   {visible && (
                     <button
                       type="button"
-                      onClick={() => onCustomize(index)}
+                      onClick={(event) => openCustomizeMenu(event, index)}
                       className="absolute -bottom-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-slate-500 shadow-sm hover:bg-slate-200 hover:text-cad-blue dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                       aria-label={`Change ${label} shortcut`}
                       title="Change shortcut"
@@ -206,39 +315,14 @@ export const QuickLaunchDock = <T extends string>({
                       <Pencil size={10} />
                     </button>
                   )}
+
+                  {renderCustomizeMenu(index, slots.length)}
                 </div>
               );
             })}
           </div>
         </div>
 
-        {contextMenu && (
-          <div
-            className="pointer-events-auto fixed z-[70] min-w-40 overflow-hidden rounded border border-slate-200 bg-white p-1 text-sm shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-            style={{
-              left: Math.min(contextMenu.x, window.innerWidth - 180),
-              top: Math.min(contextMenu.y, window.innerHeight - 96)
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => clearSlot(contextMenu.index)}
-              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              <Trash2 size={15} />
-              Remove
-            </button>
-            <button
-              type="button"
-              onClick={clearAllSlots}
-              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
-            >
-              <X size={15} />
-              Remove All
-            </button>
-          </div>
-        )}
       </section>
 
       <section className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-3 md:hidden">
@@ -248,90 +332,58 @@ export const QuickLaunchDock = <T extends string>({
             const external = isExternalSlot(slot) ? slot : null;
             const label = option?.label || external?.label || 'Add';
             return (
-              <button
-                key={`mobile-quick-${index}`}
-                type="button"
-                onClick={() => {
-                  if (option) onOpen(option.id);
-                  else if (external) window.open(externalUrl(external.url), '_blank', 'noopener,noreferrer');
-                  else onCustomize(index);
-                }}
-                className={`flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-bold ${
-                  option && activeItem === option.id ? 'bg-blue-50 text-cad-blue dark:bg-blue-950' : 'bg-slate-50 dark:bg-slate-900'
-                }`}
-                title={label}
-              >
-                {option?.icon || (external ? <ExternalLink size={18} /> : <Settings size={18} />)}
-                <span className="max-w-full truncate px-1">{label}</span>
-              </button>
+              <div key={`mobile-quick-${index}`} className="relative" onContextMenu={(event) => openContextMenu(event, index)}>
+                <button
+                  type="button"
+                  onContextMenu={(event) => openContextMenu(event, index)}
+                  onClick={() => {
+                    if (option) onOpen(option.id);
+                    else if (external) window.open(externalUrl(external.url), '_blank', 'noopener,noreferrer');
+                    else onCustomize(index);
+                  }}
+                  className={`flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-bold ${
+                    option && activeItem === option.id ? 'bg-blue-50 text-cad-blue dark:bg-blue-950' : 'bg-slate-50 dark:bg-slate-900'
+                  }`}
+                  title={label}
+                >
+                  {option?.icon || (external ? <ExternalLink size={18} /> : <Plus size={18} />)}
+                  <span className="max-w-full truncate px-1">{label}</span>
+                </button>
+
+                {renderCustomizeMenu(index, Math.min(slots.length, 8))}
+              </div>
             );
           })}
         </div>
       </section>
 
-      <ModalShell
-        title={customizingSlot === null ? '' : `Customize Slot ${customizingSlot + 1}`}
-        open={customizingSlot !== null}
-        onClose={() => onCustomize(null)}
-        maxWidthClass="max-w-lg"
-        placement="bottom"
-      >
-        {customizingSlot !== null && (
-          <div className="grid gap-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {options.map((option) => {
-                const alreadyUsed = slots.some((slot, index) => index !== customizingSlot && slot === option.id);
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    disabled={alreadyUsed}
-                    onClick={() => onAssignSlot(customizingSlot, option.id)}
-                    className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left text-sm font-semibold hover:bg-blue-50 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:border-slate-700 dark:hover:bg-slate-800 dark:disabled:bg-slate-950"
-                  >
-                    <span className="text-cad-blue">{option.icon}</span>
-                    <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                    {alreadyUsed && <span className="text-xs text-slate-400">Added</span>}
-                  </button>
-                );
-              })}
-            </div>
-
-            <form onSubmit={assignExternal} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
-              <div className="mb-3 flex items-center gap-2 text-sm font-bold">
-                <ExternalLink size={17} />
-                External Site
-              </div>
-              <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr_auto]">
-                <input
-                  value={externalLabel}
-                  onChange={(event) => setExternalLabel(event.target.value)}
-                  placeholder="Name"
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-                <input
-                  value={externalUrlText}
-                  onChange={(event) => setExternalUrlText(event.target.value)}
-                  placeholder="https://example.com"
-                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-                <button type="submit" className="inline-flex items-center justify-center rounded-md bg-cad-blue px-3 py-2 text-white">
-                  <Plus size={16} />
-                </button>
-              </div>
-            </form>
-
-            <button
-              type="button"
-              onClick={() => onAssignSlot(customizingSlot, null)}
-              className="flex items-center gap-3 rounded-md border border-red-200 px-3 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
-            >
-              <Trash2 size={18} />
-              Clear this box
-            </button>
-          </div>
-        )}
-      </ModalShell>
+      {contextMenu && (
+        <div
+          className="pointer-events-auto fixed z-[80] min-w-40 overflow-hidden rounded border border-slate-200 bg-white p-1 text-sm shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+          style={{
+            left: Math.min(contextMenu.x, window.innerWidth - 180),
+            top: Math.min(contextMenu.y, window.innerHeight - 96)
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => clearSlot(contextMenu.index)}
+            className="flex w-full items-center gap-2 rounded px-3 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <Trash2 size={15} />
+            Remove
+          </button>
+          <button
+            type="button"
+            onClick={clearAllSlots}
+            className="flex w-full items-center gap-2 rounded px-3 py-2 text-left font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+          >
+            <X size={15} />
+            Remove All
+          </button>
+        </div>
+      )}
     </>
   );
 };
