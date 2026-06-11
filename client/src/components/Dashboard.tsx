@@ -3113,11 +3113,11 @@ export const Dashboard: React.FC = () => {
     <div className={`grid h-[min(74vh,760px)] min-h-[560px] overflow-hidden rounded-lg border border-cad-line bg-white text-cad-ink dark:border-slate-700 dark:bg-slate-900 dark:text-white ${showCallList ? 'lg:grid-cols-[340px_1fr]' : ''}`}>
       {showCallList && (
         <div className="flex min-h-0 flex-col border-r border-cad-line bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
-          <div className="shrink-0 border-b border-cad-line bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
-              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-cad-blue dark:bg-blue-950 dark:text-blue-100">{activeCount} active</span>
-              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700 dark:bg-amber-950 dark:text-amber-200">{pendingCount} pending</span>
-              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">{assignedCount} assigned</span>
+          <div className="shrink-0 border-b border-cad-line bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+              <span><strong className="text-cad-blue dark:text-blue-100">{activeCount}</strong> active</span>
+              <span><strong className="text-amber-700 dark:text-amber-200">{pendingCount}</strong> pending</span>
+              <span><strong className="text-emerald-700 dark:text-emerald-200">{assignedCount}</strong> assigned</span>
             </div>
             <div className="mb-3 grid grid-cols-4 gap-1 rounded-md bg-slate-100 p-1 dark:bg-slate-950">
               {callTabs.map((tab) => (
@@ -3168,10 +3168,10 @@ export const Dashboard: React.FC = () => {
                 key={incident.id}
                 type="button"
                 onClick={() => setSelectedIncidentId(incident.id)}
-                className={`w-full rounded-lg border p-3 text-left transition ${
+                className={`w-full border-l-4 border-y-0 border-r-0 px-3 py-3 text-left transition ${
                   selectedIncident?.id === incident.id
                     ? 'border-cad-blue bg-blue-50 dark:bg-blue-950/50'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800'
+                    : 'border-transparent bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -3179,26 +3179,16 @@ export const Dashboard: React.FC = () => {
                     <p className="truncate text-sm font-black text-slate-950 dark:text-white">{incident.callNumber}</p>
                     <p className="mt-0.5 truncate text-sm font-semibold text-cad-blue dark:text-blue-100">{incident.type}</p>
                   </div>
-                  <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${incidentPriorityStyles[incident.priority]}`}>
-                    {incident.priority}
-                  </span>
+                  <span className="shrink-0 text-xs font-bold text-slate-500 dark:text-slate-400">{incident.priority}</span>
                 </div>
                 <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-600 dark:text-slate-300">
                   <MapPin size={13} className="mt-0.5 shrink-0" />
                   <span className="line-clamp-2">{incident.address}</span>
                 </p>
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${incidentStatusStyles[incident.status]}`}>
-                    {incident.status}
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    {incident.units.length} unit{incident.units.length === 1 ? '' : 's'}
-                  </span>
-                  {incident.units.length === 0 && (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                      Unassigned
-                    </span>
-                  )}
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  <span>{incident.status}</span>
+                  <span>{incident.units.length} unit{incident.units.length === 1 ? '' : 's'}</span>
+                  {incident.units.length === 0 && <span>Unassigned</span>}
                 </div>
               </button>
             ))}
@@ -3213,20 +3203,16 @@ export const Dashboard: React.FC = () => {
                 {incidentError}
               </p>
             )}
-            <div className="rounded-lg border border-cad-line bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+            <section className="border-b border-cad-line pb-4 dark:border-slate-700">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Selected Call</p>
                   <h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">{selectedIncident.callNumber}</h2>
                   <p className="mt-1 text-sm font-semibold text-cad-blue dark:text-blue-100">{selectedIncident.type}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className={`rounded-full px-3 py-1 text-xs font-black ${incidentPriorityStyles[selectedIncident.priority]}`}>
-                    {selectedIncident.priority}
-                  </span>
-                  <span className={`rounded-full px-3 py-1 text-xs font-black ring-1 ${incidentStatusStyles[selectedIncident.status]}`}>
-                    {selectedIncident.status}
-                  </span>
+                <div className="grid gap-1 text-right text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                  <span>Priority <strong className="text-slate-900 dark:text-white">{selectedIncident.priority}</strong></span>
+                  <span>Status <strong className="text-slate-900 dark:text-white">{selectedIncident.status}</strong></span>
                 </div>
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -3239,7 +3225,7 @@ export const Dashboard: React.FC = () => {
               </div>
               <CallWorkflow incident={selectedIncident} />
               {!selectedCallClosed && recommendedNextStatus && (
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-cad-line bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-cad-line pt-3 dark:border-slate-800">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Recommended Next Action</p>
                     <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -3257,19 +3243,19 @@ export const Dashboard: React.FC = () => {
                 </div>
               )}
               {selectedIncident.description && (
-                <div className="mt-4 rounded-md border border-cad-line bg-white p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                <div className="mt-4 border-t border-cad-line pt-3 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-200">
                   {selectedIncident.description}
                 </div>
               )}
               {selectedIncident.disposition && (
-                <div className="mt-3 rounded-md border border-cad-line bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                <div className="mt-3 border-t border-cad-line pt-3 dark:border-slate-800">
                   <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Disposition</p>
                   <p className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">{selectedIncident.disposition}</p>
                 </div>
               )}
-            </div>
+            </section>
 
-            <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+            <section className="border-b border-cad-line pb-4 dark:border-slate-700">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Assigned Units</h3>
@@ -3280,7 +3266,7 @@ export const Dashboard: React.FC = () => {
               <div className="mt-2 space-y-2">
                 {selectedIncident.units.length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No units assigned.</p>}
                 {selectedIncident.units.map((assignedUnit) => (
-                  <div key={assignedUnit.userId} className="rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950">
+                  <div key={assignedUnit.userId} className="border-t border-slate-200 py-2 text-sm first:border-t-0 dark:border-slate-800">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold">{assignedUnit.cadUnitNumber || assignedUnit.name}</span>
                       <span>{assignedUnit.status}</span>
@@ -3308,34 +3294,32 @@ export const Dashboard: React.FC = () => {
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
             {!selectedCallClosed && recommendedUnits.length > 0 && (
-              <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+              <section className="border-b border-cad-line pb-4 dark:border-slate-700">
                 <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Recommended Units</h3>
-                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <div className="mt-2 divide-y divide-cad-line dark:divide-slate-800">
                   {recommendedUnits.map(({ unit }) => (
                     <button
                       key={unit.id}
                       type="button"
                       onClick={() => assignRecommendedUnit(unit.id)}
-                      className="rounded-md border border-cad-line bg-slate-50 px-3 py-2 text-left text-sm hover:bg-blue-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
+                      className="grid w-full grid-cols-[1fr_auto] gap-2 py-2 text-left text-sm hover:text-cad-blue dark:hover:text-blue-100"
                     >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="font-bold">{displayCadUnitNumber(unit)}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ring-1 ${statusStyles[displayStatus(unit)]}`}>
-                          {displayStatus(unit)}
+                      <span className="min-w-0">
+                        <span className="block font-bold">{displayCadUnitNumber(unit)}</span>
+                        <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                          {incidentDistanceLabel(unit, selectedIncident)} - {unit.district || 'No district'}
                         </span>
                       </span>
-                      <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-                        {incidentDistanceLabel(unit, selectedIncident)} - {unit.district || 'No district'}
-                      </span>
+                      <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{displayStatus(unit)}</span>
                     </button>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
             {!selectedCallClosed && (
-              <div className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+              <div className="grid grid-cols-[1fr_auto] gap-2 border-b border-cad-line pb-4 dark:border-slate-700">
                 <select value={assignmentUnitId} onChange={(event) => setAssignmentUnitId(event.target.value)} className="min-w-0 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
                   <option value="">Select unit</option>
                   {[...recommendedUnits.map((item) => item.unit), ...units.filter((unit) => !recommendedUnits.some((item) => item.unit.id === unit.id))].map((unit) => (
@@ -3345,7 +3329,7 @@ export const Dashboard: React.FC = () => {
                 <button type="button" disabled={!assignmentUnitId} onClick={assignIncidentUnit} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">Assign</button>
               </div>
             )}
-            <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+            <section className="border-b border-cad-line pb-4 dark:border-slate-700">
               <h3 className="mb-3 text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Update Call</h3>
               {selectedCallClosed ? (
                 <button
@@ -3377,13 +3361,13 @@ export const Dashboard: React.FC = () => {
                   <input value={incidentDisposition} onChange={(event) => setIncidentDisposition(event.target.value)} placeholder="Disposition required to close or cancel" className="mt-3 w-full rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
                 </>
               )}
-            </div>
-            <div className="rounded-lg border border-cad-line bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+            </section>
+            <section>
               <h3 className="text-sm font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Call Timeline</h3>
               <div className="mt-3 max-h-48 space-y-2 overflow-y-auto">
                 {(selectedIncident.notes || []).length === 0 && <p className="text-sm text-slate-600 dark:text-slate-300">No notes yet.</p>}
                 {(selectedIncident.notes || []).map((note) => (
-                  <div key={note.id} className="rounded-md border border-cad-line bg-slate-50 p-2 text-sm dark:border-slate-800 dark:bg-slate-900">
+                  <div key={note.id} className="border-t border-cad-line py-2 text-sm first:border-t-0 dark:border-slate-800">
                     <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-500">
                       <span>{note.noteType} {note.userName ? `by ${note.userName}` : ''}</span>
                       <span>{formatDateTime(note.createdAt)}</span>
@@ -3396,7 +3380,7 @@ export const Dashboard: React.FC = () => {
                 <input value={incidentNoteBody} onChange={(event) => setIncidentNoteBody(event.target.value)} placeholder="Add call note" className="min-w-0 rounded-md border border-cad-line bg-white px-3 py-2 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
                 <button type="button" disabled={!incidentNoteBody.trim()} onClick={addIncidentNote} className="rounded-md bg-cad-blue px-3 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">Add</button>
               </div>
-            </div>
+            </section>
           </div>
         ) : (
           <div className="flex h-full min-h-96 items-center justify-center p-4 text-sm text-slate-600 dark:text-slate-300">Select a call to manage.</div>
@@ -4730,7 +4714,7 @@ const OverlayPanel: React.FC<{
 );
 
 const CallInfoTile: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
-  <div className="rounded-md border border-cad-line bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+  <div className="border-t border-cad-line pt-3 first:border-t-0 dark:border-slate-800">
     <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{label}</p>
     <p className="mt-1 break-words text-sm font-semibold text-slate-900 dark:text-slate-100">{value}</p>
   </div>
@@ -4743,17 +4727,17 @@ const CallWorkflow: React.FC<{ incident: Incident }> = ({ incident }) => {
   const activeIndex = Math.max(0, steps.indexOf(incident.status));
 
   return (
-    <div className="mt-4 rounded-md border border-cad-line bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+    <div className="mt-4 border-t border-cad-line pt-3 dark:border-slate-800">
       <div className="flex flex-wrap items-center gap-2">
         {steps.map((step, index) => {
           const complete = index <= activeIndex;
           return (
             <React.Fragment key={step}>
               <span
-                className={`rounded-full px-2.5 py-1 text-xs font-black ${
+                className={`text-xs font-black uppercase tracking-wide ${
                   complete
-                    ? incidentStatusStyles[step]
-                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                    ? 'text-cad-blue dark:text-blue-100'
+                    : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
                 {step}
