@@ -3668,7 +3668,11 @@ export const Dashboard: React.FC = () => {
           )}
         </div>
 
-        <div className="pointer-events-auto fixed right-3 top-3 z-40 flex select-none items-center gap-1.5 rounded-2xl border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_22px_60px_rgba(15,23,42,0.26)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/92 dark:text-white dark:ring-blue-300/10 sm:right-5 sm:top-4 sm:gap-2">
+        <div className={`pointer-events-auto fixed right-3 top-3 z-40 flex select-none items-center gap-1.5 rounded-2xl border p-2 shadow-[0_22px_60px_rgba(15,23,42,0.26)] ring-1 backdrop-blur-md sm:right-5 sm:top-4 sm:gap-2 ${
+          theme === 'dark'
+            ? 'border-blue-400/20 bg-slate-950/95 text-white ring-blue-300/10'
+            : 'border-cad-blue/20 bg-white/95 text-cad-ink ring-cad-blue/10'
+        }`}>
           <div className="relative">
             <button
               type="button"
@@ -3681,7 +3685,7 @@ export const Dashboard: React.FC = () => {
               aria-expanded={mapFilterOpen}
               title="Map filters"
             >
-              <SlidersHorizontal size={19} />
+              <Layers size={19} />
             </button>
             {mapFilterOpen && (
               <div className="absolute right-0 top-12 z-40 w-56 rounded border border-cad-blue/20 bg-white p-2 text-cad-ink shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-slate-100">
@@ -3725,15 +3729,6 @@ export const Dashboard: React.FC = () => {
             aria-label="Toggle light dark mode"
           >
             {theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveQuickModal('inquiries')}
-            className="flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white text-cad-blue shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-100 dark:hover:bg-slate-700"
-            aria-label="Open inquiries"
-            title="Inquiries"
-          >
-            <Search size={19} />
           </button>
           <button
             type="button"
