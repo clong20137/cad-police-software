@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import http from 'http';
-import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth';
@@ -15,6 +14,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
 import { apiRateLimiter, enforceHttps, ipAccessControl, sanitizeInput } from './middleware/security';
 import { securityConfig } from './config/security';
+import { legacyUploadRoots, uploadRoot } from './config/uploads';
 import { initializeDatabase } from './db/mysql';
 import { initializeRealtime } from './realtime/socket';
 
@@ -28,7 +28,10 @@ const server = http.createServer(app);
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '12mb' }));
-app.use('/uploads', express.static(path.resolve(__dirname, '..', 'uploads')));
+app.use('/uploads', express.static(uploadRoot));
+legacyUploadRoots.forEach((legacyRoot) => {
+  app.use('/uploads', express.static(legacyRoot));
+});
 app.use(cors({ origin: securityConfig.frontendUrls, credentials: true }));
 app.use(cspMiddleware);
 app.use(enforceHttps);

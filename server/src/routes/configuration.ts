@@ -5,10 +5,11 @@ import { authMiddleware, requirePermission } from '../middleware/auth';
 import { requireRequestSignature, sensitiveRateLimiter } from '../middleware/security';
 import { AuditLogService } from '../services/AuditLogService';
 import { ConfigurationService, UpsertConfigurationItemRequest } from '../services/ConfigurationService';
+import { uploadRoot } from '../config/uploads';
 
 const router = Router();
 const MAX_LOGO_UPLOAD_BYTES = 5 * 1024 * 1024;
-const LOGO_UPLOAD_DIR = path.resolve(__dirname, '..', 'uploads', 'branding');
+const LOGO_UPLOAD_DIR = path.join(uploadRoot, 'branding');
 
 const publicBaseUrl = (req: Request): string =>
   (process.env.BACKEND_PUBLIC_URL || `${req.protocol}://${req.get('host') || 'localhost:5001'}`).replace(/\/+$/, '');
