@@ -51,6 +51,8 @@ export const QuickLaunchDock = <T extends string>({
   const [draggingSlot, setDraggingSlot] = useState<number | null>(null);
   const [externalLabel, setExternalLabel] = useState('');
   const [externalUrlText, setExternalUrlText] = useState('');
+  const [renderedCustomizeSlot, setRenderedCustomizeSlot] = useState<number | null>(customizingSlot);
+  const [customizeMenuClosing, setCustomizeMenuClosing] = useState(false);
   const didDragRef = useRef(false);
   const customizeMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -66,11 +68,27 @@ export const QuickLaunchDock = <T extends string>({
   }, [contextMenu]);
 
   useEffect(() => {
-    if (customizingSlot === null) {
-      setExternalLabel('');
-      setExternalUrlText('');
+    if (customizingSlot !== null) {
+      setRenderedCustomizeSlot(customizingSlot);
+      setCustomizeMenuClosing(false);
       return;
     }
+
+    if (renderedCustomizeSlot === null) return;
+
+    setCustomizeMenuClosing(true);
+    const timeout = window.setTimeout(() => {
+      setRenderedCustomizeSlot(null);
+      setCustomizeMenuClosing(false);
+      setExternalLabel('');
+      setExternalUrlText('');
+    }, 140);
+
+    return () => window.clearTimeout(timeout);
+  }, [customizingSlot, renderedCustomizeSlot]);
+
+  useEffect(() => {
+    if (customizingSlot === null) return;
 
     const slot = slots[customizingSlot];
     if (isExternalSlot(slot)) {
@@ -83,13 +101,16 @@ export const QuickLaunchDock = <T extends string>({
   }, [customizingSlot, slots]);
 
   useEffect(() => {
-    if (customizingSlot === null) return undefined;
+    if (renderedCustomizeSlot === null) return undefined;
 
     const closeFromPointer = (event: MouseEvent) => {
       if (customizeMenuRef.current?.contains(event.target as Node)) return;
       onCustomize(null);
     };
-    const closeFromScroll = () => onCustomize(null);
+    const closeFromScroll = (event: Event) => {
+      if (event.target instanceof Node && customizeMenuRef.current?.contains(event.target)) return;
+      onCustomize(null);
+    };
 
     window.addEventListener('mousedown', closeFromPointer);
     window.addEventListener('scroll', closeFromScroll, true);
@@ -97,7 +118,7 @@ export const QuickLaunchDock = <T extends string>({
       window.removeEventListener('mousedown', closeFromPointer);
       window.removeEventListener('scroll', closeFromScroll, true);
     };
-  }, [customizingSlot, onCustomize]);
+  }, [onCustomize, renderedCustomizeSlot]);
 
   const assignExternal = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -135,20 +156,21 @@ export const QuickLaunchDock = <T extends string>({
   };
 
   const customizeMenuPosition = (index: number, totalSlots: number) => {
-    if (index <= 1) return { panel: 'left-0', arrow: 'left-7' };
-    if (index >= totalSlots - 2) return { panel: 'right-0', arrow: 'right-7' };
+    if (index <= 1) return { panel: 'left-0', arrow: 'left-7 -translate-x-1/2' };
+    if (index >= totalSlots - 2) return { panel: 'right-0', arrow: 'right-7 translate-x-1/2' };
     return { panel: 'left-1/2 -translate-x-1/2', arrow: 'left-1/2 -translate-x-1/2' };
   };
 
   const renderCustomizeMenu = (index: number, totalSlots: number) => {
-    if (customizingSlot !== index) return null;
+    if (renderedCustomizeSlot !== index) return null;
 
     const position = customizeMenuPosition(index, totalSlots);
+    const animationClass = customizeMenuClosing ? 'cad-fade-pop-exit' : 'cad-fade-pop-enter pointer-events-auto';
 
     return (
       <div
         ref={customizeMenuRef}
-        className={`cad-fade-pop-enter pointer-events-auto absolute bottom-[calc(100%+0.75rem)] z-[75] w-72 rounded-md border border-cad-blue/20 bg-white p-2 text-cad-ink shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-white ${position.panel}`}
+        className={`${animationClass} absolute bottom-[calc(100%+0.75rem)] z-[75] w-72 rounded-md border border-cad-blue/20 bg-white p-2 text-cad-ink shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-white ${position.panel}`}
         onClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
       >
@@ -336,10 +358,10 @@ export const QuickLaunchDock = <T extends string>({
                 <button
                   type="button"
                   onContextMenu={(event) => openContextMenu(event, index)}
-                  onClick={() => {
+                  onClick={(event) => {
                     if (option) onOpen(option.id);
                     else if (external) window.open(externalUrl(external.url), '_blank', 'noopener,noreferrer');
-                    else onCustomize(index);
+                    else openCustomizeMenu(event, index);
                   }}
                   className={`flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-bold ${
                     option && activeItem === option.id ? 'bg-blue-50 text-cad-blue dark:bg-blue-950' : 'bg-slate-50 dark:bg-slate-900'
