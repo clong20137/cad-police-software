@@ -4504,7 +4504,8 @@ export const Dashboard: React.FC = () => {
         dockAction={{
           label: 'My Location',
           icon: <MapPin size={18} />,
-          onClick: recenterToCurrentLocation
+          onClick: recenterToCurrentLocation,
+          iconOnly: true
         }}
         badges={{
           messages: messageBadgeCount,

@@ -48,6 +48,7 @@ export const QuickLaunchDock = <T extends string>({
     label: string;
     icon: React.ReactNode;
     onClick: () => void;
+    iconOnly?: boolean;
   };
   onOpen: (item: T) => void;
   onCustomize: (index: number | null) => void;
@@ -418,7 +419,7 @@ export const QuickLaunchDock = <T extends string>({
                   title={dockAction.label}
                 >
                   {dockAction.icon}
-                  <span className="max-w-10 truncate">{dockAction.label}</span>
+                  {!dockAction.iconOnly && <span className="max-w-10 truncate">{dockAction.label}</span>}
                 </button>
               </>
             )}
@@ -470,7 +471,7 @@ export const QuickLaunchDock = <T extends string>({
               aria-label={dockAction.label}
             >
               {dockAction.icon}
-              <span className="max-w-full truncate px-1">{dockAction.label}</span>
+              {!dockAction.iconOnly && <span className="max-w-full truncate px-1">{dockAction.label}</span>}
             </button>
           )}
         </div>
