@@ -3666,6 +3666,9 @@ export const Dashboard: React.FC = () => {
               {queuedActionCount > 0 ? `${queuedActionCount} pending sync` : offlineAgeLabel(offlineCacheAgeMs)}
             </span>
           )}
+        </div>
+
+        <div className="pointer-events-auto fixed right-3 top-3 z-40 flex select-none items-center gap-1.5 rounded-2xl border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_22px_60px_rgba(15,23,42,0.26)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/92 dark:text-white dark:ring-blue-300/10 sm:right-5 sm:top-4 sm:gap-2">
           <div className="relative">
             <button
               type="button"
