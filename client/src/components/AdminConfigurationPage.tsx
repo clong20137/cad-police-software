@@ -51,6 +51,11 @@ type SecurityConfig = {
   websocketHeartbeatSeconds: number;
   usbGpsEnabled: boolean;
   usbGpsBaudRate: number;
+  strictRoleSideAccess: boolean;
+  districtScopeEnabled: boolean;
+  maxLoginAttempts: number;
+  loginLockoutMinutes: number;
+  minLookupReasonLength: number;
 };
 
 const configSections: EditableConfigSection[] = ['agencies', 'districts', 'units', 'calls', 'statuses'];
@@ -62,7 +67,12 @@ const defaultSecurity: SecurityConfig = {
   locationStaleSeconds: 45,
   websocketHeartbeatSeconds: 20,
   usbGpsEnabled: false,
-  usbGpsBaudRate: 4800
+  usbGpsBaudRate: 4800,
+  strictRoleSideAccess: true,
+  districtScopeEnabled: false,
+  maxLoginAttempts: 5,
+  loginLockoutMinutes: 15,
+  minLookupReasonLength: 8
 };
 
 const sections: Array<{ id: AdminSection; label: string; icon: React.ReactNode }> = [
@@ -160,7 +170,12 @@ export const AdminConfigurationPage: React.FC = () => {
           defaultSecurity.websocketHeartbeatSeconds
         ),
         usbGpsEnabled: getSecurityBoolean(configItems, 'USB_GPS_ENABLED', defaultSecurity.usbGpsEnabled),
-        usbGpsBaudRate: getSecurityNumber(configItems, 'USB_GPS_BAUD_RATE', defaultSecurity.usbGpsBaudRate)
+        usbGpsBaudRate: getSecurityNumber(configItems, 'USB_GPS_BAUD_RATE', defaultSecurity.usbGpsBaudRate),
+        strictRoleSideAccess: getSecurityBoolean(configItems, 'STRICT_ROLE_SIDE_ACCESS', defaultSecurity.strictRoleSideAccess),
+        districtScopeEnabled: getSecurityBoolean(configItems, 'ENFORCE_DISTRICT_SCOPE', defaultSecurity.districtScopeEnabled),
+        maxLoginAttempts: getSecurityNumber(configItems, 'MAX_LOGIN_ATTEMPTS', defaultSecurity.maxLoginAttempts),
+        loginLockoutMinutes: getSecurityNumber(configItems, 'LOGIN_LOCKOUT_MINUTES', defaultSecurity.loginLockoutMinutes),
+        minLookupReasonLength: getSecurityNumber(configItems, 'MIN_LOOKUP_REASON_LENGTH', defaultSecurity.minLookupReasonLength)
       });
       setUsers(adminUsers);
       setSelectedUserId((current) => current || adminUsers[0]?.id || '');
@@ -673,7 +688,12 @@ export const AdminConfigurationPage: React.FC = () => {
               <NumberSetting label="Location stale seconds" value={security.locationStaleSeconds} min={10} onChange={(value) => updateSecurity('locationStaleSeconds', 'LOCATION_STALE_SECONDS', value)} />
               <NumberSetting label="Websocket heartbeat seconds" value={security.websocketHeartbeatSeconds} min={5} onChange={(value) => updateSecurity('websocketHeartbeatSeconds', 'WEBSOCKET_HEARTBEAT_SECONDS', value)} />
               <NumberSetting label="USB GPS baud rate" value={security.usbGpsBaudRate} min={1200} onChange={(value) => updateSecurity('usbGpsBaudRate', 'USB_GPS_BAUD_RATE', value)} />
+              <NumberSetting label="Max login attempts" value={security.maxLoginAttempts} min={3} onChange={(value) => updateSecurity('maxLoginAttempts', 'MAX_LOGIN_ATTEMPTS', value)} />
+              <NumberSetting label="Login lockout minutes" value={security.loginLockoutMinutes} min={5} onChange={(value) => updateSecurity('loginLockoutMinutes', 'LOGIN_LOCKOUT_MINUTES', value)} />
+              <NumberSetting label="Minimum lookup reason length" value={security.minLookupReasonLength} min={4} onChange={(value) => updateSecurity('minLookupReasonLength', 'MIN_LOOKUP_REASON_LENGTH', value)} />
               <ToggleSetting label="Enable BU-353S4 USB GPS" checked={security.usbGpsEnabled} onChange={(value) => updateSecurity('usbGpsEnabled', 'USB_GPS_ENABLED', value)} />
+              <ToggleSetting label="Strict role side access" checked={security.strictRoleSideAccess} onChange={(value) => updateSecurity('strictRoleSideAccess', 'STRICT_ROLE_SIDE_ACCESS', value)} />
+              <ToggleSetting label="Enforce district scope" checked={security.districtScopeEnabled} onChange={(value) => updateSecurity('districtScopeEnabled', 'ENFORCE_DISTRICT_SCOPE', value)} />
               <ToggleSetting label="Allow public registration" checked={security.registrationEnabled} onChange={(value) => updateSecurity('registrationEnabled', 'ALLOW_PUBLIC_REGISTRATION', value)} />
               <ToggleSetting label="Require HTTPS" checked={security.requireHttps} onChange={(value) => updateSecurity('requireHttps', 'REQUIRE_HTTPS', value)} />
               <ToggleSetting label="Require DB SSL" checked={security.requireDbSsl} onChange={(value) => updateSecurity('requireDbSsl', 'REQUIRE_DB_SSL', value)} />

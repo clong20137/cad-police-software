@@ -37,7 +37,7 @@ export class BmvService {
         resource: 'sensitive_inquiry',
         resourceId: response.id,
         severity: 'warning',
-        metadata: { kind: input.kind, reason: input.reason, status: response.status }
+        metadata: { kind: input.kind, reason: input.reason, officerId: input.officerId, status: response.status }
       });
       return response;
     }
@@ -75,7 +75,7 @@ export class BmvService {
           resource: 'sensitive_inquiry',
           resourceId: inquiryResponse.id,
           severity: 'error',
-          metadata: { kind: input.kind, reason: input.reason, status: inquiryResponse.status }
+          metadata: { kind: input.kind, reason: input.reason, officerId: input.officerId, status: inquiryResponse.status }
         });
         return inquiryResponse;
       }
@@ -93,7 +93,7 @@ export class BmvService {
         action: 'bmv_inquiry',
         resource: 'sensitive_inquiry',
         resourceId: inquiryResponse.id,
-        metadata: { kind: input.kind, reason: input.reason, status: inquiryResponse.status }
+        metadata: { kind: input.kind, reason: input.reason, officerId: input.officerId, status: inquiryResponse.status }
       });
       return inquiryResponse;
     } catch (error) {
@@ -110,7 +110,7 @@ export class BmvService {
         resource: 'sensitive_inquiry',
         resourceId: inquiryResponse.id,
         severity: 'error',
-        metadata: { kind: input.kind, reason: input.reason, status: inquiryResponse.status }
+        metadata: { kind: input.kind, reason: input.reason, officerId: input.officerId, status: inquiryResponse.status }
       });
       return inquiryResponse;
     } finally {

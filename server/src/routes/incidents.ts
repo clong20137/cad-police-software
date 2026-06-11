@@ -1,7 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requirePermission } from '../middleware/auth';
 import { broadcastIncidents, broadcastOfficerAssignment, broadcastTrackedUnits } from '../realtime/socket';
+import { AccessControlService } from '../services/AccessControlService';
 import { AuditLogService } from '../services/AuditLogService';
+import { AuthService } from '../services/AuthService';
 import { IncidentService } from '../services/IncidentService';
 import {
   AssignIncidentUnitRequest,
@@ -13,6 +15,15 @@ import {
 } from '../types/auth';
 
 const router = Router();
+
+const assertSideAccess = async (req: Request, side: 'dispatch' | 'officer') => {
+  const requester = await AuthService.getUser(req.user?.id || '');
+  if (!requester) {
+    throw new Error('User not found');
+  }
+  await AccessControlService.assertStrictRoleSideAccess(requester, side);
+  return requester;
+};
 
 router.get(
   '/',
@@ -29,6 +40,7 @@ router.post(
   requirePermission('create_dispatch'),
   async (req: Request<{}, {}, CreateIncidentRequest>, res: Response): Promise<void> => {
     try {
+      await assertSideAccess(req, 'dispatch');
       const incident = await IncidentService.createIncident(req.body, req.user?.id || '');
       await AuditLogService.fromRequest(req, {
         action: 'incident_created',
@@ -54,6 +66,7 @@ router.post(
         res.status(403).json({ error: 'Officer or admin access required' });
         return;
       }
+      await assertSideAccess(req, 'officer');
 
       const eventType = req.body.type?.trim();
       if (!eventType) {
@@ -105,6 +118,7 @@ router.patch(
     res: Response
   ): Promise<void> => {
     try {
+      await assertSideAccess(req, 'dispatch');
       const incident = await IncidentService.updateStatus(req.params.id, req.body.status, req.body.disposition, req.user?.id);
       if (!incident) {
         res.status(404).json({ error: 'Incident not found' });
@@ -138,6 +152,7 @@ router.post(
   requirePermission('update_dispatch'),
   async (req: Request<{ id: string }>, res: Response): Promise<void> => {
     try {
+      await assertSideAccess(req, 'dispatch');
       const incident = await IncidentService.reopenIncident(req.params.id, req.user?.id);
       if (!incident) {
         res.status(404).json({ error: 'Incident not found' });
@@ -167,6 +182,7 @@ router.post(
   requirePermission('update_dispatch'),
   async (req: Request<{ id: string }, {}, AddIncidentNoteRequest>, res: Response): Promise<void> => {
     try {
+      await assertSideAccess(req, 'dispatch');
       const note = await IncidentService.addNote(req.params.id, req.user?.id || null, req.body);
       if (!note) {
         res.status(404).json({ error: 'Incident not found' });
@@ -196,6 +212,7 @@ router.post(
     res: Response
   ): Promise<void> => {
     try {
+      await assertSideAccess(req, 'dispatch');
       if (!req.body.userId) {
         res.status(400).json({ error: 'userId is required' });
         return;
@@ -238,6 +255,7 @@ router.post(
         res.status(403).json({ error: 'Officer or admin access required' });
         return;
       }
+      await assertSideAccess(req, 'officer');
 
       const incident = await IncidentService.assignUnit(
         req.params.id,
@@ -279,6 +297,7 @@ router.patch(
         res.status(403).json({ error: 'Officer or admin access required' });
         return;
       }
+      await assertSideAccess(req, 'officer');
 
       const incident = await IncidentService.updateAssignedUnitStatus(
         req.params.id,
@@ -315,6 +334,7 @@ router.post(
         res.status(403).json({ error: 'Officer or admin access required' });
         return;
       }
+      await assertSideAccess(req, 'officer');
 
       const note = await IncidentService.addAssignedUnitNote(req.params.id, req.user?.id || '', req.body);
       if (!note) {

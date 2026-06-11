@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requirePermission } from '../middleware/auth';
+import { AccessControlService } from '../services/AccessControlService';
 import { AuditLogService } from '../services/AuditLogService';
+import { AuthService } from '../services/AuthService';
 import { IntegrationSettingsService, SensitiveIntegrationCode } from '../services/IntegrationSettingsService';
 import { CourtLookupAuditRequest, IntegrationStatus } from '../types/auth';
 
@@ -72,26 +74,32 @@ router.post(
   authMiddleware,
   requirePermission('query_courts'),
   async (req: Request<{}, {}, CourtLookupAuditRequest>, res: Response): Promise<void> => {
-    const reason = req.body.reason?.trim();
-    if (!reason) {
-      res.status(400).json({ error: 'Court lookup reason is required' });
-      return;
-    }
-    await AuditLogService.fromRequest(req, {
-      action: 'court_lookup',
-      resource: 'sensitive_inquiry',
-      resourceId: `${req.body.mode}-${Date.now()}`,
-      severity: 'warning',
-      metadata: {
-        mode: req.body.mode,
-        reason,
-        name: req.body.name || undefined,
-        dob: req.body.dob || undefined,
-        caseNumber: req.body.caseNumber || undefined,
-        sourceUrl: req.body.sourceUrl
+    try {
+      const requester = await AuthService.getUser(req.user?.id || '');
+      if (!requester) {
+        res.status(401).json({ error: 'User not found' });
+        return;
       }
-    });
-    res.json({ success: true });
+      const lookup = await AccessControlService.authorizeCourtLookup(req.body, requester);
+      await AuditLogService.fromRequest(req, {
+        action: 'court_lookup',
+        resource: 'sensitive_inquiry',
+        resourceId: `${lookup.mode}-${Date.now()}`,
+        severity: 'warning',
+        metadata: {
+          mode: lookup.mode,
+          reason: lookup.reason,
+          name: lookup.name || undefined,
+          dob: lookup.dob || undefined,
+          caseNumber: lookup.caseNumber || undefined,
+          sourceUrl: lookup.sourceUrl
+        }
+      });
+      res.json({ success: true });
+    } catch (error) {
+      await AccessControlService.auditDeniedLookup(req.user?.id, 'COURTS', (error as Error).message || 'Court lookup denied');
+      res.status(400).json({ error: (error as Error).message || 'Court lookup denied' });
+    }
   }
 );
 

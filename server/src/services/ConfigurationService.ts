@@ -286,9 +286,14 @@ const defaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'updatedAt'>> =
   { id: 'security-heartbeat', section: 'security', name: 'Websocket heartbeat seconds', code: 'WEBSOCKET_HEARTBEAT_SECONDS', agency: 'All', category: 'Realtime', active: true, sortOrder: 30, metadata: { value: 20, type: 'number', min: 5 } },
   { id: 'security-usb-gps-enabled', section: 'security', name: 'Enable BU-353S4 USB GPS', code: 'USB_GPS_ENABLED', agency: 'All', category: 'Realtime', active: true, sortOrder: 40, metadata: { value: false, type: 'boolean' } },
   { id: 'security-usb-gps-baud-rate', section: 'security', name: 'USB GPS baud rate', code: 'USB_GPS_BAUD_RATE', agency: 'All', category: 'Realtime', active: true, sortOrder: 50, metadata: { value: 4800, type: 'number', min: 1200 } },
-  { id: 'security-https', section: 'security', name: 'Require HTTPS', code: 'REQUIRE_HTTPS', agency: 'All', category: 'Transport', active: true, sortOrder: 70, metadata: { value: true, type: 'boolean' } },
-  { id: 'security-db-ssl', section: 'security', name: 'Require DB SSL', code: 'REQUIRE_DB_SSL', agency: 'All', category: 'Database', active: true, sortOrder: 80, metadata: { value: true, type: 'boolean' } },
   { id: 'security-registration-enabled', section: 'security', name: 'Allow public registration', code: 'ALLOW_PUBLIC_REGISTRATION', agency: 'All', category: 'Access', active: true, sortOrder: 60, metadata: { value: true, type: 'boolean' } },
+  { id: 'security-strict-role-side-access', section: 'security', name: 'Strict role side access', code: 'STRICT_ROLE_SIDE_ACCESS', agency: 'All', category: 'Access', active: true, sortOrder: 70, metadata: { value: true, type: 'boolean' } },
+  { id: 'security-district-scope', section: 'security', name: 'Enforce district scope', code: 'ENFORCE_DISTRICT_SCOPE', agency: 'All', category: 'Access', active: true, sortOrder: 80, metadata: { value: false, type: 'boolean' } },
+  { id: 'security-login-attempts', section: 'security', name: 'Max login attempts', code: 'MAX_LOGIN_ATTEMPTS', agency: 'All', category: 'Access', active: true, sortOrder: 90, metadata: { value: 5, type: 'number', min: 3 } },
+  { id: 'security-lockout-minutes', section: 'security', name: 'Login lockout minutes', code: 'LOGIN_LOCKOUT_MINUTES', agency: 'All', category: 'Access', active: true, sortOrder: 100, metadata: { value: 15, type: 'number', min: 5 } },
+  { id: 'security-lookup-reason-length', section: 'security', name: 'Minimum lookup reason length', code: 'MIN_LOOKUP_REASON_LENGTH', agency: 'All', category: 'Access', active: true, sortOrder: 110, metadata: { value: 8, type: 'number', min: 4 } },
+  { id: 'security-https', section: 'security', name: 'Require HTTPS', code: 'REQUIRE_HTTPS', agency: 'All', category: 'Transport', active: true, sortOrder: 120, metadata: { value: true, type: 'boolean' } },
+  { id: 'security-db-ssl', section: 'security', name: 'Require DB SSL', code: 'REQUIRE_DB_SSL', agency: 'All', category: 'Database', active: true, sortOrder: 130, metadata: { value: true, type: 'boolean' } },
   { id: 'integration-bmv', section: 'integrations', name: 'BMV', code: 'BMV', agency: 'Indiana', category: 'Sensitive Lookup', active: true, sortOrder: 10, metadata: { enabled: false, endpoint: '', apiKey: '', timeoutMs: 12000, requireReason: true } },
   { id: 'integration-idacs', section: 'integrations', name: 'IDACS', code: 'IDACS', agency: 'Indiana', category: 'Sensitive Lookup', active: true, sortOrder: 20, metadata: { enabled: false, endpoint: '', apiKey: '', timeoutMs: 12000, requireReason: true } },
   { id: 'integration-courts', section: 'integrations', name: 'Indiana Courts', code: 'COURTS', agency: 'Indiana', category: 'Court Lookup', active: true, sortOrder: 30, metadata: { enabled: true, endpoint: 'https://public.courts.in.gov/', myCaseEndpoint: 'https://public.courts.in.gov/mycase/', requireReason: true } }
@@ -375,6 +380,17 @@ export class ConfigurationService {
     const item = rows[0] ? toItem(rows[0]) : null;
     const value = item?.metadata?.value;
     return item?.active !== false && typeof value === 'boolean' ? value : fallback;
+  }
+
+  static async getNumber(code: string, fallback: number): Promise<number> {
+    await this.ensureDefaults();
+    const [rows] = await pool.execute<AdminConfigurationRow[]>(
+      'SELECT * FROM admin_configuration_items WHERE section = ? AND code = ? LIMIT 1',
+      ['security', code]
+    );
+    const item = rows[0] ? toItem(rows[0]) : null;
+    const value = item?.metadata?.value;
+    return item?.active !== false && typeof value === 'number' && Number.isFinite(value) ? value : fallback;
   }
 
   static async getBySectionCode(section: AdminConfigSection, code: string): Promise<AdminConfigurationItem | null> {

@@ -35,22 +35,23 @@ import type { UnitStatus } from '../types/auth';
 
 const router = Router();
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const MAX_LOGIN_ATTEMPTS = 8;
 const getErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message : fallback;
 
-const isRateLimited = (key: string): boolean => {
+const isRateLimited = async (key: string): Promise<boolean> => {
   const now = Date.now();
   const attempt = loginAttempts.get(key);
+  const lockoutMinutes = Math.max(5, await ConfigurationService.getNumber('LOGIN_LOCKOUT_MINUTES', 15));
+  const maxAttempts = Math.max(3, await ConfigurationService.getNumber('MAX_LOGIN_ATTEMPTS', 5));
+  const windowMs = lockoutMinutes * 60 * 1000;
 
   if (!attempt || attempt.resetAt <= now) {
-    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    loginAttempts.set(key, { count: 1, resetAt: now + windowMs });
     return false;
   }
 
   attempt.count += 1;
-  return attempt.count > MAX_LOGIN_ATTEMPTS;
+  return attempt.count > maxAttempts;
 };
 
 // Public routes
@@ -130,7 +131,7 @@ router.post('/login', sensitiveRateLimiter, async (req: Request<{}, {}, LoginReq
       return;
     }
 
-    if (isRateLimited(rateLimitKey)) {
+    if (await isRateLimited(rateLimitKey)) {
       res.status(429).json({ error: 'Too many login attempts. Try again later.' });
       return;
     }
@@ -186,6 +187,7 @@ router.post('/login', sensitiveRateLimiter, async (req: Request<{}, {}, LoginReq
 
     const user = loginResult.user;
     const tokens = await AuthService.generateTokens(user);
+    loginAttempts.delete(rateLimitKey);
     await AuditLogService.fromRequest(req, {
       action: 'login_success',
       resource: 'auth',
@@ -231,6 +233,7 @@ router.post('/2fa/verify', sensitiveRateLimiter, async (req: Request<{}, {}, Two
     }
 
     const tokens = await AuthService.generateTokens(user);
+    loginAttempts.delete(`${req.ip}:${user.email}`);
     await AuditLogService.fromRequest(req, {
       action: 'two_factor_verified',
       resource: 'auth',
