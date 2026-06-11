@@ -410,6 +410,17 @@
     will-change: opacity, transform, filter;
   }
 
+  .quick-launch-picker-enter {
+    animation: quickLaunchPickerEnter 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: opacity, transform, filter;
+  }
+
+  .quick-launch-picker-exit {
+    animation: quickLaunchPickerExit 140ms ease both;
+    pointer-events: none;
+    will-change: opacity, transform, filter;
+  }
+
   .dispatch-command-shell {
     border: 1px solid rgba(26, 54, 93, 0.2);
     background:
@@ -747,6 +758,34 @@
       opacity: 0;
       filter: blur(4px);
       transform: translateY(-6px) scale(0.98);
+    }
+  }
+
+  @keyframes quickLaunchPickerEnter {
+    0% {
+      opacity: 0;
+      filter: blur(4px);
+      transform: translateY(-100%) translateY(6px) scale(0.98);
+    }
+
+    100% {
+      opacity: 1;
+      filter: blur(0);
+      transform: translateY(-100%) translateY(0) scale(1);
+    }
+  }
+
+  @keyframes quickLaunchPickerExit {
+    0% {
+      opacity: 1;
+      filter: blur(0);
+      transform: translateY(-100%) translateY(0) scale(1);
+    }
+
+    100% {
+      opacity: 0;
+      filter: blur(4px);
+      transform: translateY(-100%) translateY(6px) scale(0.98);
     }
   }
 }

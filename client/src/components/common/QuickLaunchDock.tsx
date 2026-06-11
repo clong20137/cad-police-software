@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useRef, useState } from 'react';
+import React, { CSSProperties, FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ExternalLink, Pencil, Plus, Trash2, X } from 'lucide-react';
 
 export type QuickLaunchOption<T extends string> = {
@@ -19,6 +19,8 @@ const isExternalSlot = <T extends string>(slot: QuickLaunchSlot<T>): slot is Qui
   Boolean(slot && typeof slot === 'object' && slot.type === 'external');
 
 const externalUrl = (url: string): string => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
+const pickerWidth = 288;
+const pickerViewportGutter = 12;
 
 export const QuickLaunchDock = <T extends string>({
   slots,
@@ -53,8 +55,11 @@ export const QuickLaunchDock = <T extends string>({
   const [externalUrlText, setExternalUrlText] = useState('');
   const [renderedCustomizeSlot, setRenderedCustomizeSlot] = useState<number | null>(customizingSlot);
   const [customizeMenuClosing, setCustomizeMenuClosing] = useState(false);
+  const [customizeMenuPosition, setCustomizeMenuPosition] = useState<{ left: number; top: number; arrowLeft: number } | null>(null);
   const didDragRef = useRef(false);
   const customizeMenuRef = useRef<HTMLDivElement | null>(null);
+  const desktopSlotRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const mobileSlotRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   useEffect(() => {
     if (!contextMenu) return undefined;
@@ -104,6 +109,17 @@ export const QuickLaunchDock = <T extends string>({
     if (renderedCustomizeSlot === null) return undefined;
 
     const closeFromPointer = (event: MouseEvent) => {
+      const menuRect = customizeMenuRef.current?.getBoundingClientRect();
+      if (
+        menuRect &&
+        event.clientX >= menuRect.left &&
+        event.clientX <= menuRect.right &&
+        event.clientY >= menuRect.top &&
+        event.clientY <= menuRect.bottom
+      ) {
+        return;
+      }
+
       if (customizeMenuRef.current?.contains(event.target as Node)) return;
       onCustomize(null);
     };
@@ -119,6 +135,42 @@ export const QuickLaunchDock = <T extends string>({
       window.removeEventListener('scroll', closeFromScroll, true);
     };
   }, [onCustomize, renderedCustomizeSlot]);
+
+  useLayoutEffect(() => {
+    if (renderedCustomizeSlot === null) {
+      setCustomizeMenuPosition(null);
+      return undefined;
+    }
+
+    const updatePosition = () => {
+      const desktopSlot = desktopSlotRefs.current[renderedCustomizeSlot];
+      const mobileSlot = mobileSlotRefs.current[renderedCustomizeSlot];
+      const desktopRect = desktopSlot?.getBoundingClientRect();
+      const slot = desktopRect && desktopRect.width > 0 && desktopRect.height > 0 ? desktopSlot : mobileSlot;
+      if (!slot) return;
+
+      const rect = slot.getBoundingClientRect();
+      const slotCenter = rect.left + rect.width / 2;
+      const left = Math.min(
+        Math.max(pickerViewportGutter, slotCenter - pickerWidth / 2),
+        Math.max(pickerViewportGutter, window.innerWidth - pickerWidth - pickerViewportGutter)
+      );
+
+      setCustomizeMenuPosition({
+        left,
+        top: rect.top - 12,
+        arrowLeft: slotCenter - left
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [renderedCustomizeSlot]);
 
   const assignExternal = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -155,26 +207,31 @@ export const QuickLaunchDock = <T extends string>({
     onCustomize(customizingSlot === index ? null : index);
   };
 
-  const customizeMenuPosition = (index: number, totalSlots: number) => {
-    if (index <= 1) return { panel: 'left-0', arrow: 'left-7 -translate-x-1/2' };
-    if (index >= totalSlots - 2) return { panel: 'right-0', arrow: 'right-7 translate-x-1/2' };
-    return { panel: 'left-1/2 -translate-x-1/2', arrow: 'left-1/2 -translate-x-1/2' };
-  };
-
-  const renderCustomizeMenu = (index: number, totalSlots: number) => {
+  const renderCustomizeMenu = (index: number) => {
     if (renderedCustomizeSlot !== index) return null;
 
-    const position = customizeMenuPosition(index, totalSlots);
-    const animationClass = customizeMenuClosing ? 'cad-fade-pop-exit' : 'cad-fade-pop-enter pointer-events-auto';
+    const animationClass = customizeMenuClosing ? 'quick-launch-picker-exit' : 'quick-launch-picker-enter pointer-events-auto';
+    const style: CSSProperties | undefined = customizeMenuPosition
+      ? {
+          left: customizeMenuPosition.left,
+          top: customizeMenuPosition.top,
+          width: pickerWidth,
+          transformOrigin: `${customizeMenuPosition.arrowLeft}px bottom`
+        }
+      : undefined;
 
     return (
       <div
         ref={customizeMenuRef}
-        className={`${animationClass} absolute bottom-[calc(100%+0.75rem)] z-[75] w-72 rounded-md border border-cad-blue/20 bg-white p-2 text-cad-ink shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-white ${position.panel}`}
+        className={`${animationClass} fixed z-[75] rounded-md border border-cad-blue/20 bg-white p-2 text-cad-ink shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 dark:text-white`}
+        style={style}
         onClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <span className={`absolute -bottom-1.5 h-3 w-3 rotate-45 border-b border-r border-cad-blue/20 bg-white dark:border-blue-400/20 dark:bg-slate-900 ${position.arrow}`} />
+        <span
+          className="absolute -bottom-1.5 h-3 w-3 -translate-x-1/2 rotate-45 border-b border-r border-cad-blue/20 bg-white dark:border-blue-400/20 dark:bg-slate-900"
+          style={{ left: customizeMenuPosition?.arrowLeft ?? pickerWidth / 2 }}
+        />
         <div className="relative grid max-h-72 gap-1 overflow-y-auto pr-1">
           {options.map((option) => {
             const alreadyUsed = slots.some((slot, slotIndex) => slotIndex !== index && slot === option.id);
@@ -257,6 +314,9 @@ export const QuickLaunchDock = <T extends string>({
                 <div
                   key={`quick-launch-${index}`}
                   className="relative"
+                  ref={(element) => {
+                    desktopSlotRefs.current[index] = element;
+                  }}
                   draggable={Boolean(visible)}
                   onDragStart={(event) => {
                     if (!visible) {
@@ -338,7 +398,7 @@ export const QuickLaunchDock = <T extends string>({
                     </button>
                   )}
 
-                  {renderCustomizeMenu(index, slots.length)}
+                  {renderCustomizeMenu(index)}
                 </div>
               );
             })}
@@ -354,7 +414,14 @@ export const QuickLaunchDock = <T extends string>({
             const external = isExternalSlot(slot) ? slot : null;
             const label = option?.label || external?.label || 'Add';
             return (
-              <div key={`mobile-quick-${index}`} className="relative" onContextMenu={(event) => openContextMenu(event, index)}>
+              <div
+                key={`mobile-quick-${index}`}
+                className="relative"
+                ref={(element) => {
+                  mobileSlotRefs.current[index] = element;
+                }}
+                onContextMenu={(event) => openContextMenu(event, index)}
+              >
                 <button
                   type="button"
                   onContextMenu={(event) => openContextMenu(event, index)}
@@ -372,7 +439,7 @@ export const QuickLaunchDock = <T extends string>({
                   <span className="max-w-full truncate px-1">{label}</span>
                 </button>
 
-                {renderCustomizeMenu(index, Math.min(slots.length, 8))}
+                {renderCustomizeMenu(index)}
               </div>
             );
           })}
