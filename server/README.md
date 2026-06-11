@@ -70,6 +70,14 @@ Use `FRONTEND_URLS` when more than one hosted frontend should be allowed through
 FRONTEND_URLS=https://cad.your-domain.com,https://admin.your-domain.com
 ```
 
+For same-network development, include the host computer IP that other devices use:
+
+```env
+FRONTEND_URLS=http://localhost:3000,http://192.168.1.25:3000
+```
+
+The backend listens on port `5001` by default. Make sure Windows Firewall allows inbound traffic to that port when other devices need to connect.
+
 ## Demo Users
 
 For development, these users are pre-created:

@@ -6,6 +6,7 @@
   "scripts": {
     "install-all": "npm install && cd server && npm install && cd ../client && npm install",
     "dev": "concurrently \"cd server && npm run dev\" \"cd client && npm start\"",
+    "dev:lan": "concurrently \"cd server && npm run dev\" \"cd client && npm run start:lan\"",
     "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
     "server": "cd server && npm run dev",
     "client": "cd client && npm start",

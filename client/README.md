@@ -101,7 +101,7 @@ export const MyComponent: React.FC = () => {
 REACT_APP_API_URL=http://localhost:5001/api
 ```
 
-Default: `http://localhost:5001/api`
+Default: `http://<current-browser-host>:5001/api`. On the host machine this is usually `http://localhost:5001/api`; from another device on the same network it becomes something like `http://192.168.1.25:5001/api`.
 
 `REACT_APP_GOOGLE_API_KEY` or `REACT_APP_GOOGLE_MAPS_API_KEY` enables the dashboard Google Map. Without it, the dashboard shows a local coordinate map fallback. `REACT_APP_SOCKET_URL` controls the live unit WebSocket endpoint.
 
@@ -128,6 +128,27 @@ window.CAD_CONFIG = {
 ```
 
 Blank values are ignored. If `SOCKET_URL` is blank, it is derived from `API_URL` by removing the trailing `/api`.
+
+## Local Network Access
+
+To let other devices on the same network connect to your local CAD server:
+
+1. Start the backend and LAN-visible frontend from the repo root:
+```bash
+npm run dev:lan
+```
+
+2. Set the backend allowed frontend origins in `server/.env`:
+```env
+FRONTEND_URLS=http://localhost:3000,http://192.168.1.25:3000
+```
+
+3. Open the app from another device using the host computer IP:
+```text
+http://192.168.1.25:3000
+```
+
+The client automatically points API and socket traffic to `http://192.168.1.25:5001` unless `REACT_APP_API_URL`, `REACT_APP_SOCKET_URL`, or `config.js` overrides it.
 
 ## TypeScript
 

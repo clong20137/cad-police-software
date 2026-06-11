@@ -56,6 +56,22 @@ This runs both frontend and backend concurrently:
 - Frontend: http://localhost:3000
 - Backend: http://localhost:5001
 
+### Same-Network Access
+
+To let another device on your local network open the app from your computer, start the frontend on all interfaces:
+
+```bash
+npm run dev:lan
+```
+
+Add your computer's LAN IP to `server/.env` so CORS and WebSockets accept it:
+
+```env
+FRONTEND_URLS=http://localhost:3000,http://192.168.1.25:3000
+```
+
+Then open `http://192.168.1.25:3000` from the other device. The browser client automatically uses `http://192.168.1.25:5001/api` unless you override `REACT_APP_API_URL` or `client/public/config.js`.
+
 ### Demo Credentials
 
 - **Admin**: admin@dispatch.local / admin123
