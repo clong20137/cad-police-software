@@ -2482,7 +2482,7 @@ export const Dashboard: React.FC = () => {
           : 'Connecting';
   const realtimeStatusClass =
     realtimeState === 'live'
-      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-100 dark:ring-emerald-300/30'
+      ? 'bg-emerald-100 text-emerald-900 ring-emerald-300 dark:bg-emerald-500/25 dark:text-emerald-50 dark:ring-emerald-300/40'
       : realtimeState === 'offline'
         ? 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/20 dark:text-red-100 dark:ring-red-300/30'
         : 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-300/30';
@@ -3653,7 +3653,7 @@ export const Dashboard: React.FC = () => {
         onProfile={() => setSettingsOpen(true)}
       />
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="pointer-events-auto fixed right-3 top-3 z-40 flex select-none items-center gap-1.5 rounded-2xl border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_22px_60px_rgba(15,23,42,0.26)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/92 dark:text-white dark:ring-blue-300/10 sm:right-5 sm:top-4 sm:gap-2">
+        <div className={`pointer-events-auto fixed top-3 z-40 flex select-none items-center gap-1.5 rounded-2xl border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_22px_60px_rgba(15,23,42,0.26)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/92 dark:text-white dark:ring-blue-300/10 sm:top-4 sm:gap-2 ${appSidebarCollapsed ? 'left-24' : 'left-[19.5rem]'}`}>
           <span
             className={`inline-flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white shadow-sm ring-1 transition dark:border-slate-700 dark:bg-slate-800 ${realtimeStatusClass}`}
             title={realtimeStatusLabel}

@@ -103,6 +103,12 @@ export const QuickLaunchDock = <T extends string>({
     onCustomize(null);
   };
 
+  const openContextMenu = (event: React.MouseEvent, index: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({ index, x: event.clientX, y: event.clientY });
+  };
+
   return (
     <>
       <section className={`dispatch-quick-launch-enter pointer-events-none fixed bottom-4 right-4 z-40 hidden select-none transition-all duration-300 ease-out md:block ${desktopLeftClass || (sidebarCollapsed ? 'left-24' : 'left-[19.5rem]')}`}>
@@ -148,13 +154,11 @@ export const QuickLaunchDock = <T extends string>({
                       didDragRef.current = false;
                     }, 0);
                   }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setContextMenu({ index, x: event.clientX, y: event.clientY });
-                  }}
+                  onContextMenu={(event) => openContextMenu(event, index)}
                 >
                   <button
                     type="button"
+                    onContextMenu={(event) => openContextMenu(event, index)}
                     onClick={() => {
                       if (didDragRef.current) return;
                       if (option) {
@@ -167,14 +171,14 @@ export const QuickLaunchDock = <T extends string>({
                       }
                       onCustomize(index);
                     }}
-                    className={`flex h-12 w-12 flex-col items-center justify-center gap-1 rounded border text-[10px] font-medium transition duration-200 ease-out hover:scale-[1.03] hover:shadow-md ${
+                    className={`flex h-[3.75rem] w-[3.75rem] flex-col items-center justify-center gap-1 rounded border text-[10px] font-medium transition duration-200 ease-out hover:shadow-md ${
                       visible
                         ? `${draggingSlot === index ? 'scale-95 opacity-50' : ''} ${
                             isActive
-                              ? '-translate-y-1 border-cad-blue bg-blue-50 text-cad-blue shadow-md dark:bg-blue-950/70 dark:text-blue-200'
-                              : 'border-slate-200 bg-white text-cad-ink shadow-sm hover:-translate-y-1 hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100 dark:hover:bg-slate-800'
+                              ? 'border-cad-blue bg-blue-50 text-cad-blue shadow-md dark:bg-blue-950/70 dark:text-blue-200'
+                              : 'border-slate-200 bg-white text-cad-ink shadow-sm hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100 dark:hover:bg-slate-800'
                           } cursor-grab active:cursor-grabbing`
-                        : 'border-slate-300 bg-white/60 text-slate-400 hover:-translate-y-1 hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900/60 dark:hover:bg-slate-800'
+                        : 'border-slate-300 bg-white/60 text-slate-400 hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900/60 dark:hover:bg-slate-800'
                     }`}
                     aria-label={visible ? `Open ${label}` : `Customize slot ${index + 1}`}
                     title={label}
