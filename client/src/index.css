@@ -97,6 +97,16 @@
     transition-duration: 180ms;
     transition-timing-function: ease-in-out;
   }
+
+  .cad-modal-shell .font-bold,
+  .cad-modal-shell .font-semibold,
+  .cad-modal-shell .font-black {
+    font-weight: 400;
+  }
+
+  .cad-modal-shell .font-medium {
+    font-weight: 500;
+  }
 }
 
 @layer utilities {

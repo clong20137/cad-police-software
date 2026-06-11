@@ -105,9 +105,9 @@ export const QuickLaunchDock = <T extends string>({
 
   return (
     <>
-      <section className={`pointer-events-none fixed bottom-3 right-3 z-40 hidden select-none transition-all duration-200 md:block ${desktopLeftClass || (sidebarCollapsed ? 'left-24' : 'left-[19.5rem]')}`}>
-        <div className="pointer-events-auto mx-auto w-fit max-w-full rounded-2xl border border-cad-line bg-white/90 p-2 text-cad-ink shadow-[0_16px_45px_rgba(15,23,42,0.22)] dark:border-slate-700 dark:bg-slate-950/90 dark:text-white">
-          <div className="flex max-w-full flex-wrap items-center justify-center gap-2">
+      <section className={`pointer-events-none fixed bottom-4 right-4 z-40 hidden select-none transition-all duration-200 md:block ${desktopLeftClass || (sidebarCollapsed ? 'left-24' : 'left-[19.5rem]')}`}>
+        <div className="pointer-events-auto mx-auto flex h-[3.25rem] w-fit max-w-full items-center rounded-md border border-cad-blue/20 bg-white/95 px-2 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
+          <div className="flex max-w-full flex-nowrap items-center justify-center gap-1.5">
             {slots.map((slot, index) => {
               const option = typeof slot === 'string' ? options.find((item) => item.id === slot) || null : null;
               const external = isExternalSlot(slot) ? slot : null;
@@ -167,7 +167,7 @@ export const QuickLaunchDock = <T extends string>({
                       }
                       onCustomize(index);
                     }}
-                    className={`flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-xl border border-dashed text-[10px] font-bold transition ${
+                    className={`flex h-10 w-14 flex-col items-center justify-center gap-0.5 rounded border border-dashed text-[10px] font-medium transition ${
                       visible
                         ? `${draggingSlot === index ? 'scale-95 opacity-50' : ''} ${
                             isActive
@@ -179,14 +179,14 @@ export const QuickLaunchDock = <T extends string>({
                     aria-label={visible ? `Open ${label}` : `Customize slot ${index + 1}`}
                     title={label}
                   >
-                    {option?.icon || (external ? <ExternalLink size={20} /> : <Plus size={22} />)}
-                    <span className="max-w-14 truncate">{label}</span>
+                    {option?.icon || (external ? <ExternalLink size={17} /> : <Plus size={18} />)}
+                    <span className="max-w-12 truncate">{label}</span>
                   </button>
 
                   {isActive && <span className="absolute -bottom-2 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-cad-blue shadow" />}
 
                   {badgeCount > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-xs font-bold text-white shadow">
+                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-xs font-medium text-white shadow">
                       {badgeCount > 9 ? '9+' : badgeCount}
                     </span>
                   )}
@@ -195,11 +195,11 @@ export const QuickLaunchDock = <T extends string>({
                     <button
                       type="button"
                       onClick={() => onCustomize(index)}
-                      className="absolute -bottom-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500 shadow-sm hover:bg-slate-200 hover:text-cad-blue dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                      className="absolute -bottom-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-slate-500 shadow-sm hover:bg-slate-200 hover:text-cad-blue dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                       aria-label={`Change ${label} shortcut`}
                       title="Change shortcut"
                     >
-                      <Pencil size={13} />
+                      <Pencil size={10} />
                     </button>
                   )}
                 </div>

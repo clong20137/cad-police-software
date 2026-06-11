@@ -2401,13 +2401,11 @@ export const Dashboard: React.FC = () => {
       }
     }
 
-    const toast: ToastNotice = {
-      id: `map-command-${Date.now()}`,
+    pushToast({
       title: 'Command not found',
-        message: `No dispatch command matches "${rawCommand}".`,
+      message: `No dispatch command matches "${rawCommand}".`,
       tone: 'warning'
-    };
-    setToasts((current) => [toast, ...current].slice(0, 4));
+    });
     setMapCommandFeedback(`Unknown command: ${rawCommand}`);
   };
 
@@ -4101,24 +4099,36 @@ export const Dashboard: React.FC = () => {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto rounded-lg border p-3 shadow-2xl animate-[dockModalIn_120ms_ease-out] ${
+            className={`pointer-events-auto overflow-hidden rounded-md border bg-white/96 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 backdrop-blur-md animate-[dockModalIn_120ms_ease-out] dark:bg-slate-950/96 ${
               toast.tone === 'warning'
-                ? 'border-red-200 bg-red-50/95 text-red-950 dark:border-red-800 dark:bg-red-950/95 dark:text-white'
+                ? 'border-red-200 text-red-950 ring-red-200/70 dark:border-red-800 dark:text-white dark:ring-red-900/70'
                 : toast.tone === 'success'
-                  ? 'border-emerald-200 bg-emerald-50/95 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/95 dark:text-white'
-                  : 'border-cad-line bg-white/95 text-cad-ink dark:border-slate-700 dark:bg-slate-900/95 dark:text-white'
+                  ? 'border-emerald-200 text-emerald-950 ring-emerald-200/70 dark:border-emerald-800 dark:text-white dark:ring-emerald-900/70'
+                  : 'border-cad-blue/20 text-cad-ink ring-cad-blue/10 dark:border-blue-400/20 dark:text-white dark:ring-blue-300/10'
             }`}
           >
-            <div className="flex items-start gap-3">
-              <Bell size={18} className="mt-0.5 shrink-0" />
+            <div className={`h-1 ${
+              toast.tone === 'warning' ? 'bg-red-500' : toast.tone === 'success' ? 'bg-emerald-500' : 'bg-cad-blue'
+            }`} />
+            <div className="flex items-start gap-3 p-3">
+              <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                toast.tone === 'warning'
+                  ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-200'
+                  : toast.tone === 'success'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200'
+                    : 'bg-blue-50 text-cad-blue dark:bg-blue-950 dark:text-blue-100'
+              }`}>
+                <Bell size={16} />
+              </span>
               <div className="min-w-0">
-                <p className="text-sm font-bold">{toast.title}</p>
-                <p className="mt-1 truncate text-sm">{toast.message}</p>
+                <p className="text-sm font-medium">{toast.title}</p>
+                <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-200">{toast.message}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))}
-                className="ml-auto rounded p-1 hover:bg-black/5 dark:hover:bg-white/10"
+                className="ml-auto rounded p-1 text-slate-500 hover:bg-black/5 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                aria-label="Dismiss notification"
               >
                 <X size={14} />
               </button>

@@ -140,7 +140,7 @@ export const ModalShell: React.FC<{
     <div className={`pointer-events-none fixed inset-0 flex justify-center p-4 ${shellPositionClass}`} style={{ zIndex }}>
       <div
         ref={windowRef}
-        className={`pointer-events-auto flex max-h-[calc(100vh-7rem)] w-full origin-bottom flex-col overflow-hidden rounded-lg border bg-white shadow-2xl dark:bg-slate-900 ${
+        className={`cad-modal-shell pointer-events-auto flex max-h-[calc(100vh-7rem)] w-full origin-bottom flex-col overflow-hidden rounded-lg border bg-white shadow-2xl dark:bg-slate-900 ${
           active ? 'modal-active-pulse border-cad-accent' : 'border-cad-line dark:border-slate-700'
         } ${isClosing ? 'floating-window-mac-exit' : 'floating-window-mac-enter'} ${
           placement === 'center' && !isMobileLayout ? `fixed ${isDragging ? 'cursor-grabbing' : ''}` : ''
@@ -160,7 +160,7 @@ export const ModalShell: React.FC<{
         >
           <div className="flex min-w-0 items-center gap-2">
             {placement === 'center' && !isMobileLayout && <GripHorizontal size={17} className="shrink-0 text-blue-100" />}
-            <h2 className="truncate text-lg font-bold">{title}</h2>
+            <h2 className="truncate text-lg font-medium">{title}</h2>
           </div>
           <button type="button" onClick={requestClose} disabled={isClosing} className="rounded-md bg-red-600 p-2 text-white shadow-sm hover:bg-red-700 disabled:opacity-70">
             <X size={18} />
