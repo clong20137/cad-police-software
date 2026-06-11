@@ -30,6 +30,7 @@ export const QuickLaunchDock = <T extends string>({
   badges = {},
   sidebarCollapsed = false,
   desktopLeftClass,
+  dockAction,
   onOpen,
   onCustomize,
   onAssignSlot,
@@ -43,6 +44,11 @@ export const QuickLaunchDock = <T extends string>({
   badges?: Partial<Record<T, number>>;
   sidebarCollapsed?: boolean;
   desktopLeftClass?: string;
+  dockAction?: {
+    label: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+  };
   onOpen: (item: T) => void;
   onCustomize: (index: number | null) => void;
   onAssignSlot: (index: number, value: QuickLaunchSlot<T>) => void;
@@ -401,6 +407,21 @@ export const QuickLaunchDock = <T extends string>({
                 </div>
               );
             })}
+            {dockAction && (
+              <>
+                <div className="mx-1 h-10 w-px bg-cad-line dark:bg-slate-700" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={dockAction.onClick}
+                  className="flex h-14 w-14 flex-col items-center justify-center gap-1 rounded border border-slate-200 bg-white text-[10px] font-medium text-cad-ink shadow-sm transition duration-200 ease-out hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100 dark:hover:bg-slate-800"
+                  aria-label={dockAction.label}
+                  title={dockAction.label}
+                >
+                  {dockAction.icon}
+                  <span className="max-w-10 truncate">{dockAction.label}</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -440,6 +461,18 @@ export const QuickLaunchDock = <T extends string>({
               </div>
             );
           })}
+          {dockAction && (
+            <button
+              type="button"
+              onClick={dockAction.onClick}
+              className="flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-lg bg-slate-50 text-[10px] font-bold dark:bg-slate-900"
+              title={dockAction.label}
+              aria-label={dockAction.label}
+            >
+              {dockAction.icon}
+              <span className="max-w-full truncate px-1">{dockAction.label}</span>
+            </button>
+          )}
         </div>
       </section>
 

@@ -239,14 +239,12 @@ const defaultQuickLaunchSlots: QuickLaunchSlot[] = [
   'calls',
   'new-call',
   'units',
-  'unit-detail',
-  'call-detail',
   'inquiries',
   'protective-orders'
 ];
 
 const normalizeQuickLaunchSlots = (slots: Array<DockSlotValue<string>>): QuickLaunchSlot[] =>
-  Array.from({ length: 8 }, (_, index) => {
+  Array.from({ length: 6 }, (_, index) => {
     const slot = slots[index];
     if (typeof slot === 'string') {
       return quickLaunchOptions.some((option) => option.id === slot) ? (slot as QuickLaunchId) : null;
@@ -4222,16 +4220,6 @@ export const Dashboard: React.FC = () => {
           />
         )}
 
-        <button
-          type="button"
-          onClick={recenterToCurrentLocation}
-          className="absolute bottom-24 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-blue/20 bg-white/95 text-cad-blue shadow-[0_16px_40px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 transition hover:bg-blue-50 dark:border-blue-400/20 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
-          aria-label="Return to my location"
-          title="My location"
-        >
-          <MapPin size={18} />
-        </button>
-
         <div className="dispatch-command-enter absolute bottom-4 left-4 z-20 w-[min(28rem,calc(100vw-2rem))]">
           {commandSuggestionsVisible && (
             <div className={`absolute bottom-[4.75rem] left-0 right-0 overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-900/95 ${mapCommandFocused ? 'cad-fade-pop-enter' : 'cad-fade-pop-exit'}`}>
@@ -4513,6 +4501,11 @@ export const Dashboard: React.FC = () => {
         customizingSlot={customizingSlot}
         sidebarCollapsed={appSidebarCollapsed}
         desktopLeftClass={appSidebarCollapsed ? 'left-[33rem]' : 'left-[42rem]'}
+        dockAction={{
+          label: 'My Location',
+          icon: <MapPin size={18} />,
+          onClick: recenterToCurrentLocation
+        }}
         badges={{
           messages: messageBadgeCount,
           calls: callBadgeCount,
