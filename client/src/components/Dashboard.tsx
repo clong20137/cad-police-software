@@ -3815,16 +3815,16 @@ export const Dashboard: React.FC = () => {
         <button
           type="button"
           onClick={recenterToCurrentLocation}
-          className="absolute bottom-20 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-blue/20 bg-white/95 text-cad-blue shadow-[0_16px_40px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 transition hover:bg-blue-50 dark:border-blue-400/20 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
+          className="absolute bottom-24 left-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cad-blue/20 bg-white/95 text-cad-blue shadow-[0_16px_40px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 transition hover:bg-blue-50 dark:border-blue-400/20 dark:bg-slate-900/95 dark:text-blue-200 dark:hover:bg-slate-800"
           aria-label="Return to my location"
           title="My location"
         >
           <MapPin size={18} />
         </button>
 
-        <div className="absolute bottom-4 left-4 z-20 w-[min(26rem,calc(100vw-2rem))]">
+        <div className="dispatch-command-enter absolute bottom-4 left-4 z-20 w-[min(28rem,calc(100vw-2rem))]">
           {mapCommandFocused && (
-            <div className="absolute bottom-16 left-0 right-0 overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-900/95">
+            <div className="absolute bottom-[4.75rem] left-0 right-0 overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-900/95">
               <div className="max-h-64 overflow-y-auto p-1.5">
                 {mapCommandSuggestions.length === 0 ? (
                   <p className="px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-300">No command suggestions.</p>
@@ -3858,7 +3858,7 @@ export const Dashboard: React.FC = () => {
           )}
           <form
             onSubmit={submitMapCommand}
-            className="flex h-[3.25rem] min-h-[3.25rem] items-center gap-2 rounded-md border border-cad-blue/20 bg-white/95 px-4 py-3 shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-900/95"
+            className={`dispatch-command-shell flex h-[3.75rem] min-h-[3.75rem] items-center gap-2 rounded-md px-5 py-3.5 shadow-[0_18px_48px_rgba(15,23,42,0.28)] backdrop-blur-md ${mapCommandFocused ? 'dispatch-command-shell-active' : ''}`}
           >
             <Terminal size={18} className="shrink-0 text-cad-blue dark:text-blue-100" />
             <span className="text-sm font-semibold text-slate-400">&gt;</span>

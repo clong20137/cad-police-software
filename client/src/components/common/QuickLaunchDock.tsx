@@ -105,9 +105,9 @@ export const QuickLaunchDock = <T extends string>({
 
   return (
     <>
-      <section className={`pointer-events-none fixed bottom-4 right-4 z-40 hidden select-none transition-all duration-200 md:block ${desktopLeftClass || (sidebarCollapsed ? 'left-24' : 'left-[19.5rem]')}`}>
-        <div className="pointer-events-auto mx-auto flex h-[3.25rem] w-fit max-w-full items-center rounded-md border border-cad-blue/20 bg-white/95 px-2 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
-          <div className="flex max-w-full flex-nowrap items-center justify-center gap-1.5">
+      <section className={`dispatch-quick-launch-enter pointer-events-none fixed bottom-4 right-4 z-40 hidden select-none transition-all duration-300 ease-out md:block ${desktopLeftClass || (sidebarCollapsed ? 'left-24' : 'left-[19.5rem]')}`}>
+        <div className="pointer-events-auto mx-auto flex h-[3.75rem] w-fit max-w-full items-center rounded-md border border-cad-blue/20 bg-white/95 px-2.5 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
+          <div className="flex max-w-full flex-nowrap items-center justify-center gap-2">
             {slots.map((slot, index) => {
               const option = typeof slot === 'string' ? options.find((item) => item.id === slot) || null : null;
               const external = isExternalSlot(slot) ? slot : null;
@@ -167,20 +167,20 @@ export const QuickLaunchDock = <T extends string>({
                       }
                       onCustomize(index);
                     }}
-                    className={`flex h-10 w-14 flex-col items-center justify-center gap-0.5 rounded border border-dashed text-[10px] font-medium transition ${
+                    className={`flex h-12 w-16 flex-col items-center justify-center gap-1 rounded border border-dashed text-[10px] font-medium transition duration-200 ease-out hover:scale-[1.04] hover:shadow-lg ${
                       visible
                         ? `${draggingSlot === index ? 'scale-95 opacity-50' : ''} ${
                             isActive
                               ? '-translate-y-1 border-cad-blue bg-blue-50 text-cad-blue shadow-md dark:bg-blue-950/70 dark:text-blue-200'
-                              : 'border-slate-200 bg-white text-cad-ink shadow-sm hover:-translate-y-1 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100'
+                              : 'border-slate-200 bg-white text-cad-ink shadow-sm hover:-translate-y-1 hover:border-cad-blue hover:bg-blue-50 hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100 dark:hover:bg-blue-950/70'
                           } cursor-grab active:cursor-grabbing`
-                        : 'border-slate-300 bg-white/60 text-slate-400 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900/60'
+                        : 'border-slate-300 bg-white/60 text-slate-400 hover:-translate-y-1 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900/60'
                     }`}
                     aria-label={visible ? `Open ${label}` : `Customize slot ${index + 1}`}
                     title={label}
                   >
-                    {option?.icon || (external ? <ExternalLink size={17} /> : <Plus size={18} />)}
-                    <span className="max-w-12 truncate">{label}</span>
+                    {option?.icon || (external ? <ExternalLink size={18} /> : <Plus size={20} />)}
+                    <span className="max-w-14 truncate">{label}</span>
                   </button>
 
                   {isActive && <span className="absolute -bottom-2 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-cad-blue shadow" />}

@@ -386,6 +386,49 @@
     will-change: transform, opacity, filter;
   }
 
+  .dispatch-command-enter {
+    animation: dispatchCommandEnter 520ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+    will-change: transform, opacity, filter;
+  }
+
+  .dispatch-quick-launch-enter {
+    animation: dispatchQuickLaunchEnter 560ms cubic-bezier(0.16, 1, 0.3, 1) 220ms both;
+    transform-origin: bottom center;
+    will-change: transform, opacity, filter;
+  }
+
+  .dispatch-command-shell {
+    border: 1px solid rgba(26, 54, 93, 0.2);
+    background:
+      linear-gradient(255deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.95)) padding-box,
+      linear-gradient(255deg, rgba(26, 54, 93, 0.2), rgba(26, 54, 93, 0.2)) border-box;
+    transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease, transform 180ms ease;
+  }
+
+  .dark .dispatch-command-shell {
+    border-color: rgba(96, 165, 250, 0.2);
+    background:
+      linear-gradient(255deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.95)) padding-box,
+      linear-gradient(255deg, rgba(96, 165, 250, 0.2), rgba(96, 165, 250, 0.2)) border-box;
+  }
+
+  .dispatch-command-shell-active {
+    border-color: transparent;
+    background:
+      linear-gradient(255deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.96)) padding-box,
+      conic-gradient(from var(--login-border-angle), rgba(156, 134, 92, 0.2), rgba(26, 54, 93, 0.72), rgba(156, 134, 92, 0.95), rgba(26, 54, 93, 0.28), rgba(156, 134, 92, 0.2)) border-box;
+    animation: loginBorderSpin 4.8s linear infinite;
+    box-shadow:
+      0 20px 54px rgba(15, 23, 42, 0.3),
+      0 0 0 4px rgba(156, 134, 92, 0.12);
+  }
+
+  .dark .dispatch-command-shell-active {
+    background:
+      linear-gradient(255deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.96)) padding-box,
+      conic-gradient(from var(--login-border-angle), rgba(156, 134, 92, 0.22), rgba(147, 197, 253, 0.7), rgba(156, 134, 92, 0.95), rgba(59, 130, 246, 0.28), rgba(156, 134, 92, 0.22)) border-box;
+  }
+
   select.unit-board-control.unit-board-control {
     padding-right: 2rem !important;
   }
@@ -629,6 +672,40 @@
       opacity: 1;
       filter: blur(0);
       transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes dispatchCommandEnter {
+    0% {
+      opacity: 0;
+      filter: blur(4px);
+      transform: translateY(56px) scale(0.98);
+    }
+
+    100% {
+      opacity: 1;
+      filter: blur(0);
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes dispatchQuickLaunchEnter {
+    0% {
+      opacity: 0;
+      filter: blur(4px);
+      transform: scaleX(0.42) scaleY(0.72);
+    }
+
+    70% {
+      opacity: 1;
+      filter: blur(0);
+      transform: scaleX(1.03) scaleY(1.02);
+    }
+
+    100% {
+      opacity: 1;
+      filter: blur(0);
+      transform: scale(1);
     }
   }
 }
