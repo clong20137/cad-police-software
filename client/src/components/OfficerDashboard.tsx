@@ -59,7 +59,7 @@ import {
 } from '../utils/accountPreferences';
 import { APP_NAME } from '../constants/branding';
 
-type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'protective-orders' | 'location' | 'settings' | 'navigation' | 'status';
+type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'protective-orders' | 'settings' | 'navigation' | 'status';
 type DockSlot = QuickLaunchSlot<DockItem>;
 type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
 type PendingCallFeedRow = { incident: Incident; exiting: boolean };
@@ -226,7 +226,6 @@ const dockItems: Array<{ id: DockItem; label: string; icon: React.ReactNode }> =
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
   { id: 'inquiries', label: 'Inquiries', icon: <Search size={18} /> },
   { id: 'protective-orders', label: 'Protective Orders', icon: <Search size={18} /> },
-  { id: 'location', label: 'Location', icon: <MapPin size={18} /> },
   { id: 'navigation', label: 'Navigate', icon: <Navigation size={18} /> },
   { id: 'status', label: 'Status', icon: <Radio size={18} /> },
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
@@ -737,7 +736,8 @@ export const OfficerDashboard: React.FC = () => {
     if (!stored) return defaultDockSlots;
     try {
       const parsed = JSON.parse(stored) as DockSlot[];
-      return parsed.length === 8 ? parsed : defaultDockSlots;
+      const validSlotIds = new Set(dockItems.map((item) => item.id));
+      return parsed.length === 8 && parsed.every((slot) => slot === null || typeof slot === 'object' || validSlotIds.has(slot)) ? parsed : defaultDockSlots;
     } catch {
       return defaultDockSlots;
     }
@@ -928,7 +928,7 @@ export const OfficerDashboard: React.FC = () => {
       const port = knownPorts[0] || (allowPortPrompt ? await serial.requestPort() : null);
       if (!port) {
         setUsbGpsStatus('disconnected');
-        setUsbGpsMessage('Approve the BU-353S4 once with Connect, then it will auto-connect after refresh.');
+        setUsbGpsMessage('Tap the GPS widget once to approve the BU-353S4, then it will auto-connect after refresh.');
         return;
       }
       await port.open({ baudRate: usbGpsBaudRate });
@@ -1060,12 +1060,23 @@ export const OfficerDashboard: React.FC = () => {
     gpsConfidence === 'excellent' ? 'GPS high accuracy' : gpsConfidence === 'fair' ? 'GPS connecting' : 'GPS not reliable';
   const gpsConfidenceDotClass =
     gpsConfidence === 'excellent' ? 'bg-emerald-500' : gpsConfidence === 'fair' ? 'bg-amber-400' : 'bg-red-500';
+  const gpsWidgetLabel =
+    usbGpsStatus === 'connected'
+      ? 'USB'
+      : usbGpsStatus === 'connecting'
+        ? 'USB...'
+        : usbGpsEnabled && usbGpsStatus === 'disconnected'
+          ? 'Approve'
+          : locationState === 'live'
+            ? 'GPS'
+            : 'GPS';
   const gpsConfidenceTitle = [
     gpsConfidenceLabel,
     usbGpsStatus === 'connected' ? 'BU-353S4 USB GPS' : 'Browser GPS',
+    usbGpsMessage,
     locationAccuracy !== null ? `${Math.round(locationAccuracy)}m accuracy` : 'Accuracy pending',
     locationFixAgeMs !== null ? `Updated ${Math.max(0, Math.round(locationFixAgeMs / 1000))} sec ago` : 'No GPS fix yet'
-  ].join(' - ');
+  ].filter(Boolean).join(' - ');
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
   const configuredGeofences = useMemo(() => geofencesFromConfig(adminConfig), [adminConfig]);
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
@@ -2989,8 +3000,15 @@ export const OfficerDashboard: React.FC = () => {
           <Navigation size={16} className="text-cad-blue dark:text-blue-100" />
           <p className="text-sm font-black text-slate-950 dark:text-white">{currentSpeed === null ? '--' : Math.round(currentSpeed)} MPH</p>
         </div>
-        <div
-          className="inline-flex h-10 items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl dark:border-slate-700 dark:bg-slate-900/95"
+        <button
+          type="button"
+          onClick={() => {
+            if (usbGpsEnabled && usbGpsStatus !== 'connected' && usbGpsStatus !== 'connecting') {
+              void connectUsbGps();
+            }
+          }}
+          disabled={!usbGpsEnabled || usbGpsStatus === 'connected' || usbGpsStatus === 'connecting'}
+          className="inline-flex h-10 items-center gap-2 rounded border border-cad-line bg-white/95 px-3 shadow-xl transition hover:border-cad-blue disabled:cursor-default disabled:hover:border-cad-line dark:border-slate-700 dark:bg-slate-900/95 dark:disabled:hover:border-slate-700"
           title={gpsConfidenceTitle}
           aria-label={gpsConfidenceTitle}
         >
@@ -2998,7 +3016,8 @@ export const OfficerDashboard: React.FC = () => {
           <span
             className={`h-3 w-3 rounded-full ring-2 ring-white dark:ring-slate-950 ${gpsConfidenceDotClass}`}
           />
-        </div>
+          <span className="text-xs font-black uppercase tracking-wide text-slate-600 dark:text-slate-200">{gpsWidgetLabel}</span>
+        </button>
         <div
           className={`inline-flex h-10 w-10 items-center justify-center rounded border border-cad-line bg-white/95 shadow-xl ring-1 dark:border-slate-700 dark:bg-slate-900/95 ${realtimeStatusClass}`}
           title={realtimeStatusLabel}
@@ -3089,13 +3108,6 @@ export const OfficerDashboard: React.FC = () => {
                 selectedStatus={selectedStatus}
                 currentLocation={currentLocation}
                 currentSpeed={currentSpeed}
-                locationState={locationState}
-                usbGpsEnabled={usbGpsEnabled}
-                usbGpsStatus={usbGpsStatus}
-                usbGpsMessage={usbGpsMessage}
-                usbGpsBaudRate={usbGpsBaudRate}
-                onConnectUsbGps={connectUsbGps}
-                onDisconnectUsbGps={disconnectUsbGps}
                 currentUserId={user?.id}
                 noteBody={noteBody}
                 setNoteBody={setNoteBody}
@@ -3258,13 +3270,6 @@ const DockContent: React.FC<{
   selectedStatus: IncidentUnitStatus | null;
   currentLocation: { lat: number; lon: number } | null;
   currentSpeed: number | null;
-  locationState: string;
-  usbGpsEnabled: boolean;
-  usbGpsStatus: UsbGpsStatus;
-  usbGpsMessage: string;
-  usbGpsBaudRate: number;
-  onConnectUsbGps: () => Promise<void>;
-  onDisconnectUsbGps: () => Promise<void>;
   currentUserId?: string;
   noteBody: string;
   setNoteBody: (value: string) => void;
@@ -3325,13 +3330,6 @@ const DockContent: React.FC<{
   selectedStatus,
   currentLocation,
   currentSpeed,
-  locationState,
-  usbGpsEnabled,
-  usbGpsStatus,
-  usbGpsMessage,
-  usbGpsBaudRate,
-  onConnectUsbGps,
-  onDisconnectUsbGps,
   currentUserId,
   noteBody,
   setNoteBody,
@@ -3658,57 +3656,6 @@ const DockContent: React.FC<{
             <p className="mt-1 text-slate-600 dark:text-slate-300">{note.body}</p>
           </div>
         ))}
-      </div>
-    );
-  }
-
-  if (activeItem === 'location') {
-    return (
-      <div className="grid gap-3">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Metric label="Tracking" value={locationState === 'live' ? 'Active' : locationState} />
-          <Metric label="Speed" value={currentSpeed === null ? '--' : `${Math.round(currentSpeed)} mph`} />
-          <Metric label="Source" value={usbGpsStatus === 'connected' ? 'BU-353S4' : 'Browser GPS'} />
-        </div>
-        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">USB GPS</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
-                {usbGpsStatus === 'connected'
-                  ? `Connected at ${usbGpsBaudRate} baud`
-                  : usbGpsStatus === 'connecting'
-                    ? 'Connecting'
-                    : usbGpsStatus === 'unsupported'
-                      ? 'Unsupported browser'
-                      : usbGpsStatus === 'disabled'
-                        ? 'Disabled by admin'
-                        : usbGpsStatus === 'error'
-                          ? 'Connection error'
-                          : 'Ready to connect'}
-              </p>
-              {usbGpsMessage && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{usbGpsMessage}</p>}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void onConnectUsbGps()}
-                disabled={!usbGpsEnabled || usbGpsStatus === 'connecting' || usbGpsStatus === 'connected'}
-                className="rounded-md bg-cad-blue px-3 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Connect
-              </button>
-              <button
-                type="button"
-                onClick={() => void onDisconnectUsbGps()}
-                disabled={usbGpsStatus !== 'connected' && usbGpsStatus !== 'connecting'}
-                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-              >
-                Disconnect
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     );
   }
@@ -4207,16 +4154,6 @@ const OfficerMessages: React.FC<{
         </div>
       </div>
     )}
-  </div>
-);
-
-const Metric: React.FC<{ label: string; value: string; icon?: React.ReactNode }> = ({ label, value, icon }) => (
-  <div className="rounded-md bg-slate-100 p-3 dark:bg-slate-950">
-    <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-      {icon}
-      {label}
-    </p>
-    <p className="mt-1 break-words text-lg font-black text-slate-950 dark:text-white">{value}</p>
   </div>
 );
 
