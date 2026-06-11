@@ -187,6 +187,11 @@ type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail'
 type QuickLaunchSlot = DockSlotValue<QuickLaunchId>;
 type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
 type MapCommandSuggestion = { command: string; label: string; detail: string; target?: QuickLaunchId };
+type MapCommandState = {
+  tone: 'idle' | 'ready' | 'warning' | 'invalid';
+  label: string;
+  detail: string;
+};
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
 type UnitBoardSortKey = 'status' | 'unit' | 'name' | 'cadUnit' | 'district';
 type SortDirection = 'asc' | 'desc';
@@ -1707,6 +1712,193 @@ export const Dashboard: React.FC = () => {
       .filter((item) => `${item.command} ${item.label} ${item.detail}`.toLowerCase().includes(query))
       .slice(0, 6);
   }, [mapCommand]);
+  const mapCommandState = useMemo<MapCommandState>(() => {
+    const raw = mapCommand.trim();
+    const command = raw.toLowerCase();
+
+    if (!command) {
+      return {
+        tone: 'idle',
+        label: 'Ready',
+        detail: 'Type a command or ? for examples.'
+      };
+    }
+
+    if (command === '?') {
+      return {
+        tone: 'ready',
+        label: 'Help',
+        detail: 'Show supported command examples.'
+      };
+    }
+
+    if (command === 'new') {
+      return {
+        tone: 'warning',
+        label: 'Needs Info',
+        detail: 'Use "new call" or add type and address.'
+      };
+    }
+
+    if (['new call', 'call new', 'create call', 'dispatch'].includes(command)) {
+      return {
+        tone: 'ready',
+        label: 'Ready',
+        detail: 'Open a blank new call form.'
+      };
+    }
+
+    if (/^(?:new call|call)\s+\S+$/i.test(raw)) {
+      return {
+        tone: 'warning',
+        label: 'Needs Address',
+        detail: 'Add an address after the call type.'
+      };
+    }
+
+    if (/^(?:new call|call)\s+(.+?)\s+(.+)$/i.test(raw)) {
+      return {
+        tone: 'ready',
+        label: 'Ready',
+        detail: 'Create a call with type and address filled.'
+      };
+    }
+
+    if (['calls', 'call', 'active calls', 'pending calls', 'queue'].includes(command)) {
+      return {
+        tone: 'ready',
+        label: 'Ready',
+        detail: 'Open active calls.'
+      };
+    }
+
+    const callMatch = raw.match(/^(?:call|open)\s+(.+)$/i);
+    if (callMatch) {
+      return findCommandIncident(callMatch[1])
+        ? { tone: 'ready', label: 'Ready', detail: 'Open the matched call.' }
+        : { tone: 'invalid', label: 'No Match', detail: `No call matches "${callMatch[1]}".` };
+    }
+
+    if (['units', 'unit status', 'status board'].includes(command)) {
+      return {
+        tone: 'ready',
+        label: 'Ready',
+        detail: 'Open active units.'
+      };
+    }
+
+    const unitMatch = raw.match(/^unit\s+(.+)$/i);
+    if (unitMatch) {
+      return findCommandUser(unitMatch[1])
+        ? { tone: 'ready', label: 'Ready', detail: 'Open the matched unit.' }
+        : { tone: 'invalid', label: 'No Match', detail: `No unit matches "${unitMatch[1]}".` };
+    }
+
+    if (['messages', 'message', 'msg', 'chat'].includes(command)) {
+      return {
+        tone: 'ready',
+        label: 'Ready',
+        detail: 'Open messages.'
+      };
+    }
+
+    const messageMatch = raw.match(/^(?:msg|message)\s+(\S+)(?:\s+(.+))?$/i);
+    if (messageMatch) {
+      const recipient = findCommandUser(messageMatch[1]);
+      if (!recipient) {
+        return { tone: 'invalid', label: 'No Match', detail: `No unit matches "${messageMatch[1]}".` };
+      }
+      return {
+        tone: messageMatch[2] ? 'ready' : 'warning',
+        label: messageMatch[2] ? 'Ready' : 'Needs Message',
+        detail: messageMatch[2] ? 'Open messages with text staged.' : 'Add message text or press Enter to open the thread.'
+      };
+    }
+
+    if (['cjis', 'inquiry', 'inquiries', '10-27', '10-28', 'plate', 'vin', 'name'].includes(command) || /^(?:10-27|10-28|plate|vin|name)\b/i.test(raw)) {
+      return {
+        tone: 'ready',
+        label: 'Ready',
+        detail: 'Open CJIS inquiries.'
+      };
+    }
+
+    if (['protective orders', 'protective order', 'protect ord', 'po', 'order'].includes(command) || /^(?:protective order|protective orders|protect ord|po)\b/i.test(raw)) {
+      return {
+        tone: 'ready',
+        label: 'Ready',
+        detail: 'Open protective orders.'
+      };
+    }
+
+    if (['settings', 'account', 'account settings'].includes(command)) {
+      return {
+        tone: 'ready',
+        label: 'Ready',
+        detail: 'Open account settings.'
+      };
+    }
+
+    const assignToMatch = raw.match(/^assign\s+(.+?)\s+to\s+(.+)$/i);
+    const assignMatch = raw.match(/^assign\s+(\S+)\s+(.+)$/i);
+    if (command === 'assign') {
+      return {
+        tone: 'warning',
+        label: 'Needs Info',
+        detail: 'Use assign [unit] [call] or assign [unit] to [call].'
+      };
+    }
+    if (assignToMatch || assignMatch) {
+      if (assignToMatch) {
+        const firstAsUnit = findCommandUser(assignToMatch[1]);
+        const secondAsCall = findCommandIncident(assignToMatch[2]);
+        if (firstAsUnit && secondAsCall) {
+          return { tone: 'ready', label: 'Ready', detail: 'Assign the matched unit to the matched call.' };
+        }
+
+        const firstAsCall = findCommandIncident(assignToMatch[1]);
+        const secondAsUnit = findCommandUser(assignToMatch[2]);
+        if (firstAsCall && secondAsUnit) {
+          return { tone: 'ready', label: 'Ready', detail: 'Assign the matched unit to the matched call.' };
+        }
+
+        return {
+          tone: 'invalid',
+          label: 'No Match',
+          detail: `Could not match officer/unit and call in "${raw}".`
+        };
+      }
+
+      const unitQuery = assignMatch?.[1] || '';
+      const incidentQuery = assignMatch?.[2] || '';
+      const unit = findCommandUser(unitQuery);
+      const incident = findCommandIncident(incidentQuery);
+      if (!unit) return { tone: 'invalid', label: 'No Match', detail: `No officer or unit matches "${unitQuery}".` };
+      if (!incident) return { tone: 'invalid', label: 'No Match', detail: `No call matches "${incidentQuery}".` };
+      return { tone: 'ready', label: 'Ready', detail: 'Assign the matched unit to the matched call.' };
+    }
+
+    const closeMatch = raw.match(/^(?:close|clear)\s+(\S+)(?:\s+(.+))?$/i);
+    if (['close', 'clear'].includes(command)) {
+      return {
+        tone: 'warning',
+        label: 'Needs Call',
+        detail: 'Add a call number and disposition.'
+      };
+    }
+    if (closeMatch) {
+      const incident = findCommandIncident(closeMatch[1]);
+      if (!incident) return { tone: 'invalid', label: 'No Match', detail: `No call matches "${closeMatch[1]}".` };
+      if (!closeMatch[2]) return { tone: 'warning', label: 'Needs Disposition', detail: 'Add a disposition to close the call.' };
+      return { tone: 'ready', label: 'Ready', detail: 'Close the matched call with disposition.' };
+    }
+
+    return {
+      tone: 'invalid',
+      label: 'Unknown',
+      detail: 'No command matches. Press ? for examples.'
+    };
+  }, [findCommandIncident, findCommandUser, mapCommand]);
 
   useEffect(() => {
     if (activeQuickModal !== 'messages' || !selectedMessageUserId) return;
@@ -1719,13 +1911,16 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     const handleCommandFocus = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      const commandShortcut = event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+      const quickTabFocus = event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+      if (!commandShortcut && !quickTabFocus) return;
       const target = event.target;
       if (target instanceof HTMLElement) {
         const tag = target.tagName.toLowerCase();
         if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || target.isContentEditable) return;
       }
       event.preventDefault();
+      setMapCommandFocused(true);
       mapCommandInputRef.current?.focus();
     };
 
@@ -2433,6 +2628,14 @@ export const Dashboard: React.FC = () => {
       setMapCommand('');
       setMapCommandFeedback('Command cleared.');
       mapCommandInputRef.current?.blur();
+      return;
+    }
+
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && mapCommandSuggestions[activeMapCommandSuggestion]) {
+      event.preventDefault();
+      const suggestion = mapCommandSuggestions[activeMapCommandSuggestion];
+      setMapCommand(suggestion.command);
+      submitMapCommand(undefined, suggestion.command);
       return;
     }
 
@@ -3657,6 +3860,23 @@ export const Dashboard: React.FC = () => {
     );
   };
 
+  const mapCommandShellStateClass = {
+    idle: '',
+    ready: 'dispatch-command-shell-ready',
+    warning: 'dispatch-command-shell-warning',
+    invalid: 'dispatch-command-shell-invalid'
+  }[mapCommandState.tone];
+  const mapCommandStatusClass = {
+    idle: 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    ready: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200',
+    warning: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/70 dark:text-amber-200',
+    invalid: 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/70 dark:text-red-200'
+  }[mapCommandState.tone];
+  const MapCommandStatusIcon =
+    mapCommandState.tone === 'ready' ? CheckCircle2 :
+    mapCommandState.tone === 'invalid' ? X :
+    Terminal;
+
   return (
     <div className={`dashboard-enter flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-gray-100' : 'bg-gray-50 text-cad-ink'}`}>
       <ShieldSidebar
@@ -3842,6 +4062,13 @@ export const Dashboard: React.FC = () => {
           {commandSuggestionsVisible && (
             <div className={`absolute bottom-[4.75rem] left-0 right-0 overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_22px_55px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-900/95 ${mapCommandFocused ? 'cad-fade-pop-enter' : 'cad-fade-pop-exit'}`}>
               <div className="max-h-64 overflow-y-auto p-1.5">
+                <div className={`mb-1 flex items-start gap-2 rounded px-2.5 py-2 text-left text-sm ${mapCommandStatusClass}`}>
+                  <MapCommandStatusIcon size={15} className="mt-0.5 shrink-0" />
+                  <span className="min-w-0">
+                    <span className="block font-bold">{mapCommandState.label}</span>
+                    <span className="mt-0.5 block text-xs opacity-80">{mapCommandState.detail}</span>
+                  </span>
+                </div>
                 {mapCommandSuggestions.length === 0 ? (
                   <p className="px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-300">No command suggestions.</p>
                 ) : (
@@ -3874,7 +4101,7 @@ export const Dashboard: React.FC = () => {
           )}
           <form
             onSubmit={submitMapCommand}
-            className={`dispatch-command-shell flex h-[4.5rem] min-h-[4.5rem] items-center gap-2 rounded-md px-5 py-3.5 shadow-[0_18px_48px_rgba(15,23,42,0.28)] backdrop-blur-md ${mapCommandFocused ? 'dispatch-command-shell-active' : ''}`}
+            className={`dispatch-command-shell ${mapCommandShellStateClass} flex h-[4.5rem] min-h-[4.5rem] items-center gap-2 rounded-md px-5 py-3.5 shadow-[0_18px_48px_rgba(15,23,42,0.28)] backdrop-blur-md ${mapCommandFocused ? 'dispatch-command-shell-active' : ''}`}
           >
             <Terminal size={18} className="shrink-0 text-cad-blue dark:text-blue-100" />
             <span className="text-sm font-semibold text-slate-400">&gt;</span>
@@ -3889,6 +4116,10 @@ export const Dashboard: React.FC = () => {
               className="min-w-0 flex-1 appearance-none bg-transparent text-base font-medium text-cad-ink outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-white"
               aria-label="Dispatch command line"
             />
+            <span className={`hidden shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold sm:inline-flex ${mapCommandStatusClass}`} title={mapCommandState.detail}>
+              <MapCommandStatusIcon size={13} />
+              {mapCommandState.label}
+            </span>
           </form>
         </div>
 

@@ -453,6 +453,81 @@
       conic-gradient(from var(--login-border-angle), rgba(156, 134, 92, 0.22), rgba(147, 197, 253, 0.7), rgba(156, 134, 92, 0.95), rgba(59, 130, 246, 0.28), rgba(156, 134, 92, 0.22)) border-box;
   }
 
+  .dispatch-command-shell-ready {
+    box-shadow:
+      0 18px 48px rgba(15, 23, 42, 0.28),
+      0 0 0 4px rgba(16, 185, 129, 0.14);
+  }
+
+  .dispatch-command-shell-warning {
+    box-shadow:
+      0 18px 48px rgba(15, 23, 42, 0.28),
+      0 0 0 4px rgba(245, 158, 11, 0.16);
+  }
+
+  .dispatch-command-shell-invalid {
+    box-shadow:
+      0 18px 48px rgba(15, 23, 42, 0.28),
+      0 0 0 4px rgba(239, 68, 68, 0.16);
+  }
+
+  .dispatch-command-shell-active.dispatch-command-shell-ready {
+    border-color: rgba(16, 185, 129, 0.42);
+    background:
+      linear-gradient(255deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.96)) padding-box,
+      linear-gradient(255deg, rgba(16, 185, 129, 0.58), rgba(26, 54, 93, 0.22)) border-box;
+  }
+
+  .dispatch-command-shell-active.dispatch-command-shell-warning {
+    border-color: rgba(245, 158, 11, 0.48);
+    background:
+      linear-gradient(255deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.96)) padding-box,
+      linear-gradient(255deg, rgba(245, 158, 11, 0.62), rgba(26, 54, 93, 0.22)) border-box;
+  }
+
+  .dispatch-command-shell-active.dispatch-command-shell-invalid {
+    border-color: rgba(239, 68, 68, 0.5);
+    background:
+      linear-gradient(255deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.96)) padding-box,
+      linear-gradient(255deg, rgba(239, 68, 68, 0.62), rgba(26, 54, 93, 0.22)) border-box;
+  }
+
+  .dark .dispatch-command-shell-ready {
+    box-shadow:
+      0 18px 48px rgba(15, 23, 42, 0.36),
+      0 0 0 4px rgba(52, 211, 153, 0.14);
+  }
+
+  .dark .dispatch-command-shell-warning {
+    box-shadow:
+      0 18px 48px rgba(15, 23, 42, 0.36),
+      0 0 0 4px rgba(251, 191, 36, 0.16);
+  }
+
+  .dark .dispatch-command-shell-invalid {
+    box-shadow:
+      0 18px 48px rgba(15, 23, 42, 0.36),
+      0 0 0 4px rgba(248, 113, 113, 0.16);
+  }
+
+  .dark .dispatch-command-shell-active.dispatch-command-shell-ready {
+    background:
+      linear-gradient(255deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.96)) padding-box,
+      linear-gradient(255deg, rgba(52, 211, 153, 0.6), rgba(147, 197, 253, 0.22)) border-box;
+  }
+
+  .dark .dispatch-command-shell-active.dispatch-command-shell-warning {
+    background:
+      linear-gradient(255deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.96)) padding-box,
+      linear-gradient(255deg, rgba(251, 191, 36, 0.64), rgba(147, 197, 253, 0.22)) border-box;
+  }
+
+  .dark .dispatch-command-shell-active.dispatch-command-shell-invalid {
+    background:
+      linear-gradient(255deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.96)) padding-box,
+      linear-gradient(255deg, rgba(248, 113, 113, 0.64), rgba(147, 197, 253, 0.22)) border-box;
+  }
+
   select.unit-board-control.unit-board-control {
     padding-right: 2rem !important;
   }
