@@ -48,11 +48,11 @@ export const ShieldSidebar: React.FC<{
     </button>
 
     <div className="shield-sidebar flex h-[100dvh] flex-col overflow-y-auto overflow-x-hidden">
-      <div className={`flex shrink-0 items-center border-b border-white/10 px-4 ${logoUrl ? 'h-24' : 'h-16'}`}>
+      <div className={`flex shrink-0 items-center border-b border-white/10 px-4 ${logoUrl ? 'h-32' : 'h-16'}`}>
         {!collapsed && (
           logoUrl ? (
-            <div className="flex h-full w-full items-center justify-center py-3">
-              <img src={logoUrl} alt={logoAlt} className="max-h-full max-w-[15rem] object-contain" />
+            <div className="flex h-full w-full items-center justify-center overflow-hidden py-3">
+              <img src={logoUrl} alt={logoAlt} className="h-full w-full scale-125 object-cover" />
             </div>
           ) : (
             <div className="flex items-center gap-3">
@@ -68,8 +68,8 @@ export const ShieldSidebar: React.FC<{
         )}
         {collapsed && (
           logoUrl ? (
-            <div className="mx-auto flex h-16 w-16 items-center justify-center">
-              <img src={logoUrl} alt={logoAlt} className="max-h-full max-w-full object-contain" />
+            <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden">
+              <img src={logoUrl} alt={logoAlt} className="h-full w-full scale-125 object-cover" />
             </div>
           ) : (
             <div className="mx-auto flex h-10 w-10 items-center justify-center overflow-hidden rounded bg-white text-cad-blue">
