@@ -58,11 +58,17 @@ cp .env.example .env
 
 ```env
 BACKEND_PORT=5001
+BACKEND_HOST=0.0.0.0
+BACKEND_PUBLIC_URL=http://192.168.1.25:5001
 JWT_SECRET=your-super-secret-jwt-key-change-in-production
 REFRESH_TOKEN_SECRET=your-super-secret-refresh-token-key-change-in-production
 NODE_ENV=development
 FRONTEND_URL=http://localhost:3000
 ```
+
+`BACKEND_HOST` controls which network interface Node binds to. Use `0.0.0.0` to accept connections from other computers on the network, or omit it to use Node's default listener.
+
+`BACKEND_PUBLIC_URL` controls the startup message and should match the URL other clients use, such as `http://192.168.1.25:5001` or `https://api.your-domain.com`.
 
 Use `FRONTEND_URLS` when more than one hosted frontend should be allowed through CORS/WebSocket checks:
 

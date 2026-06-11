@@ -19,6 +19,8 @@ import { initializeRealtime } from './realtime/socket';
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 5001;
+const HOST = process.env.BACKEND_HOST?.trim();
+const PUBLIC_URL = process.env.BACKEND_PUBLIC_URL?.trim();
 const server = http.createServer(app);
 
 // Middleware
@@ -54,10 +56,21 @@ const startServer = async (): Promise<void> => {
   await initializeDatabase();
   initializeRealtime(server);
 
-  server.listen(PORT, () => {
-    console.log(`CAD Backend running on http://localhost:${PORT}`);
+  const listenCallback = () => {
+    const displayHost = HOST && !['0.0.0.0', '::'].includes(HOST) ? HOST : 'localhost';
+    console.log(`CAD Backend running on ${PUBLIC_URL || `http://${displayHost}:${PORT}`}`);
+    if (HOST && ['0.0.0.0', '::'].includes(HOST)) {
+      console.log(`Listening on all network interfaces at port ${PORT}`);
+    }
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  });
+  };
+
+  if (HOST) {
+    server.listen(Number(PORT), HOST, listenCallback);
+    return;
+  }
+
+  server.listen(Number(PORT), listenCallback);
 };
 
 startServer().catch((error) => {

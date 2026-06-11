@@ -188,10 +188,14 @@ Set these in production:
 ```env
 NODE_ENV=production
 BACKEND_PORT=5001
+BACKEND_HOST=0.0.0.0
+BACKEND_PUBLIC_URL=https://api.yourdomain.com
 JWT_SECRET=your-very-secure-random-secret
 REFRESH_TOKEN_SECRET=your-very-secure-random-secret
 FRONTEND_URL=https://yourdomain.com
 ```
+
+`BACKEND_PUBLIC_URL` changes the backend startup banner from `http://localhost:5001` to the domain or LAN URL you want clients to use. `BACKEND_HOST` controls the bind address; use `0.0.0.0` for LAN access.
 
 ### HTTPS
 
