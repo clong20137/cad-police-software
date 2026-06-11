@@ -19,6 +19,7 @@ import {
   LoginResponse,
   Permission,
   PublicAuthSettings,
+  PublicBrandingSettings,
   RegisterRequest,
   RegisterResponse,
   ROLE_PERMISSIONS,
@@ -215,8 +216,14 @@ class AuthClient {
     return response.data;
   }
 
+  async getPublicBrandingSettings(): Promise<PublicBrandingSettings> {
+    const response = await this.api.get<PublicBrandingSettings>('/configuration/public/branding');
+    return response.data;
+  }
+
   async createAdminConfigurationItem(input: UpsertConfigurationItemRequest): Promise<AdminConfigurationItem> {
     const response = await this.api.post<AdminConfigurationItem>('/configuration', input);
+    void this.clearConfigurationCache();
     return response.data;
   }
 
@@ -225,11 +232,13 @@ class AuthClient {
     input: UpsertConfigurationItemRequest
   ): Promise<AdminConfigurationItem> {
     const response = await this.api.patch<AdminConfigurationItem>(`/configuration/${itemId}`, input);
+    void this.clearConfigurationCache();
     return response.data;
   }
 
   async deleteAdminConfigurationItem(itemId: string): Promise<void> {
     await this.api.delete(`/configuration/${itemId}`);
+    void this.clearConfigurationCache();
   }
 
   async getIntegrationStatuses(): Promise<IntegrationStatus[]> {
@@ -659,6 +668,14 @@ class AuthClient {
 
   private async setCached<T>(key: string, value: T): Promise<void> {
     await offlineStore.set(this.cacheKey(key), value);
+  }
+
+  private async clearConfigurationCache(): Promise<void> {
+    const userId = this.auth?.user.id || 'public';
+    await Promise.all([
+      offlineStore.removePrefix(`${userId}:admin-configuration`),
+      offlineStore.removePrefix(`${userId}:active-configuration`)
+    ]);
   }
 
   private mergeCachedIncident(incident: Incident): void {

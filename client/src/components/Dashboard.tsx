@@ -71,6 +71,7 @@ import {
   saveAccountPreferences
 } from '../utils/accountPreferences';
 import { APP_NAME } from '../constants/branding';
+import { brandingFromConfig } from '../utils/brandingConfig';
 
 declare global {
   interface Window {
@@ -749,6 +750,7 @@ export const Dashboard: React.FC = () => {
   const deferredCurrentLocation = useDeferredValue(currentLocation);
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
+  const branding = useMemo(() => brandingFromConfig(adminConfig), [adminConfig]);
   const configuredGeofences = useMemo(() => geofencesFromConfig(adminConfig), [adminConfig]);
 
   const loadUnits = useCallback(async () => {
@@ -3656,6 +3658,8 @@ export const Dashboard: React.FC = () => {
       <ShieldSidebar
         title={APP_NAME}
         subtitle="Dispatch"
+        logoUrl={branding.logoUrl}
+        logoAlt={branding.logoAlt}
         user={user}
         collapsed={appSidebarCollapsed}
         onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}

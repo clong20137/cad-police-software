@@ -24,6 +24,7 @@ import { TwoFactorChallengeResponse, UserRole } from '../types/auth';
 import { useAuth } from '../context/AuthContext';
 import { authClient } from '../services/authClient';
 import { APP_NAME } from '../constants/branding';
+import { defaultBrandingConfig } from '../utils/brandingConfig';
 
 const inputBase =
   'h-11 w-full rounded-md border border-cad-line bg-white px-3 text-sm text-cad-ink shadow-control outline-none transition placeholder:text-slate-400 focus:border-cad-blue focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-900';
@@ -55,6 +56,7 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [registrationEnabled, setRegistrationEnabled] = useState(true);
+  const [branding, setBranding] = useState(defaultBrandingConfig);
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
   const [twoFactorChallenge, setTwoFactorChallenge] = useState<TwoFactorChallengeResponse | null>(null);
   const [twoFactorCode, setTwoFactorCode] = useState('');
@@ -80,11 +82,14 @@ export const LoginPage: React.FC = () => {
 
   useEffect(() => {
     let mounted = true;
-    authClient
-      .getPublicAuthSettings()
-      .then((settings) => {
+    Promise.all([
+      authClient.getPublicAuthSettings(),
+      authClient.getPublicBrandingSettings().catch(() => defaultBrandingConfig)
+    ])
+      .then(([settings, brandingSettings]) => {
         if (!mounted) return;
         setRegistrationEnabled(settings.registrationEnabled);
+        setBranding(brandingSettings);
         if (!settings.registrationEnabled) {
           setMode('login');
         }
@@ -235,8 +240,12 @@ export const LoginPage: React.FC = () => {
         <section className={`login-card-border mx-auto w-full rounded-lg bg-white/95 p-px shadow-shield transition-all duration-300 dark:bg-slate-900/95 ${isRegistering ? 'max-w-xl' : 'max-w-sm'} ${transitioning ? 'translate-y-1 scale-[0.985] opacity-75' : ''}`}>
           <div className="overflow-hidden rounded-[7px] bg-white/95 dark:bg-slate-900/95">
           <div className="border-b border-cad-line p-5 text-center dark:border-slate-800 sm:p-6">
-            <div className="login-logo-pulse mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-cad-blue text-white shadow-control">
-              <Radio size={25} />
+            <div className="login-logo-pulse mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-lg bg-cad-blue text-white shadow-control">
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt={branding.logoAlt} className="h-full w-full object-contain bg-white p-1" />
+              ) : (
+                <Radio size={25} />
+              )}
             </div>
             <h1 className="mt-4 text-2xl font-black text-cad-blue dark:text-blue-100">{APP_NAME}</h1>
             <div className="mx-auto mt-4 h-1 w-16 rounded-full bg-cad-accent" />

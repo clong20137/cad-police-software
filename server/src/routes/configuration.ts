@@ -15,6 +15,17 @@ router.get(
 );
 
 router.get(
+  '/public/branding',
+  async (_req: Request, res: Response): Promise<void> => {
+    const item = await ConfigurationService.getBySectionCode('branding', 'APP_LOGO');
+    res.json({
+      logoUrl: item?.active && typeof item.metadata.logoUrl === 'string' ? item.metadata.logoUrl : '',
+      logoAlt: typeof item?.metadata.logoAlt === 'string' ? item.metadata.logoAlt : 'CAD logo'
+    });
+  }
+);
+
+router.get(
   '/active',
   authMiddleware,
   async (_req: Request, res: Response): Promise<void> => {

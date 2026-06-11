@@ -23,6 +23,8 @@ const userInitials = (user?: User | null): string => {
 export const ShieldSidebar: React.FC<{
   title: string;
   subtitle: string;
+  logoUrl?: string;
+  logoAlt?: string;
   user?: User | null;
   collapsed: boolean;
   onToggleCollapsed: () => void;
@@ -30,7 +32,7 @@ export const ShieldSidebar: React.FC<{
   bottomContent?: React.ReactNode;
   footerItems?: ShieldSidebarItem[];
   onProfile?: () => void;
-}> = ({ title, subtitle, user, collapsed, onToggleCollapsed, items, bottomContent, footerItems = [], onProfile }) => (
+}> = ({ title, subtitle, logoUrl, logoAlt = 'CAD logo', user, collapsed, onToggleCollapsed, items, bottomContent, footerItems = [], onProfile }) => (
   <aside
     className={`shield-sidebar-theme-stable relative hidden h-[100dvh] shrink-0 overflow-visible bg-cad-blue text-white shadow-xl transition-all duration-200 md:block ${
       collapsed ? 'w-20' : 'w-72'
@@ -49,8 +51,8 @@ export const ShieldSidebar: React.FC<{
       <div className="flex h-16 shrink-0 items-center border-b border-white/10 px-4">
         {!collapsed && (
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded bg-white text-cad-blue">
-              <Shield size={20} />
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded bg-white text-cad-blue">
+              {logoUrl ? <img src={logoUrl} alt={logoAlt} className="h-full w-full object-contain p-0.5" /> : <Shield size={20} />}
             </div>
             <div className="min-w-0">
               <h1 className="truncate text-xl font-bold tracking-wider text-white">{title}</h1>
@@ -59,8 +61,8 @@ export const ShieldSidebar: React.FC<{
           </div>
         )}
         {collapsed && (
-          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded bg-white text-cad-blue">
-            <Shield size={22} />
+          <div className="mx-auto flex h-10 w-10 items-center justify-center overflow-hidden rounded bg-white text-cad-blue">
+            {logoUrl ? <img src={logoUrl} alt={logoAlt} className="h-full w-full object-contain p-0.5" /> : <Shield size={22} />}
           </div>
         )}
       </div>

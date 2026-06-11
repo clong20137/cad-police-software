@@ -5,6 +5,7 @@ import {
   Building2,
   CheckCircle2,
   ClipboardList,
+  Image as ImageIcon,
   Map,
   Moon,
   Plus,
@@ -13,6 +14,7 @@ import {
   Sun,
   Trash2,
   Truck,
+  Upload,
   UserCog,
   X
 } from 'lucide-react';
@@ -28,11 +30,12 @@ import {
   UserRole
 } from '../types/auth';
 import { defaultUnitStatuses, unitStatusesFromConfig } from '../utils/adminConfig';
+import { brandingFromConfig } from '../utils/brandingConfig';
 import { indianaDistricts } from '../utils/indianaDistricts';
 import { APP_NAME } from '../constants/branding';
 
-type EditableConfigSection = Exclude<AdminConfigSection, 'security' | 'integrations'>;
-type AdminSection = EditableConfigSection | 'users' | 'security' | 'integrations';
+type EditableConfigSection = Exclude<AdminConfigSection, 'security' | 'integrations' | 'branding'>;
+type AdminSection = EditableConfigSection | 'users' | 'security' | 'integrations' | 'branding';
 type ToastTone = 'success' | 'error';
 
 type ToastNotice = {
@@ -82,6 +85,7 @@ const sections: Array<{ id: AdminSection; label: string; icon: React.ReactNode }
   { id: 'units', label: 'Units', icon: <Truck size={17} /> },
   { id: 'calls', label: 'Call Types', icon: <ClipboardList size={17} /> },
   { id: 'statuses', label: 'Statuses', icon: <Radio size={17} /> },
+  { id: 'branding', label: 'Branding', icon: <ImageIcon size={17} /> },
   { id: 'integrations', label: 'Integrations', icon: <Shield size={17} /> },
   { id: 'security', label: 'Security', icon: <Shield size={17} /> }
 ];
@@ -209,6 +213,11 @@ export const AdminConfigurationPage: React.FC = () => {
     () => items.filter((item) => item.section === 'integrations'),
     [items]
   );
+  const brandingItem = useMemo(
+    () => items.find((item) => item.section === 'branding' && item.code === 'APP_LOGO') || null,
+    [items]
+  );
+  const branding = useMemo(() => brandingFromConfig(items), [items]);
 
   const selectedUser = users.find((item) => item.id === selectedUserId) || null;
   const filteredUsers = useMemo(() => {
@@ -370,6 +379,53 @@ export const AdminConfigurationPage: React.FC = () => {
       addToast('Integration update failed', 'Unable to save integration settings.', 'error');
       loadAdmin();
     }
+  };
+
+  const updateBrandingMetadata = async (metadata: Record<string, unknown>) => {
+    if (!brandingItem) {
+      addToast('Branding update failed', 'The server did not return the branding setting.', 'error');
+      return;
+    }
+
+    setItems((current) =>
+      current.map((entry) => (entry.id === brandingItem.id ? { ...entry, metadata: { ...entry.metadata, ...metadata } } : entry))
+    );
+    try {
+      const updated = await authClient.updateAdminConfigurationItem(brandingItem.id, {
+        metadata: { ...brandingItem.metadata, ...metadata }
+      });
+      setItems((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+      addToast('Branding updated', 'Application logo was saved.');
+    } catch {
+      addToast('Branding update failed', 'Unable to save application logo.', 'error');
+      loadAdmin();
+    }
+  };
+
+  const uploadLogo = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      addToast('Logo not uploaded', 'Choose a PNG, JPG, GIF, SVG, or WebP image.', 'error');
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      addToast('Logo not uploaded', 'Use an image smaller than 1 MB.', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        void updateBrandingMetadata({
+          logoUrl: reader.result,
+          logoAlt: branding.logoAlt || `${APP_NAME} logo`
+        });
+      }
+    };
+    reader.onerror = () => addToast('Logo not uploaded', 'Unable to read that image file.', 'error');
+    reader.readAsDataURL(file);
   };
 
   const testIntegration = async (code: IntegrationStatus['code']) => {
@@ -588,6 +644,74 @@ export const AdminConfigurationPage: React.FC = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {activeSection === 'branding' && (
+            <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
+              <section className="rounded-lg border border-cad-line bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+                <div className="flex aspect-square items-center justify-center rounded-lg border border-cad-line bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+                  {branding.logoUrl ? (
+                    <img src={branding.logoUrl} alt={branding.logoAlt} className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-cad-blue text-white">
+                      <Shield size={42} />
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-cad-line p-4 dark:border-slate-700">
+                <div className="border-b border-cad-line pb-4 dark:border-slate-700">
+                  <h3 className="text-base font-black">Application Logo</h3>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Displayed on the login page and at the top of the dispatch navigation.
+                  </p>
+                </div>
+                <div className="mt-4 grid gap-4">
+                  <div className="flex flex-wrap gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-cad-blue px-4 py-2 text-sm font-bold text-white hover:bg-cad-secondary">
+                      <Upload size={16} />
+                      Upload Logo
+                      <input type="file" accept="image/*" onChange={uploadLogo} className="sr-only" />
+                    </label>
+                    {branding.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => updateBrandingMetadata({ logoUrl: '' })}
+                        className="inline-flex items-center gap-2 rounded-md border border-cad-line px-4 py-2 text-sm font-bold text-slate-700 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-red-950/40 dark:hover:text-red-200"
+                      >
+                        <Trash2 size={16} />
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <label className="grid gap-1 text-sm font-bold text-slate-700 dark:text-slate-300">
+                    Alt Text
+                    <input
+                      defaultValue={branding.logoAlt}
+                      onBlur={(event) => updateBrandingMetadata({ logoAlt: event.target.value.trim() || `${APP_NAME} logo` })}
+                      placeholder={`${APP_NAME} logo`}
+                      className="rounded-md border border-cad-line bg-white px-3 py-2 text-sm font-normal outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    />
+                  </label>
+                  <div className="grid gap-2 rounded-md border border-cad-line p-3 dark:border-slate-700">
+                    <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Navigation Preview</p>
+                    <div className="flex w-full max-w-sm items-center gap-3 rounded-md bg-cad-blue p-3 text-white">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-white text-cad-blue">
+                        {branding.logoUrl ? <img src={branding.logoUrl} alt={branding.logoAlt} className="h-full w-full object-contain p-0.5" /> : <Shield size={22} />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-bold tracking-wider">{APP_NAME}</p>
+                        <p className="truncate text-xs text-blue-100">Dispatch</p>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                    For best results, use a square PNG or SVG with transparent background.
+                  </p>
+                </div>
+              </section>
             </div>
           )}
 

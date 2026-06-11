@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { indianaCountyBoundaries } from '../data/indianaCountyBoundaries';
 import { AdminConfigurationRow, pool } from '../db/mysql';
 
-export type AdminConfigSection = 'agencies' | 'districts' | 'units' | 'calls' | 'statuses' | 'security' | 'integrations';
+export type AdminConfigSection = 'agencies' | 'districts' | 'units' | 'calls' | 'statuses' | 'security' | 'integrations' | 'branding';
 
 export interface AdminConfigurationItem {
   id: string;
@@ -30,7 +30,7 @@ export interface UpsertConfigurationItemRequest {
   metadata?: Record<string, unknown>;
 }
 
-const allowedSections = new Set<AdminConfigSection>(['agencies', 'districts', 'units', 'calls', 'statuses', 'security', 'integrations']);
+const allowedSections = new Set<AdminConfigSection>(['agencies', 'districts', 'units', 'calls', 'statuses', 'security', 'integrations', 'branding']);
 
 const districtBoundariesForCounties = (counties: string[]) =>
   counties.flatMap((county) => indianaCountyBoundaries[county] || []);
@@ -264,6 +264,7 @@ const ispDistrictDefaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'upd
 ];
 
 const defaults: Array<Omit<AdminConfigurationItem, 'createdAt' | 'updatedAt'>> = [
+  { id: 'branding-app-logo', section: 'branding', name: 'Application Logo', code: 'APP_LOGO', agency: 'CAD', category: 'Identity', active: true, sortOrder: 10, metadata: { logoUrl: '', logoAlt: 'CAD logo' } },
   { id: 'agency-police', section: 'agencies', name: 'Police', code: 'POL', agency: 'CAD', category: 'Public Safety', active: true, sortOrder: 10, metadata: {} },
   { id: 'agency-ems', section: 'agencies', name: 'EMS', code: 'EMS', agency: 'CAD', category: 'Medical', active: true, sortOrder: 20, metadata: {} },
   { id: 'agency-fire', section: 'agencies', name: 'Fire', code: 'FIRE', agency: 'CAD', category: 'Fire', active: true, sortOrder: 30, metadata: {} },

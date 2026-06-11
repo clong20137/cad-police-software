@@ -382,7 +382,7 @@ export interface ResetUserPasswordRequest {
   newPassword: string;
 }
 
-export type AdminConfigSection = 'agencies' | 'districts' | 'units' | 'calls' | 'statuses' | 'security' | 'integrations';
+export type AdminConfigSection = 'agencies' | 'districts' | 'units' | 'calls' | 'statuses' | 'security' | 'integrations' | 'branding';
 
 export interface AdminConfigurationItem {
   id: string;
@@ -411,6 +411,11 @@ export interface UpsertConfigurationItemRequest {
 
 export interface PublicAuthSettings {
   registrationEnabled: boolean;
+}
+
+export interface PublicBrandingSettings {
+  logoUrl: string;
+  logoAlt: string;
 }
 
 export type Permission =

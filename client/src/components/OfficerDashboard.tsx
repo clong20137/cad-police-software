@@ -58,6 +58,7 @@ import {
   saveAccountPreferences
 } from '../utils/accountPreferences';
 import { APP_NAME } from '../constants/branding';
+import { brandingFromConfig } from '../utils/brandingConfig';
 
 type DockItem = 'calls' | 'call-detail' | 'notes' | 'messages' | 'inquiries' | 'protective-orders' | 'settings' | 'navigation' | 'status';
 type DockSlot = QuickLaunchSlot<DockItem>;
@@ -1079,6 +1080,7 @@ export const OfficerDashboard: React.FC = () => {
     locationFixAgeMs !== null ? `Updated ${Math.max(0, Math.round(locationFixAgeMs / 1000))} sec ago` : 'No GPS fix yet'
   ].filter(Boolean).join(' - ');
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
+  const branding = useMemo(() => brandingFromConfig(adminConfig), [adminConfig]);
   const configuredGeofences = useMemo(() => geofencesFromConfig(adminConfig), [adminConfig]);
   const selectedStatus = selectedIncident ? getMyUnitStatus(selectedIncident, user?.id) : null;
   const selectedAssignmentWarning = assignmentWarning(selectedIncident, user?.id);
@@ -2701,6 +2703,8 @@ export const OfficerDashboard: React.FC = () => {
       <ShieldSidebar
         title={APP_NAME}
         subtitle="Officer"
+        logoUrl={branding.logoUrl}
+        logoAlt={branding.logoAlt}
         user={user}
         collapsed={appSidebarCollapsed}
         onToggleCollapsed={() => setAppSidebarCollapsed((value) => !value)}
