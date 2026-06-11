@@ -2081,7 +2081,7 @@ export const Dashboard: React.FC = () => {
       ];
     }
 
-    return [{ label: 'Command', value: raw, tone: 'invalid' }];
+    return [];
   }, [findCommandIncident, findCommandUser, mapCommand]);
 
   useEffect(() => {
@@ -4319,10 +4319,6 @@ export const Dashboard: React.FC = () => {
               className="min-w-0 flex-1 appearance-none bg-transparent text-base font-medium text-cad-ink outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-white"
               aria-label="Dispatch command line"
             />
-            <span className={`hidden shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold sm:inline-flex ${mapCommandStatusClass}`} title={mapCommandState.detail}>
-              <MapCommandStatusIcon size={13} />
-              {mapCommandState.label}
-            </span>
           </form>
         </div>
 
