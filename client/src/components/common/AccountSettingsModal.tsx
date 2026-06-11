@@ -5,6 +5,8 @@ import { User } from '../../types/auth';
 import { AccountPreferences, alertSoundOptions } from '../../utils/accountPreferences';
 import { ModalShell } from './ModalShell';
 
+const normalizeTwoFactorCode = (value: string): string => value.replace(/\D/g, '').slice(0, 6);
+
 export type PasswordFormState = {
   currentPassword: string;
   newPassword: string;
@@ -36,7 +38,7 @@ export const AccountSettingsModal: React.FC<{
   onPasswordSubmit: () => void;
   onStartTwoFactorSetup: () => void;
   onTwoFactorCodeChange: (value: string) => void;
-  onVerifyTwoFactorSetup: () => void;
+  onVerifyTwoFactorSetup: (code?: string) => void;
   onThemeChange: (theme: 'light' | 'dark') => void;
   onPreferencesChange: (preferences: AccountPreferences) => void;
   onRequestNotifications: () => void;
@@ -69,6 +71,13 @@ export const AccountSettingsModal: React.FC<{
     () => (user?.name || 'CAD').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'CAD',
     [user?.name]
   );
+  const handleTwoFactorCodeChange = (value: string) => {
+    const nextCode = normalizeTwoFactorCode(value);
+    onTwoFactorCodeChange(nextCode);
+    if (nextCode.length === 6) {
+      onVerifyTwoFactorSetup(nextCode);
+    }
+  };
 
   return (
     <ModalShell title="Account Settings" open={open} onClose={onClose} maxWidthClass="max-w-3xl" placement="center" contentClassName="max-h-[78vh] overflow-auto p-0">
@@ -171,11 +180,11 @@ export const AccountSettingsModal: React.FC<{
                       inputMode="numeric"
                       autoComplete="one-time-code"
                       value={twoFactorCode}
-                      onChange={(event) => onTwoFactorCodeChange(event.target.value)}
+                      onChange={(event) => handleTwoFactorCodeChange(event.target.value)}
                       placeholder="Enter 6 digit code"
                       className="h-10 rounded-md border border-cad-line bg-white px-3 text-sm outline-none focus:border-cad-blue focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                     />
-                    <button type="button" onClick={onVerifyTwoFactorSetup} className="w-fit rounded-md bg-cad-blue px-4 py-2 text-sm font-black text-white">
+                    <button type="button" onClick={() => onVerifyTwoFactorSetup()} className="w-fit rounded-md bg-cad-blue px-4 py-2 text-sm font-black text-white">
                       Verify 2FA
                     </button>
                   </div>

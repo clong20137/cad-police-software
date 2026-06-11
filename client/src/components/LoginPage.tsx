@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import {
@@ -27,6 +27,7 @@ import { APP_NAME } from '../constants/branding';
 
 const inputBase =
   'h-11 w-full rounded-md border border-cad-line bg-white px-3 text-sm text-cad-ink shadow-control outline-none transition placeholder:text-slate-400 focus:border-cad-blue focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 dark:focus:ring-blue-950 dark:disabled:bg-slate-900';
+const normalizeTwoFactorCode = (value: string): string => value.replace(/\D/g, '').slice(0, 6);
 
 type ToastNotice = {
   id: string;
@@ -58,6 +59,7 @@ export const LoginPage: React.FC = () => {
   const [twoFactorChallenge, setTwoFactorChallenge] = useState<TwoFactorChallengeResponse | null>(null);
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const twoFactorSubmittingRef = useRef(false);
   const { login, register, verifyTwoFactor } = useAuth();
   const navigate = useNavigate();
 
@@ -98,6 +100,50 @@ export const LoginPage: React.FC = () => {
     };
   }, []);
 
+  const verifyTwoFactorCode = useCallback(async (code: string) => {
+    if (!twoFactorChallenge || loading || transitioning || twoFactorSubmittingRef.current) {
+      return;
+    }
+
+    twoFactorSubmittingRef.current = true;
+    setError('');
+    setLoading(true);
+
+    try {
+      const result = await verifyTwoFactor(twoFactorChallenge.challengeToken, code);
+      if (result.ok) {
+        if (result.backupCodes?.length) {
+          setBackupCodes(result.backupCodes);
+          addToast('2FA enabled', 'Save your backup codes before continuing.', 'success');
+          return;
+        }
+        setTransitioning(true);
+        addToast('Signed in', 'Opening your dashboard.', 'success');
+        window.setTimeout(() => navigate('/'), 620);
+        return;
+      }
+
+      const message = 'Invalid two-factor code.';
+      setError(message);
+      addToast('Verification failed', message, 'error');
+    } catch {
+      const message = 'Request failed. Please try again.';
+      setError(message);
+      addToast('Request failed', message, 'error');
+    } finally {
+      twoFactorSubmittingRef.current = false;
+      setLoading(false);
+    }
+  }, [addToast, loading, navigate, transitioning, twoFactorChallenge, verifyTwoFactor]);
+
+  const handleTwoFactorCodeChange = (value: string) => {
+    const nextCode = normalizeTwoFactorCode(value);
+    setTwoFactorCode(nextCode);
+    if (nextCode.length === 6) {
+      void verifyTwoFactorCode(nextCode);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
@@ -108,34 +154,19 @@ export const LoginPage: React.FC = () => {
       return;
     }
 
-    setLoading(true);
+    if (backupCodes.length > 0) {
+      setTransitioning(true);
+      window.setTimeout(() => navigate('/'), 620);
+      return;
+    }
+
+    if (twoFactorChallenge) {
+      await verifyTwoFactorCode(twoFactorCode);
+      return;
+    }
 
     try {
-      if (backupCodes.length > 0) {
-        setTransitioning(true);
-        window.setTimeout(() => navigate('/'), 620);
-        return;
-      }
-
-      if (twoFactorChallenge) {
-        const result = await verifyTwoFactor(twoFactorChallenge.challengeToken, twoFactorCode);
-        if (result.ok) {
-          if (result.backupCodes?.length) {
-            setBackupCodes(result.backupCodes);
-            addToast('2FA enabled', 'Save your backup codes before continuing.', 'success');
-            return;
-          }
-          setTransitioning(true);
-          addToast('Signed in', 'Opening your dashboard.', 'success');
-          window.setTimeout(() => navigate('/'), 620);
-          return;
-        }
-
-        const message = 'Invalid two-factor code.';
-        setError(message);
-        addToast('Verification failed', message, 'error');
-        return;
-      }
+      setLoading(true);
 
       const result = isRegistering
         ? await register({
@@ -362,7 +393,7 @@ export const LoginPage: React.FC = () => {
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     value={twoFactorCode}
-                    onChange={(event) => setTwoFactorCode(event.target.value)}
+                    onChange={(event) => handleTwoFactorCodeChange(event.target.value)}
                     placeholder="123456"
                     required
                     disabled={loading}

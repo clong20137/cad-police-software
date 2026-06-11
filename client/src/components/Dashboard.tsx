@@ -618,6 +618,7 @@ export const Dashboard: React.FC = () => {
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorMessage, setTwoFactorMessage] = useState('');
   const [twoFactorBackupCodes, setTwoFactorBackupCodes] = useState<string[]>([]);
+  const twoFactorSetupSubmittingRef = useRef(false);
   const [callsOverlayOpen, setCallsOverlayOpen] = useState(true);
   const [callDetailOpen, setCallDetailOpen] = useState(true);
   const [unitsLoading, setUnitsLoading] = useState(true);
@@ -1888,15 +1889,20 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const verifyTwoFactorSetup = async () => {
-    if (!twoFactorSetup || !twoFactorCode.trim()) {
+  const verifyTwoFactorSetup = async (codeOverride?: string) => {
+    const code = (codeOverride || twoFactorCode).trim();
+    if (!twoFactorSetup || !code) {
       setTwoFactorMessage('Enter the 6 digit code from your authenticator app.');
       return;
     }
+    if (twoFactorSetupSubmittingRef.current) {
+      return;
+    }
+    twoFactorSetupSubmittingRef.current = true;
     try {
       const result = await authClient.verifyTwoFactor({
         challengeToken: twoFactorSetup.challengeToken,
-        code: twoFactorCode.trim()
+        code
       });
       setTwoFactorBackupCodes(result.backupCodes || []);
       setTwoFactorSetup(null);
@@ -1905,6 +1911,8 @@ export const Dashboard: React.FC = () => {
       refreshAuth();
     } catch {
       setTwoFactorMessage('Invalid 2FA code.');
+    } finally {
+      twoFactorSetupSubmittingRef.current = false;
     }
   };
 
