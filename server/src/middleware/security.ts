@@ -10,6 +10,7 @@ type Bucket = {
 const buckets = new Map<string, Bucket>();
 const DANGEROUS_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const MAX_STRING_LENGTH = 20000;
+const MAX_LOGO_DATA_URL_LENGTH = 7 * 1024 * 1024;
 
 const getClientIp = (req: Request): string => {
   const forwardedFor = req.headers['x-forwarded-for'];
@@ -42,7 +43,10 @@ const createRateLimiter = (name: string, windowMs: number, maxRequests: number) 
   };
 };
 
-const sanitizeValue = (value: unknown): unknown => {
+const maxStringLengthForPath = (path: string[]): number =>
+  path.join('.') === 'metadata.logoUrl' ? MAX_LOGO_DATA_URL_LENGTH : MAX_STRING_LENGTH;
+
+const sanitizeValue = (value: unknown, path: string[] = []): unknown => {
   if (typeof value === 'string') {
     return value
       .split('')
@@ -51,11 +55,11 @@ const sanitizeValue = (value: unknown): unknown => {
         return code === 9 || code === 10 || code === 13 || (code >= 32 && code !== 127);
       })
       .join('')
-      .slice(0, MAX_STRING_LENGTH);
+      .slice(0, maxStringLengthForPath(path));
   }
 
   if (Array.isArray(value)) {
-    return value.map(sanitizeValue);
+    return value.map((nested, index) => sanitizeValue(nested, [...path, String(index)]));
   }
 
   if (value && typeof value === 'object') {
@@ -64,7 +68,7 @@ const sanitizeValue = (value: unknown): unknown => {
       if (DANGEROUS_KEYS.has(key)) {
         continue;
       }
-      clean[key] = sanitizeValue(nested);
+      clean[key] = sanitizeValue(nested, [...path, key]);
     }
     return clean;
   }
