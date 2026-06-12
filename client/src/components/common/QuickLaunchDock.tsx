@@ -199,11 +199,13 @@ export const QuickLaunchDock = <T extends string>({
 
     const updateWidth = () => {
       const dockRect = dock.getBoundingClientRect();
+      const rightGutter = window.matchMedia('(min-width: 640px)').matches ? 20 : 12;
+      const railRightEdge = window.innerWidth - rightGutter;
       const defaultRailSlot = desktopSlotRefs.current[Math.max(0, slots.length - 3)];
       const defaultWidth = defaultRailSlot
-        ? Math.max(260, dockRect.right - defaultRailSlot.getBoundingClientRect().left)
-        : Math.min(440, dockRect.width);
-      onDesktopDockWidthChange(dockRect.width, defaultWidth);
+        ? Math.max(260, railRightEdge - defaultRailSlot.getBoundingClientRect().left)
+        : Math.min(440, railRightEdge - dockRect.left);
+      onDesktopDockWidthChange(Math.max(320, railRightEdge - dockRect.left), defaultWidth);
     };
     updateWidth();
 
