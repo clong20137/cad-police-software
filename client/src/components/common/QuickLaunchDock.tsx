@@ -32,6 +32,7 @@ export const QuickLaunchDock = <T extends string>({
   desktopLeftClass,
   dockAction,
   dockActions,
+  onDesktopDockWidthChange,
   onOpen,
   onCustomize,
   onAssignSlot,
@@ -57,6 +58,7 @@ export const QuickLaunchDock = <T extends string>({
     onClick: () => void;
     iconOnly?: boolean;
   }>;
+  onDesktopDockWidthChange?: (width: number) => void;
   onOpen: (item: T) => void;
   onCustomize: (index: number | null) => void;
   onAssignSlot: (index: number, value: QuickLaunchSlot<T>) => void;
@@ -75,6 +77,7 @@ export const QuickLaunchDock = <T extends string>({
   const [customizeMenuPosition, setCustomizeMenuPosition] = useState<{ left: number; top: number; arrowLeft: number } | null>(null);
   const didDragRef = useRef(false);
   const customizeMenuRef = useRef<HTMLDivElement | null>(null);
+  const desktopDockRef = useRef<HTMLDivElement | null>(null);
   const desktopSlotRefs = useRef<Array<HTMLDivElement | null>>([]);
   const mobileSlotRefs = useRef<Array<HTMLDivElement | null>>([]);
 
@@ -188,6 +191,28 @@ export const QuickLaunchDock = <T extends string>({
       window.removeEventListener('scroll', updatePosition, true);
     };
   }, [renderedCustomizeSlot]);
+
+  useLayoutEffect(() => {
+    if (!onDesktopDockWidthChange) return undefined;
+    const dock = desktopDockRef.current;
+    if (!dock) return undefined;
+
+    const updateWidth = () => onDesktopDockWidthChange(dock.getBoundingClientRect().width);
+    updateWidth();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(dock);
+    window.addEventListener('resize', updateWidth);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
+  }, [onDesktopDockWidthChange, resolvedDockActions.length, slots]);
 
   const assignExternal = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -317,7 +342,7 @@ export const QuickLaunchDock = <T extends string>({
   return (
     <>
       <section className={`dispatch-quick-launch-enter pointer-events-none fixed bottom-4 right-3 z-40 hidden select-none transition-all duration-300 ease-out md:flex md:justify-end sm:right-5 ${desktopLeftClass || (sidebarCollapsed ? 'left-24' : 'left-[19.5rem]')}`}>
-        <div className="pointer-events-auto flex h-[4.5rem] w-fit max-w-full items-center overflow-visible rounded-md border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
+        <div ref={desktopDockRef} className="pointer-events-auto flex h-[4.5rem] w-fit max-w-full items-center overflow-visible rounded-md border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
           <div className="flex max-w-full flex-nowrap items-center justify-center gap-2">
             {slots.map((slot, index) => {
               const option = typeof slot === 'string' ? options.find((item) => item.id === slot) || null : null;

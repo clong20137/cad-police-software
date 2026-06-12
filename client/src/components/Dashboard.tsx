@@ -767,6 +767,7 @@ export const Dashboard: React.FC = () => {
   const [unitRailWide, setUnitRailWide] = useState(() => localStorage.getItem(UNIT_RAIL_WIDE_KEY) === 'true');
   const [unitRailClosing, setUnitRailClosing] = useState(false);
   const [unitRailOpening, setUnitRailOpening] = useState(false);
+  const [quickLaunchDockWidth, setQuickLaunchDockWidth] = useState(540);
   const [unitBoardColumnMenuOpen, setUnitBoardColumnMenuOpen] = useState(false);
   const unitBoardColumnMenuVisible = useAnimatedPresence(unitBoardColumnMenuOpen);
   const [visibleUnitBoardColumns, setVisibleUnitBoardColumns] = useState<UnitBoardOptionalColumnId[]>(() => {
@@ -2800,6 +2801,10 @@ export const Dashboard: React.FC = () => {
     }, 220);
   };
 
+  const updateQuickLaunchDockWidth = useCallback((width: number) => {
+    setQuickLaunchDockWidth(Math.ceil(width));
+  }, []);
+
   const centerUnitFromBoard = (unit: UnitBoardUser) => {
     setSelectedUnitId(unit.id);
     if (typeof unit.lat !== 'number' || typeof unit.lon !== 'number') {
@@ -4471,6 +4476,9 @@ export const Dashboard: React.FC = () => {
     const tooltipBaseClass = 'pointer-events-none absolute z-40 select-none whitespace-nowrap rounded border border-slate-200 bg-slate-950 px-2 py-1 text-xs font-bold text-white opacity-0 shadow-lg transition-all duration-150 ease-out group-hover:opacity-100 group-focus-within:opacity-100 dark:border-slate-700';
     const collapsedTooltipClass = `${tooltipBaseClass} right-full top-1/2 mr-2 -translate-y-1/2 translate-x-1 group-hover:translate-x-0 group-focus-within:translate-x-0`;
     const expandedTooltipClass = `${tooltipBaseClass} bottom-full left-1/2 mb-2 -translate-x-1/2 translate-y-1 group-hover:translate-y-0 group-focus-within:translate-y-0`;
+    const wideRailStyle: React.CSSProperties | undefined = unitRailWide
+      ? { width: `min(${quickLaunchDockWidth}px, calc(100% - 1rem))` }
+      : undefined;
 
     if (unitRailCollapsed && !unitRailClosing) {
       return (
@@ -4531,13 +4539,10 @@ export const Dashboard: React.FC = () => {
     return (
       <aside
         className={`pointer-events-auto absolute bottom-24 right-3 top-20 z-20 flex select-none flex-col overflow-visible rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md transition-[width,transform,opacity] duration-200 ease-out dark:border-blue-400/20 dark:bg-slate-950/95 sm:right-5 ${
-          unitRailWide
-            ? appSidebarCollapsed
-              ? 'w-[calc(100%-29.25rem)]'
-              : 'w-[calc(100%-25.25rem)]'
-            : 'w-[min(22rem,calc(100vw-2rem))]'
+          unitRailWide ? '' : 'w-[min(22rem,calc(100vw-2rem))]'
         } ${unitRailClosing || unitRailOpening ? 'translate-x-[calc(100%+1.25rem)] opacity-0' : 'translate-x-0 opacity-100'}`}
         onContextMenu={(event) => event.preventDefault()}
+        style={wideRailStyle}
       >
         <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
           <div className="min-w-0">
@@ -5159,6 +5164,7 @@ export const Dashboard: React.FC = () => {
         customizingSlot={customizingSlot}
         sidebarCollapsed={appSidebarCollapsed}
         desktopLeftClass={appSidebarCollapsed ? 'left-[33rem]' : 'left-[42rem]'}
+        onDesktopDockWidthChange={updateQuickLaunchDockWidth}
         dockActions={[
           {
             label: 'My Location',
