@@ -77,6 +77,7 @@ import {
 } from '../utils/accountPreferences';
 import { APP_NAME } from '../constants/branding';
 import { brandingFromConfig } from '../utils/brandingConfig';
+import { districtLabelFor, indianaDistricts, normalizeDistrictKey } from '../utils/indianaDistricts';
 
 declare global {
   interface Window {
@@ -762,7 +763,7 @@ export const Dashboard: React.FC = () => {
   const settingsMenuVisible = useAnimatedPresence(settingsOpen);
   const [unitBoardSearch, setUnitBoardSearch] = useState('');
   const [unitBoardStatusFilter, setUnitBoardStatusFilter] = useState<UnitStatus | 'all'>('all');
-  const [unitBoardDistrictFilter, setUnitBoardDistrictFilter] = useState(() => user?.district || 'all');
+  const [unitBoardDistrictFilter, setUnitBoardDistrictFilter] = useState(() => normalizeDistrictKey(user?.district) || 'all');
   const [unitRailCollapsed, setUnitRailCollapsed] = useState(() => localStorage.getItem(UNIT_RAIL_COLLAPSED_KEY) === 'true');
   const [unitRailWide, setUnitRailWide] = useState(() => localStorage.getItem(UNIT_RAIL_WIDE_KEY) === 'true');
   const [unitRailClosing, setUnitRailClosing] = useState(false);
@@ -858,13 +859,26 @@ export const Dashboard: React.FC = () => {
     () => Array.from(new Set(unitBoardUnits.map((unit) => displayStatus(unit)))).sort((first, second) => first.localeCompare(second)),
     [unitBoardUnits]
   );
-  const unitBoardDistricts = useMemo(
-    () =>
-      Array.from(new Set(unitBoardUnits.map((unit) => unit.district || 'Unassigned'))).sort((first, second) =>
-        first.localeCompare(second)
-      ),
-    [unitBoardUnits]
-  );
+  const unitBoardDistricts = useMemo(() => {
+    const options = new Map<string, string>();
+    indianaDistricts.forEach((district) => {
+      options.set(district.number, district.label);
+    });
+
+    [
+      ...configuredGeofences.filter((geofence) => geofence.kind === 'district').map((geofence) => geofence.name),
+      ...unitBoardUnits.map((unit) => unit.district || '')
+    ].forEach((district) => {
+      const trimmed = district.trim();
+      if (!trimmed) return;
+      const key = normalizeDistrictKey(trimmed);
+      if (!options.has(key)) {
+        options.set(key, districtLabelFor(trimmed));
+      }
+    });
+
+    return Array.from(options, ([value, label]) => ({ value, label }));
+  }, [configuredGeofences, unitBoardUnits]);
   const unitBoardVisibleOptionalColumns = useMemo(
     () => unitBoardOptionalColumns.filter((column) => visibleUnitBoardColumns.includes(column.id)),
     [visibleUnitBoardColumns]
@@ -896,6 +910,7 @@ export const Dashboard: React.FC = () => {
     const filtered = unitBoardUnits.filter((unit) => {
       const status = displayStatus(unit);
       const district = unit.district || 'Unassigned';
+      const districtKey = normalizeDistrictKey(unit.district);
       const name = splitName(unit.name);
       const searchText = [
         status,
@@ -914,7 +929,7 @@ export const Dashboard: React.FC = () => {
         .toLowerCase();
       return (
         (unitBoardStatusFilter === 'all' || status === unitBoardStatusFilter) &&
-        (unitBoardDistrictFilter === 'all' || district === unitBoardDistrictFilter) &&
+        (unitBoardDistrictFilter === 'all' || districtKey === unitBoardDistrictFilter) &&
         (!query || searchText.includes(query))
       );
     });
@@ -1154,7 +1169,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     if (userDistrictDefaultAppliedRef.current || unitBoardDistrictFilter !== 'all' || !user?.district) return;
-    setUnitBoardDistrictFilter(user.district);
+    setUnitBoardDistrictFilter(normalizeDistrictKey(user.district));
     userDistrictDefaultAppliedRef.current = true;
   }, [unitBoardDistrictFilter, user?.district]);
 
@@ -4173,7 +4188,7 @@ export const Dashboard: React.FC = () => {
               >
                 <option value="all">All Districts</option>
                 {unitBoardDistricts.map((district) => (
-                  <option key={district} value={district}>{district}</option>
+                  <option key={district.value} value={district.value}>{district.label}</option>
                 ))}
               </select>
               <button
@@ -4588,7 +4603,7 @@ export const Dashboard: React.FC = () => {
           >
             <option value="all">All Districts</option>
             {unitBoardDistricts.map((district) => (
-              <option key={district} value={district}>{district}</option>
+              <option key={district.value} value={district.value}>{district.label}</option>
             ))}
           </select>
         </div>
