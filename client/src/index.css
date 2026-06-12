@@ -439,7 +439,7 @@
     opacity: 0;
     margin-bottom: -0.5rem;
     pointer-events: none;
-    transform: translateY(-10px) scale(0.98);
+    transform: translateX(110%) scale(0.98);
   }
 
   .dispatch-command-shell {
