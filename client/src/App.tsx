@@ -320,7 +320,7 @@ const GlobalQuickAccessPalette: React.FC = () => {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search commands, modals, and CAD tools..."
-            className="min-w-0 flex-1 bg-transparent text-base font-semibold text-cad-ink outline-none placeholder:text-slate-400 dark:text-white"
+            className="min-w-0 flex-1 border-0 bg-transparent text-base font-semibold text-cad-ink outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 dark:text-white"
           />
           <span className="hidden rounded border border-cad-line px-2 py-1 text-[11px] font-bold uppercase text-slate-500 dark:border-slate-700 dark:text-slate-300 sm:inline-flex">
             Ctrl K
