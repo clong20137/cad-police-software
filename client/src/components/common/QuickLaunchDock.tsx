@@ -199,9 +199,9 @@ export const QuickLaunchDock = <T extends string>({
 
     const updateWidth = () => {
       const dockRect = dock.getBoundingClientRect();
-      const secondAppSlotFromRight = desktopSlotRefs.current[Math.max(0, slots.length - 2)];
-      const defaultWidth = secondAppSlotFromRight
-        ? Math.max(260, dockRect.right - secondAppSlotFromRight.getBoundingClientRect().left)
+      const defaultRailSlot = desktopSlotRefs.current[Math.max(0, slots.length - 3)];
+      const defaultWidth = defaultRailSlot
+        ? Math.max(260, dockRect.right - defaultRailSlot.getBoundingClientRect().left)
         : Math.min(440, dockRect.width);
       onDesktopDockWidthChange(dockRect.width, defaultWidth);
     };
