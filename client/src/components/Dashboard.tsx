@@ -831,11 +831,13 @@ export const Dashboard: React.FC = () => {
         status,
         displayUnitNumber(unit),
         displayCadUnitNumber(unit),
+        unit.badge,
         unit.name,
         name.firstName,
         name.lastName,
         district,
-        unit.group
+        unit.group,
+        typeof unit.lat === 'number' && typeof unit.lon === 'number' ? `${unit.lat.toFixed(6)} ${unit.lon.toFixed(6)}` : ''
       ]
         .filter(Boolean)
         .join(' ')
@@ -866,6 +868,24 @@ export const Dashboard: React.FC = () => {
     () => unitBoardRows.find((unit) => unit.id === selectedUnitId) || unitBoardRows[0] || null,
     [selectedUnitId, unitBoardRows]
   );
+  const unitBoardGroups = useMemo(() => {
+    const groups = unitBoardRows.reduce<Array<{ district: string; units: UnitBoardUser[] }>>((list, unit) => {
+      const district = unit.district || 'Unassigned';
+      const existing = list.find((group) => group.district === district);
+      if (existing) {
+        existing.units.push(unit);
+      } else {
+        list.push({ district, units: [unit] });
+      }
+      return list;
+    }, []);
+
+    return groups.sort((first, second) => {
+      if (first.district === 'Unassigned') return 1;
+      if (second.district === 'Unassigned') return -1;
+      return first.district.localeCompare(second.district);
+    });
+  }, [unitBoardRows]);
   const recommendedUnits = useMemo(() => {
     if (!selectedIncident) {
       return [];
@@ -3879,7 +3899,7 @@ export const Dashboard: React.FC = () => {
 
     if (modalId === 'units') {
       return (
-        <div className="grid h-full min-h-[520px] grid-rows-[auto_1fr_auto] overflow-hidden rounded-lg border border-cad-line bg-white dark:border-slate-700 dark:bg-slate-900">
+        <div className="grid h-full min-h-[520px] grid-rows-[auto_1fr] overflow-hidden rounded-lg border border-cad-line bg-white dark:border-slate-700 dark:bg-slate-900">
           <div className="border-b border-cad-line bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
             <h3 className="text-base font-semibold text-slate-950 dark:text-white">On Duty Officers</h3>
             <div className="mt-3 grid gap-2 md:grid-cols-[1fr_9.5rem_9.5rem_auto]">
@@ -3926,16 +3946,16 @@ export const Dashboard: React.FC = () => {
           {unitLoadError && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{unitLoadError}</p>}
           {(unitsLoading || directoryLoading) && unitBoardUnits.length === 0 ? (
             <div className="min-h-0 overflow-auto">
-              <div className="min-w-[640px] text-sm">
-                <div className="grid grid-cols-[108px_78px_1fr_104px_110px_118px] gap-2 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-slate-900">
-                  {[0, 1, 2, 3, 4, 5].map((item) => (
+              <div className="min-w-[1120px] text-sm">
+                <div className="grid grid-cols-[122px_90px_110px_180px_90px_120px_130px_155px_82px_160px] gap-2 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-slate-900">
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((item) => (
                     <div key={item} className="cad-shimmer h-3 rounded" />
                   ))}
                 </div>
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">
                   {[0, 1, 2, 3, 4].map((row) => (
-                    <div key={row} className="grid grid-cols-[108px_78px_1fr_104px_110px_118px] gap-2 bg-white px-4 py-3 dark:bg-slate-900">
-                      {[0, 1, 2, 3, 4, 5].map((item) => (
+                    <div key={row} className="grid grid-cols-[122px_90px_110px_180px_90px_120px_130px_155px_82px_160px] gap-2 bg-white px-4 py-3 dark:bg-slate-900">
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((item) => (
                         <div key={item} className={`cad-shimmer h-5 rounded ${item === 2 ? 'w-11/12' : 'w-4/5'}`} />
                       ))}
                     </div>
@@ -3953,55 +3973,76 @@ export const Dashboard: React.FC = () => {
             </div>
           ) : (
             <div className="min-h-0 overflow-auto">
-                <div className="min-w-[640px] text-sm">
-                  <div className="grid grid-cols-[108px_78px_1fr_104px_110px_118px] gap-2 border-b border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:border-gray-800 dark:bg-slate-900 dark:text-slate-400">
-                    <SortHeader label="Status" active={unitBoardSort.key === 'status'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('status')} />
-                    <SortHeader label="Unit" active={unitBoardSort.key === 'unit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('unit')} />
-                    <SortHeader label="First & Last Name" active={unitBoardSort.key === 'name'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('name')} />
-                    <SortHeader label="CAD Unit" active={unitBoardSort.key === 'cadUnit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('cadUnit')} />
-                    <SortHeader label="District" active={unitBoardSort.key === 'district'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('district')} />
-                    <span>Location</span>
-                  </div>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {unitBoardRows.length === 0 && (
-                      <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No units match the current filters.</p>
-                    )}
-                    {unitBoardRows.map((unit) => {
-                      const status = displayStatus(unit);
-                      const colors = unitBoardStatusStyles(status);
-                      const name = splitName(unit.name);
-                      return (
-                        <button
-                          key={unit.id}
-                          type="button"
-                          onClick={() => setSelectedUnitId(unit.id)}
-                          className={`grid w-full grid-cols-[108px_78px_1fr_104px_110px_118px] gap-2 border-l-4 bg-white px-4 py-3 text-left transition hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 ${
-                            selectedUnitBoardUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/35' : ''
-                          } ${colors.row}`}
-                        >
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.dot}`} />
-                            <span className={`truncate rounded-full px-2 py-1 text-[11px] font-black uppercase ring-1 ${colors.pill}`}>
-                              {status}
+              <div className="min-w-[1120px] text-sm">
+                {unitBoardRows.length === 0 && (
+                  <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No units match the current filters.</p>
+                )}
+                {unitBoardGroups.map((group) => (
+                  <section key={group.district} className="border-b border-gray-200 last:border-b-0 dark:border-gray-800">
+                    <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-200 bg-slate-100 px-4 py-2 dark:border-gray-800 dark:bg-slate-950">
+                      <h4 className="text-xs font-black uppercase tracking-[0.14em] text-slate-700 dark:text-slate-200">{group.district}</h4>
+                      <span className="rounded bg-white px-2 py-0.5 text-xs font-black text-cad-blue shadow-sm dark:bg-slate-900 dark:text-blue-100">
+                        {group.units.length} {group.units.length === 1 ? 'unit' : 'units'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-[122px_90px_110px_180px_90px_120px_130px_155px_82px_160px] gap-2 border-b border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:border-gray-800 dark:bg-slate-900 dark:text-slate-400">
+                      <SortHeader label="Status" active={unitBoardSort.key === 'status'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('status')} />
+                      <SortHeader label="Unit" active={unitBoardSort.key === 'unit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('unit')} />
+                      <SortHeader label="CAD Unit" active={unitBoardSort.key === 'cadUnit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('cadUnit')} />
+                      <SortHeader label="Officer" active={unitBoardSort.key === 'name'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('name')} />
+                      <span>Badge</span>
+                      <span>Group</span>
+                      <span>GPS</span>
+                      <span>Coordinates</span>
+                      <span>Speed</span>
+                      <span>Destination</span>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {group.units.map((unit) => {
+                        const status = displayStatus(unit);
+                        const colors = unitBoardStatusStyles(status);
+                        const name = splitName(unit.name);
+                        const coordinates =
+                          typeof unit.lat === 'number' && typeof unit.lon === 'number'
+                            ? `${unit.lat.toFixed(5)}, ${unit.lon.toFixed(5)}`
+                            : 'Unavailable';
+                        const destination =
+                          typeof unit.lat === 'number' && typeof unit.lon === 'number'
+                            ? routeShareLabel(unit as TrackedUnit)
+                            : 'No shared route';
+                        return (
+                          <button
+                            key={unit.id}
+                            type="button"
+                            onClick={() => setSelectedUnitId(unit.id)}
+                            className={`grid w-full grid-cols-[122px_90px_110px_180px_90px_120px_130px_155px_82px_160px] gap-2 border-l-4 bg-white px-4 py-3 text-left transition hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 ${
+                              selectedUnitBoardUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/35' : ''
+                            } ${colors.row}`}
+                          >
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.dot}`} />
+                              <span className={`truncate rounded-full px-2 py-1 text-[11px] font-black uppercase ring-1 ${colors.pill}`}>
+                                {status}
+                              </span>
                             </span>
-                          </span>
-                          <span className="truncate font-bold text-slate-900 dark:text-white">{displayUnitNumber(unit)}</span>
-                          <span className="truncate font-semibold text-slate-700 dark:text-slate-200">
-                            {[name.firstName, name.lastName].filter(Boolean).join(' ') || unit.name || 'N/A'}
-                          </span>
-                          <span className="truncate font-bold text-cad-blue dark:text-blue-100">{displayCadUnitNumber(unit)}</span>
-                          <span className="truncate text-slate-600 dark:text-slate-300">{unit.district || 'Unassigned'}</span>
-                          <span className="truncate text-slate-500 dark:text-slate-400">{locationReliabilityText(unit, locationClock)}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-            </div>
-          )}
-          {unitBoardUnits.length > 0 && (
-            <div className="border-t border-gray-200 bg-slate-50 p-3 dark:border-gray-800 dark:bg-slate-950">
-              <UnitProfileCard unit={selectedUnitBoardUnit} locationClock={locationClock} />
+                            <span className="truncate font-bold text-slate-900 dark:text-white">{displayUnitNumber(unit)}</span>
+                            <span className="truncate font-bold text-cad-blue dark:text-blue-100">{displayCadUnitNumber(unit)}</span>
+                            <span className="truncate font-semibold text-slate-700 dark:text-slate-200">
+                              {[name.firstName, name.lastName].filter(Boolean).join(' ') || unit.name || 'N/A'}
+                            </span>
+                            <span className="truncate text-slate-600 dark:text-slate-300">{unit.badge || 'N/A'}</span>
+                            <span className="truncate text-slate-600 dark:text-slate-300">{unit.group || 'Unassigned'}</span>
+                            <span className="truncate text-slate-500 dark:text-slate-400">{locationReliabilityText(unit, locationClock)}</span>
+                            <span className="truncate font-mono text-xs text-slate-600 dark:text-slate-300">{coordinates}</span>
+                            <span className="truncate text-slate-600 dark:text-slate-300">{typeof unit.speedMph === 'number' ? `${unit.speedMph.toFixed(1)} mph` : '--'}</span>
+                            <span className="truncate text-slate-500 dark:text-slate-400">{destination}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -4622,7 +4663,7 @@ export const Dashboard: React.FC = () => {
           zIndex={modalZOrder[modalId] || 50}
           active={activeQuickModal === modalId}
           placement="center"
-          maxWidthClass={modalId === 'units' ? 'max-w-3xl' : modalId === 'messages' || modalId === 'calls' || modalId === 'call-detail' ? 'max-w-5xl' : 'max-w-2xl'}
+          maxWidthClass={modalId === 'units' ? 'max-w-7xl' : modalId === 'messages' || modalId === 'calls' || modalId === 'call-detail' ? 'max-w-5xl' : 'max-w-2xl'}
           contentClassName={modalId === 'units' ? 'p-3 overflow-hidden h-[min(68vh,620px)]' : 'p-4 overflow-hidden'}
         >
           {renderQuickModalContent(modalId)}
@@ -4648,54 +4689,6 @@ const SortHeader: React.FC<{
     {active ? (direction === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : null}
   </button>
 );
-
-const UnitProfileCard: React.FC<{ unit: UnitBoardUser | null; locationClock: number }> = ({ unit, locationClock }) => {
-  if (!unit) {
-    return (
-      <aside className="flex min-h-0 items-center justify-center rounded-md border border-cad-line bg-white p-4 text-center text-sm font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-950">
-        Select a unit to view profile and location.
-      </aside>
-    );
-  }
-
-  const status = displayStatus(unit);
-  const colors = unitBoardStatusStyles(status);
-  const name = splitName(unit.name);
-
-  return (
-    <aside className="min-h-0 overflow-y-auto rounded-md border border-cad-line bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950">
-      <div className="flex items-start gap-3">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-cad-blue text-base font-black text-white shadow">
-          {displayCadUnitNumber(unit).slice(0, 2).toUpperCase()}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-base font-black text-slate-950 dark:text-white">{displayCadUnitNumber(unit)}</p>
-          <p className="truncate text-sm font-semibold text-slate-600 dark:text-slate-300">
-            {[name.firstName, name.lastName].filter(Boolean).join(' ') || unit.name}
-          </p>
-          <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-black uppercase ring-1 ${colors.pill}`}>
-            {status}
-          </span>
-        </div>
-      </div>
-
-      <dl className="mt-4 grid gap-3 text-sm">
-        <Detail label="Unit" value={displayUnitNumber(unit)} />
-        <Detail label="First Name" value={name.firstName || 'N/A'} />
-        <Detail label="Last Name" value={name.lastName || 'N/A'} />
-        <Detail label="CAD Unit" value={displayCadUnitNumber(unit)} />
-        <Detail label="District" value={unit.district || 'Unassigned'} />
-        <Detail label="Group" value={unit.group || 'Unassigned'} />
-        <Detail label="Tracking" value={locationReliabilityText(unit, locationClock)} />
-        <Detail label="Latitude" value={typeof unit.lat === 'number' ? unit.lat.toFixed(6) : 'Unavailable'} />
-        <Detail label="Longitude" value={typeof unit.lon === 'number' ? unit.lon.toFixed(6) : 'Unavailable'} />
-        <Detail label="Speed" value={`${(unit.speedMph || 0).toFixed(1)} mph`} />
-        <Detail label="Shared Route" value={typeof unit.lat === 'number' && typeof unit.lon === 'number' ? routeShareLabel(unit as TrackedUnit) : 'Unavailable'} />
-        <Detail label="ETA" value={typeof unit.lat === 'number' && typeof unit.lon === 'number' ? etaText(unit as TrackedUnit) : 'Unavailable'} />
-      </dl>
-    </aside>
-  );
-};
 
 const OverlayPanel: React.FC<{
   title: string;
