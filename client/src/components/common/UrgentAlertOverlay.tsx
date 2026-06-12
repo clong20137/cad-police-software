@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { UrgentAlert } from '../../types/auth';
 
@@ -16,9 +17,9 @@ export const UrgentAlertOverlay: React.FC<{
   const alert = alerts[0];
   if (!alert) return null;
 
-  return (
-    <div className="pointer-events-none fixed inset-0 z-[120] flex items-start justify-center bg-black/20 px-4 pt-6">
-      <div className={`pointer-events-auto w-[min(34rem,calc(100vw-2rem))] rounded-lg border p-4 shadow-2xl ${severityClass[alert.severity]} animate-[dockModalIn_140ms_ease-out]`}>
+  return createPortal(
+    <div className="pointer-events-none fixed inset-0 z-[1200] flex items-start justify-center bg-black/20 px-4 pt-6">
+      <div role="alertdialog" aria-modal="true" className={`pointer-events-auto w-[min(34rem,calc(100vw-2rem))] rounded-lg border p-4 shadow-2xl ${severityClass[alert.severity]} animate-[dockModalIn_140ms_ease-out]`}>
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-white/20 ring-1 ring-current/20">
             <AlertTriangle size={22} />
@@ -50,6 +51,7 @@ export const UrgentAlertOverlay: React.FC<{
           Acknowledge
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
