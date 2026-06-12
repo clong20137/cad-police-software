@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { UrgentAlert } from '../../types/auth';
 
 const severityClass: Record<UrgentAlert['severity'], string> = {
@@ -12,10 +12,22 @@ const severityClass: Record<UrgentAlert['severity'], string> = {
 
 export const UrgentAlertOverlay: React.FC<{
   alerts: UrgentAlert[];
-  onAcknowledge: (alertId: string) => void;
+  onAcknowledge: (alertId: string) => void | Promise<void>;
 }> = ({ alerts, onAcknowledge }) => {
+  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
   const alert = alerts[0];
   if (!alert) return null;
+  const acknowledging = acknowledgingId === alert.id;
+
+  const acknowledge = async () => {
+    if (acknowledgingId) return;
+    setAcknowledgingId(alert.id);
+    try {
+      await onAcknowledge(alert.id);
+    } finally {
+      setAcknowledgingId(null);
+    }
+  };
 
   return createPortal(
     <div className="pointer-events-none fixed inset-0 z-[1200] flex items-start justify-center bg-black/20 px-4 pt-6">
@@ -44,11 +56,12 @@ export const UrgentAlertOverlay: React.FC<{
         </div>
         <button
           type="button"
-          onClick={() => onAcknowledge(alert.id)}
-          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded bg-white px-4 py-2 text-sm font-black text-slate-950 shadow hover:bg-slate-100"
+          onClick={acknowledge}
+          disabled={acknowledging}
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded bg-white px-4 py-2 text-sm font-black text-slate-950 shadow hover:bg-slate-100 disabled:cursor-wait disabled:opacity-75"
         >
-          <CheckCircle2 size={18} />
-          Acknowledge
+          {acknowledging ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+          {acknowledging ? 'Acknowledging' : 'Acknowledge'}
         </button>
       </div>
     </div>,

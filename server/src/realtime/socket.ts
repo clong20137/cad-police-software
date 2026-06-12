@@ -189,8 +189,7 @@ export const broadcastUrgentAlerts = (recipientIds?: string[]): void => {
     return;
   }
 
-  io.emit('urgent-alerts:update', { serverTime: new Date().toISOString() });
-  recipientIds.forEach((recipientId) => {
+  Array.from(new Set(recipientIds.filter(Boolean))).forEach((recipientId) => {
     io?.to(`user:${recipientId}`).emit('urgent-alerts:update', { serverTime: new Date().toISOString() });
   });
 };

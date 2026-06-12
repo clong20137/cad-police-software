@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requirePermission } from '../middleware/auth';
 import { broadcastUrgentAlerts } from '../realtime/socket';
 import { AuthService } from '../services/AuthService';
+import { AuditLogService } from '../services/AuditLogService';
 import { UrgentAlertService } from '../services/UrgentAlertService';
 import { CreateUrgentAlertRequest, UserRole } from '../types/auth';
 
@@ -37,6 +38,19 @@ router.post(
         return;
       }
       const alert = await UrgentAlertService.create(req.body, creator);
+      await AuditLogService.fromRequest(req, {
+        action: 'urgent_alert_created',
+        resource: 'urgent_alert',
+        resourceId: alert.id,
+        severity: alert.severity === 'Critical' || alert.severity === 'Urgent' ? 'critical' : 'warning',
+        metadata: {
+          title: alert.title,
+          severity: alert.severity,
+          audienceType: alert.audienceType,
+          audienceLabel: alert.audienceLabel,
+          recipientCount: alert.recipientIds.length
+        }
+      });
       broadcastUrgentAlerts(alert.recipientIds);
       res.status(201).json(alert);
     } catch (error) {
@@ -61,6 +75,20 @@ router.post(
         return;
       }
       const alert = await UrgentAlertService.createOfficerEmergency(officer, req.body.lat, req.body.lon);
+      await AuditLogService.fromRequest(req, {
+        action: 'officer_emergency_alert_created',
+        resource: 'urgent_alert',
+        resourceId: alert.id,
+        severity: 'critical',
+        metadata: {
+          officerId: officer.id,
+          officerName: officer.name,
+          unit: officer.cadUnitNumber || officer.unitNumber || officer.badge || null,
+          lat: req.body.lat ?? null,
+          lon: req.body.lon ?? null,
+          recipientCount: alert.recipientIds.length
+        }
+      });
       broadcastUrgentAlerts(alert.recipientIds);
       res.status(201).json(alert);
     } catch (error) {
@@ -79,6 +107,12 @@ router.put(
       res.status(404).json({ error: 'Alert not found' });
       return;
     }
+    await AuditLogService.fromRequest(req, {
+      action: 'urgent_alert_acknowledged',
+      resource: 'urgent_alert',
+      resourceId: req.params.id,
+      severity: 'info'
+    });
     broadcastUrgentAlerts([req.user?.id || '']);
     res.json({ message: 'Alert acknowledged' });
   }
@@ -94,6 +128,12 @@ router.delete(
       res.status(404).json({ error: 'Alert not found' });
       return;
     }
+    await AuditLogService.fromRequest(req, {
+      action: 'urgent_alert_deleted',
+      resource: 'urgent_alert',
+      resourceId: req.params.id,
+      severity: 'warning'
+    });
     broadcastUrgentAlerts();
     res.json({ message: 'Alert removed' });
   }

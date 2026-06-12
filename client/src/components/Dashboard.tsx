@@ -948,9 +948,13 @@ export const Dashboard: React.FC = () => {
 
   const loadUrgentAlerts = useCallback(async () => {
     try {
-      setUrgentAlerts(await authClient.getUrgentAlerts());
+      const alerts = await authClient.getUrgentAlerts();
+      authClient.cacheUrgentAlerts(alerts);
+      setUrgentAlerts(alerts);
+      return alerts;
     } catch {
       // Keep any cached/in-memory alerts visible if the network drops.
+      return [];
     }
   }, []);
 
@@ -1298,8 +1302,17 @@ export const Dashboard: React.FC = () => {
       });
     });
     socket.on('urgent-alerts:update', () => {
-      loadUrgentAlerts();
-      playAlert('call');
+      loadUrgentAlerts().then((alerts) => {
+        const alert = alerts[0];
+        if (!alert) return;
+        playCadAlertSound('urgent', 'call');
+        pushToast({
+          title: `${alert.severity} alert`,
+          message: alert.title,
+          tone: alert.severity === 'Critical' || alert.severity === 'Urgent' ? 'warning' : 'info'
+        });
+        notifyIfAllowed(`${alert.severity} CAD Alert`, alert.title, { ...accountPreferences, pushNotifications: true });
+      });
     });
     socket.on('message:new', (message: ChatMessage) => {
       const incomingForMe = message.recipientId === user?.id && message.senderId !== user?.id;
@@ -2495,7 +2508,11 @@ export const Dashboard: React.FC = () => {
   const acknowledgeUrgentAlert = async (alertId: string) => {
     try {
       await authClient.acknowledgeUrgentAlert(alertId);
-      setUrgentAlerts((current) => current.filter((alert) => alert.id !== alertId));
+      setUrgentAlerts((current) => {
+        const next = current.filter((alert) => alert.id !== alertId);
+        authClient.cacheUrgentAlerts(next);
+        return next;
+      });
     } catch {
       pushToast({ title: 'Alert acknowledgement failed', message: 'Try again in a moment.', tone: 'warning' });
     }

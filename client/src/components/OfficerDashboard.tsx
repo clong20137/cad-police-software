@@ -1302,9 +1302,12 @@ export const OfficerDashboard: React.FC = () => {
   const loadUrgentAlerts = useCallback(async () => {
     try {
       const alerts = await authClient.getUrgentAlerts();
+      authClient.cacheUrgentAlerts(alerts);
       setUrgentAlerts((current) => mergeUrgentAlerts(current, alerts));
+      return alerts;
     } catch {
       // Keep any cached/in-memory alerts visible if the network drops.
+      return [];
     }
   }, []);
 
@@ -1555,8 +1558,13 @@ export const OfficerDashboard: React.FC = () => {
       setIncidents(nextIncidents || []);
     });
     socket.on('urgent-alerts:update', () => {
-      loadUrgentAlerts();
-      setMessage('Urgent alert received.');
+      loadUrgentAlerts().then((alerts) => {
+        const alert = alerts[0];
+        if (!alert) return;
+        playCadAlertSound('urgent', 'call');
+        notifyIfAllowed(`${alert.severity} CAD Alert`, alert.title, { ...accountPreferences, pushNotifications: true });
+        setMessage(`${alert.severity} alert received.`);
+      });
     });
     socket.on('presence:update', (presence: { onlineUserIds: string[]; users: User[] }) => {
       setOnlineUserIds(presence.onlineUserIds || []);
@@ -1641,7 +1649,7 @@ export const OfficerDashboard: React.FC = () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [loadMessageThreads, loadUrgentAlerts, user?.id]);
+  }, [accountPreferences, loadMessageThreads, loadUrgentAlerts, user?.id]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -2393,7 +2401,11 @@ export const OfficerDashboard: React.FC = () => {
   const acknowledgeUrgentAlert = async (alertId: string) => {
     try {
       await authClient.acknowledgeUrgentAlert(alertId);
-      setUrgentAlerts((current) => current.filter((alert) => alert.id !== alertId));
+      setUrgentAlerts((current) => {
+        const next = current.filter((alert) => alert.id !== alertId);
+        authClient.cacheUrgentAlerts(next);
+        return next;
+      });
     } catch {
       setMessage('Unable to acknowledge urgent alert.');
     }
