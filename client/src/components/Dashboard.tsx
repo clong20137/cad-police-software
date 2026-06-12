@@ -15,6 +15,7 @@ import {
   MapPin,
   Maximize2,
   Minimize2,
+  Minus,
   Paperclip,
   Pin,
   PinOff,
@@ -104,6 +105,7 @@ declare global {
 interface GoogleMapInstance {
   setCenter: (location: { lat: number; lng: number }) => void;
   setZoom: (zoom: number) => void;
+  getZoom: () => number | undefined;
   fitBounds: (bounds: GoogleLatLngBoundsInstance) => void;
   setOptions: (options: Record<string, unknown>) => void;
 }
@@ -1614,7 +1616,7 @@ export const Dashboard: React.FC = () => {
           center: { lat: center.lat, lng: center.lon },
           zoom: 12,
           disableDefaultUI: true,
-          zoomControl: true,
+          zoomControl: false,
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
@@ -1789,6 +1791,13 @@ export const Dashboard: React.FC = () => {
     const target = currentLocation || center;
     mapInstanceRef.current?.setCenter({ lat: target.lat, lng: target.lon });
     mapInstanceRef.current?.setZoom(14);
+  };
+
+  const adjustMapZoom = (delta: number) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const currentZoom = map.getZoom() ?? 12;
+    map.setZoom(Math.min(21, Math.max(3, currentZoom + delta)));
   };
 
   const toggleMapLayer = (layer: keyof DispatchMapLayers) => {
@@ -5093,12 +5102,26 @@ export const Dashboard: React.FC = () => {
         customizingSlot={customizingSlot}
         sidebarCollapsed={appSidebarCollapsed}
         desktopLeftClass={appSidebarCollapsed ? 'left-[33rem]' : 'left-[42rem]'}
-        dockAction={{
-          label: 'My Location',
-          icon: <MapPin size={18} />,
-          onClick: recenterToCurrentLocation,
-          iconOnly: true
-        }}
+        dockActions={[
+          {
+            label: 'My Location',
+            icon: <MapPin size={18} />,
+            onClick: recenterToCurrentLocation,
+            iconOnly: true
+          },
+          {
+            label: 'Zoom In',
+            icon: <Plus size={18} />,
+            onClick: () => adjustMapZoom(1),
+            iconOnly: true
+          },
+          {
+            label: 'Zoom Out',
+            icon: <Minus size={18} />,
+            onClick: () => adjustMapZoom(-1),
+            iconOnly: true
+          }
+        ]}
         badges={{
           messages: messageBadgeCount,
           calls: callBadgeCount,

@@ -31,6 +31,7 @@ export const QuickLaunchDock = <T extends string>({
   sidebarCollapsed = false,
   desktopLeftClass,
   dockAction,
+  dockActions,
   onOpen,
   onCustomize,
   onAssignSlot,
@@ -50,12 +51,19 @@ export const QuickLaunchDock = <T extends string>({
     onClick: () => void;
     iconOnly?: boolean;
   };
+  dockActions?: Array<{
+    label: string;
+    icon: React.ReactNode;
+    onClick: () => void;
+    iconOnly?: boolean;
+  }>;
   onOpen: (item: T) => void;
   onCustomize: (index: number | null) => void;
   onAssignSlot: (index: number, value: QuickLaunchSlot<T>) => void;
   onDragStart: (index: number) => void;
   onDrop: (index: number) => void;
 }) => {
+  const resolvedDockActions = dockActions || (dockAction ? [dockAction] : []);
   const [contextMenu, setContextMenu] = useState<{ index: number; x: number; y: number } | null>(null);
   const [draggingSlot, setDraggingSlot] = useState<number | null>(null);
   const [externalLabel, setExternalLabel] = useState('');
@@ -306,8 +314,8 @@ export const QuickLaunchDock = <T extends string>({
 
   return (
     <>
-      <section className={`dispatch-quick-launch-enter pointer-events-none fixed bottom-4 right-4 z-40 hidden select-none transition-all duration-300 ease-out md:block ${desktopLeftClass || (sidebarCollapsed ? 'left-24' : 'left-[19.5rem]')}`}>
-        <div className="pointer-events-auto mx-auto flex h-[4.5rem] w-fit max-w-full items-center overflow-visible rounded-md border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
+      <section className={`dispatch-quick-launch-enter pointer-events-none fixed bottom-4 right-3 z-40 hidden select-none transition-all duration-300 ease-out md:flex md:justify-end sm:right-5 ${desktopLeftClass || (sidebarCollapsed ? 'left-24' : 'left-[19.5rem]')}`}>
+        <div className="pointer-events-auto flex h-[4.5rem] w-fit max-w-full items-center overflow-visible rounded-md border border-cad-blue/20 bg-white/95 p-2 text-cad-ink shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95 dark:text-white">
           <div className="flex max-w-full flex-nowrap items-center justify-center gap-2">
             {slots.map((slot, index) => {
               const option = typeof slot === 'string' ? options.find((item) => item.id === slot) || null : null;
@@ -408,19 +416,22 @@ export const QuickLaunchDock = <T extends string>({
                 </div>
               );
             })}
-            {dockAction && (
+            {resolvedDockActions.length > 0 && (
               <>
                 <div className="mx-1 h-10 w-px bg-cad-line dark:bg-slate-700" aria-hidden="true" />
-                <button
-                  type="button"
-                  onClick={dockAction.onClick}
-                  className="flex h-14 w-14 flex-col items-center justify-center gap-1 rounded border border-slate-200 bg-white text-[10px] font-medium text-cad-ink shadow-sm transition duration-200 ease-out hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100 dark:hover:bg-slate-800"
-                  aria-label={dockAction.label}
-                  title={dockAction.label}
-                >
-                  {dockAction.icon}
-                  {!dockAction.iconOnly && <span className="max-w-10 truncate">{dockAction.label}</span>}
-                </button>
+                {resolvedDockActions.map((action) => (
+                  <button
+                    key={action.label}
+                    type="button"
+                    onClick={action.onClick}
+                    className="flex h-14 w-14 flex-col items-center justify-center gap-1 rounded border border-slate-200 bg-white text-[10px] font-medium text-cad-ink shadow-sm transition duration-200 ease-out hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100 dark:hover:bg-slate-800"
+                    aria-label={action.label}
+                    title={action.label}
+                  >
+                    {action.icon}
+                    {!action.iconOnly && <span className="max-w-10 truncate">{action.label}</span>}
+                  </button>
+                ))}
               </>
             )}
           </div>
@@ -462,18 +473,19 @@ export const QuickLaunchDock = <T extends string>({
               </div>
             );
           })}
-          {dockAction && (
+          {resolvedDockActions.map((action) => (
             <button
+              key={action.label}
               type="button"
-              onClick={dockAction.onClick}
+              onClick={action.onClick}
               className="flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-lg bg-slate-50 text-[10px] font-bold dark:bg-slate-900"
-              title={dockAction.label}
-              aria-label={dockAction.label}
+              title={action.label}
+              aria-label={action.label}
             >
-              {dockAction.icon}
-              {!dockAction.iconOnly && <span className="max-w-full truncate px-1">{dockAction.label}</span>}
+              {action.icon}
+              {!action.iconOnly && <span className="max-w-full truncate px-1">{action.label}</span>}
             </button>
-          )}
+          ))}
         </div>
       </section>
 
