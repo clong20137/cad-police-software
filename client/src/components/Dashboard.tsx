@@ -4449,7 +4449,10 @@ export const Dashboard: React.FC = () => {
 
     if (unitRailCollapsed && !unitRailClosing) {
       return (
-        <aside className="pointer-events-auto absolute right-3 top-20 z-20 flex w-16 flex-col overflow-visible rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md transition duration-200 ease-out dark:border-blue-400/20 dark:bg-slate-950/95 sm:right-5">
+        <aside
+          className="pointer-events-auto absolute right-3 top-20 z-20 flex w-16 select-none flex-col overflow-visible rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md transition duration-200 ease-out dark:border-blue-400/20 dark:bg-slate-950/95 sm:right-5"
+          onContextMenu={(event) => event.preventDefault()}
+        >
           <button
             type="button"
             onClick={() => expandUnitRail(false)}
@@ -4501,9 +4504,16 @@ export const Dashboard: React.FC = () => {
     }
 
     return (
-      <aside className={`pointer-events-auto absolute bottom-24 right-3 top-20 z-20 flex flex-col overflow-visible rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md transition-[width,transform,opacity] duration-200 ease-out dark:border-blue-400/20 dark:bg-slate-950/95 sm:right-5 ${
-        unitRailWide ? 'w-[min(34rem,calc(100vw-2rem))]' : 'w-[min(22rem,calc(100vw-2rem))]'
-      } ${unitRailClosing ? 'translate-x-[calc(100%+1.25rem)] opacity-0' : 'translate-x-0 opacity-100'}`}>
+      <aside
+        className={`pointer-events-auto absolute bottom-24 right-3 top-20 z-20 flex select-none flex-col overflow-visible rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md transition-[width,transform,opacity] duration-200 ease-out dark:border-blue-400/20 dark:bg-slate-950/95 sm:right-5 ${
+          unitRailWide
+            ? appSidebarCollapsed
+              ? 'left-[27rem]'
+              : 'left-[24rem]'
+            : 'w-[min(22rem,calc(100vw-2rem))]'
+        } ${unitRailClosing ? 'translate-x-[calc(100%+1.25rem)] opacity-0' : 'translate-x-0 opacity-100'}`}
+        onContextMenu={(event) => event.preventDefault()}
+      >
         <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
           <div className="min-w-0">
             <h3 className="text-sm font-black text-slate-950 dark:text-white">Units</h3>

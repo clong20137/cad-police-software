@@ -64,6 +64,8 @@ export const QuickLaunchDock = <T extends string>({
   onDrop: (index: number) => void;
 }) => {
   const resolvedDockActions = dockActions || (dockAction ? [dockAction] : []);
+  const primaryDockAction = resolvedDockActions[0] || null;
+  const stackedDockActions = resolvedDockActions.slice(1, 3);
   const [contextMenu, setContextMenu] = useState<{ index: number; x: number; y: number } | null>(null);
   const [draggingSlot, setDraggingSlot] = useState<number | null>(null);
   const [externalLabel, setExternalLabel] = useState('');
@@ -419,19 +421,34 @@ export const QuickLaunchDock = <T extends string>({
             {resolvedDockActions.length > 0 && (
               <>
                 <div className="mx-1 h-10 w-px bg-cad-line dark:bg-slate-700" aria-hidden="true" />
-                {resolvedDockActions.map((action) => (
+                {primaryDockAction && (
                   <button
-                    key={action.label}
                     type="button"
-                    onClick={action.onClick}
+                    onClick={primaryDockAction.onClick}
                     className="flex h-14 w-14 flex-col items-center justify-center gap-1 rounded border border-slate-200 bg-white text-[10px] font-medium text-cad-ink shadow-sm transition duration-200 ease-out hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100 dark:hover:bg-slate-800"
-                    aria-label={action.label}
-                    title={action.label}
+                    aria-label={primaryDockAction.label}
+                    title={primaryDockAction.label}
                   >
-                    {action.icon}
-                    {!action.iconOnly && <span className="max-w-10 truncate">{action.label}</span>}
+                    {primaryDockAction.icon}
+                    {!primaryDockAction.iconOnly && <span className="max-w-10 truncate">{primaryDockAction.label}</span>}
                   </button>
-                ))}
+                )}
+                {stackedDockActions.length > 0 && (
+                  <div className="grid h-14 w-14 grid-rows-2 gap-1">
+                    {stackedDockActions.map((action) => (
+                      <button
+                        key={action.label}
+                        type="button"
+                        onClick={action.onClick}
+                        className="flex min-h-0 items-center justify-center rounded border border-slate-200 bg-white text-cad-ink shadow-sm transition duration-200 ease-out hover:border-cad-blue/50 hover:bg-slate-50 hover:text-cad-blue hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:text-blue-100 dark:hover:bg-slate-800"
+                        aria-label={action.label}
+                        title={action.label}
+                      >
+                        {action.icon}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </div>
