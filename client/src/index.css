@@ -322,6 +322,14 @@
     will-change: transform, opacity, filter;
   }
 
+  .quick-access-backdrop-enter {
+    animation: quickAccessBackdropEnter 180ms ease-out both;
+  }
+
+  .quick-access-backdrop-exit {
+    animation: quickAccessBackdropExit 260ms ease both;
+  }
+
   .login-grid-motion {
     animation: loginGridDrift 18s linear infinite;
     will-change: background-position;
@@ -691,6 +699,26 @@
       opacity: 0;
       filter: blur(8px) saturate(0.82);
       transform: translateY(52px) scale(0.72);
+    }
+  }
+
+  @keyframes quickAccessBackdropEnter {
+    0% {
+      opacity: 0;
+    }
+
+    100% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes quickAccessBackdropExit {
+    0% {
+      opacity: 1;
+    }
+
+    100% {
+      opacity: 0;
     }
   }
 

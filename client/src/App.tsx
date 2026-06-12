@@ -68,13 +68,29 @@ const GlobalQuickAccessPalette: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  const closePalette = useCallback(() => setOpen(false), []);
+  const closePalette = useCallback(() => {
+    if (!open || closing) return;
+    setClosing(true);
+    closeTimerRef.current = window.setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+      closeTimerRef.current = null;
+    }, 260);
+  }, [closing, open]);
+
   const openPalette = useCallback(() => {
     if (!isAuthenticated) return;
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setClosing(false);
     setOpen(true);
   }, [isAuthenticated]);
 
@@ -115,6 +131,12 @@ const GlobalQuickAccessPalette: React.FC = () => {
     return () => document.removeEventListener('keydown', handleShortcut);
   }, [openPalette]);
 
+  useEffect(() => () => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     if (!open) {
       setQuery('');
@@ -122,8 +144,9 @@ const GlobalQuickAccessPalette: React.FC = () => {
       return;
     }
 
+    if (closing) return;
     window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, [open]);
+  }, [closing, open]);
 
   const items = useMemo<QuickAccessItem[]>(() => {
     if (!isAuthenticated || !user) return [];
@@ -304,12 +327,12 @@ const GlobalQuickAccessPalette: React.FC = () => {
   if (!open || !isAuthenticated) return null;
 
   return (
-    <div className="fixed inset-0 z-[950] flex items-start justify-center bg-slate-950/35 px-3 pt-[9vh] sm:px-6" onMouseDown={closePalette}>
+    <div className={`fixed inset-0 z-[950] flex items-start justify-center bg-slate-950/35 px-3 pt-[9vh] sm:px-6 ${closing ? 'quick-access-backdrop-exit' : 'quick-access-backdrop-enter'}`} onMouseDown={closePalette}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Quick access"
-        className="floating-window-mac-enter w-full max-w-2xl overflow-hidden rounded-lg border border-cad-line bg-white shadow-[0_24px_80px_rgba(15,23,42,0.36)] dark:border-slate-700 dark:bg-slate-950"
+        className={`${closing ? 'floating-window-mac-exit' : 'floating-window-mac-enter'} w-full max-w-2xl overflow-hidden rounded-lg border border-cad-line bg-white shadow-[0_24px_80px_rgba(15,23,42,0.36)] dark:border-slate-700 dark:bg-slate-950`}
         onMouseDown={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
