@@ -4434,7 +4434,9 @@ export const Dashboard: React.FC = () => {
   const renderUnitRail = () => {
     const totalUnits = unitBoardUnits.length;
     const priorityStatuses: UnitStatus[] = ['Available', 'Dispatched', 'En Route', 'On Scene', 'Out of Service'];
-    const tooltipClass = 'pointer-events-none absolute right-full top-1/2 z-40 mr-2 hidden -translate-y-1/2 whitespace-nowrap rounded border border-slate-200 bg-slate-950 px-2 py-1 text-xs font-bold text-white shadow-lg group-hover:block group-focus-within:block dark:border-slate-700';
+    const tooltipBaseClass = 'pointer-events-none absolute z-40 select-none whitespace-nowrap rounded border border-slate-200 bg-slate-950 px-2 py-1 text-xs font-bold text-white opacity-0 shadow-lg transition-all duration-150 ease-out group-hover:opacity-100 group-focus-within:opacity-100 dark:border-slate-700';
+    const collapsedTooltipClass = `${tooltipBaseClass} right-full top-1/2 mr-2 -translate-y-1/2 translate-x-1 group-hover:translate-x-0 group-focus-within:translate-x-0`;
+    const expandedTooltipClass = `${tooltipBaseClass} bottom-full left-1/2 mb-2 -translate-x-1/2 translate-y-1 group-hover:translate-y-0 group-focus-within:translate-y-0`;
 
     if (unitRailCollapsed && !unitRailClosing) {
       return (
@@ -4477,7 +4479,7 @@ export const Dashboard: React.FC = () => {
                       <span className={`mb-1 h-2 w-2 rounded-full ${colors.dot}`} />
                       {count}
                     </button>
-                    <span className={tooltipClass}>
+                    <span className={collapsedTooltipClass}>
                       {status}: {count}
                     </span>
                   </span>
@@ -4539,7 +4541,7 @@ export const Dashboard: React.FC = () => {
                   <span className={`mx-auto mb-1 block h-1.5 w-1.5 rounded-full ${active ? 'bg-white' : colors.dot}`} />
                   {count}
                 </button>
-                <span className={tooltipClass}>
+                <span className={expandedTooltipClass}>
                   {active ? 'Clear' : 'Show'} {status}: {count}
                 </span>
               </span>
