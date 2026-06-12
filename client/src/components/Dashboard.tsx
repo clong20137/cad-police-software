@@ -767,8 +767,9 @@ export const Dashboard: React.FC = () => {
   const knownIncidentIdsRef = useRef<Set<string>>(new Set());
   const initialIncidentsLoadedRef = useRef(false);
 
+  const openIncidents = useMemo(() => incidents.filter((incident) => !isClosedIncident(incident)), [incidents]);
   const selectedUnit = units.find((unit) => unit.id === selectedUnitId) || units[0] || null;
-  const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || incidents[0] || null;
+  const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || openIncidents[0] || incidents[0] || null;
   const deferredCurrentLocation = useDeferredValue(currentLocation);
   const center = currentLocation || selectedUnit || { lat: 39.7684, lon: -86.1581 };
   const configuredCallTypes = useMemo(() => callTypesFromConfig(adminConfig), [adminConfig]);
@@ -905,7 +906,7 @@ export const Dashboard: React.FC = () => {
         if (current && response.some((incident) => incident.id === current)) {
           return current;
         }
-        return response[0]?.id || '';
+        return response.find((incident) => !isClosedIncident(incident))?.id || response[0]?.id || '';
       });
     } catch {
       setIncidentError('Unable to load active calls.');
@@ -1293,7 +1294,7 @@ export const Dashboard: React.FC = () => {
         if (current && incoming.some((incident) => incident.id === current)) {
           return current;
         }
-        return incoming[0]?.id || '';
+        return incoming.find((incident) => !isClosedIncident(incident))?.id || incoming[0]?.id || '';
       });
     });
     socket.on('urgent-alerts:update', () => {

@@ -425,10 +425,12 @@ const officerMapTone = (status: string, isCurrentUser: boolean): keyof typeof ma
   return 'green';
 };
 
+const isClosedIncident = (incident: Incident | null | undefined): boolean =>
+  incident?.status === 'Closed' || incident?.status === 'Canceled';
+
 const officerActiveAssignment = (officer: User, incidents: Incident[]): Incident | null =>
   incidents.find((incident) =>
-    incident.status !== 'Closed' &&
-    incident.status !== 'Canceled' &&
+    !isClosedIncident(incident) &&
     incident.units.some((unit) => unit.userId === officer.id && unit.status !== 'Cleared')
   ) || null;
 
@@ -1044,9 +1046,10 @@ export const OfficerDashboard: React.FC = () => {
     ];
     return rows.sort((first, second) => new Date(second.incident.createdAt).getTime() - new Date(first.incident.createdAt).getTime());
   }, [exitingPendingCalls, pendingCalls]);
+  const openIncidents = useMemo(() => incidents.filter((incident) => !isClosedIncident(incident)), [incidents]);
   const assignedIncidents = useMemo(
-    () => incidents.filter((incident) => incident.units.some((unit) => unit.userId === user?.id && unit.status !== 'Cleared')),
-    [incidents, user?.id]
+    () => openIncidents.filter((incident) => incident.units.some((unit) => unit.userId === user?.id && unit.status !== 'Cleared')),
+    [openIncidents, user?.id]
   );
   const myActiveIncident = useMemo(
     () =>
@@ -1061,8 +1064,8 @@ export const OfficerDashboard: React.FC = () => {
     [assignedIncidents]
   );
   const assignmentMapKey = assignedIncidents.map((incident) => incident.id).join(',');
-  const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || incidents[0] || null;
-  const mapRouteIncident = incidents.find((incident) => incident.id === navigatingIncidentId) || null;
+  const selectedIncident = incidents.find((incident) => incident.id === selectedIncidentId) || assignedIncidents[0] || openIncidents[0] || incidents[0] || null;
+  const mapRouteIncident = openIncidents.find((incident) => incident.id === navigatingIncidentId) || null;
   const deferredCurrentLocation = useDeferredValue(currentLocation);
   const deferredLocationTrail = useDeferredValue(locationTrail);
   const locationFixAgeMs = lastLocationFixAt ? sidebarNow - lastLocationFixAt : null;

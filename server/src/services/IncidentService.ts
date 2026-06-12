@@ -268,24 +268,14 @@ export class IncidentService {
       await pool.execute(
         `
           UPDATE incident_units
-          SET status = 'Cleared', cleared_at = COALESCE(cleared_at, UTC_TIMESTAMP())
+          SET status = 'Cleared',
+              status_updated_at = UTC_TIMESTAMP(),
+              cleared_at = COALESCE(cleared_at, UTC_TIMESTAMP())
           WHERE incident_id = ?
         `,
         [id]
       );
-      await pool.execute(
-        `
-          UPDATE users
-          INNER JOIN incident_units ON incident_units.user_id = users.id
-          SET
-            users.status = 'Available',
-            users.destination_lat = NULL,
-            users.destination_lon = NULL,
-            users.destination_label = NULL
-          WHERE incident_units.incident_id = ?
-        `,
-        [id]
-      );
+      await Promise.all(incident.units.map((unit) => this.syncUserAssignmentState(unit.userId)));
     } else if (status === 'Dispatched' || status === 'En Route' || status === 'On Scene') {
       const unitStatus: IncidentUnitStatus =
         status === 'En Route' ? 'En Route' : status === 'On Scene' ? 'On Scene' : 'Assigned';
@@ -412,6 +402,7 @@ export class IncidentService {
         userId
       ]
     );
+    await this.syncUserAssignmentState(userId);
 
     return this.getIncident(incidentId);
   }
@@ -462,6 +453,7 @@ export class IncidentService {
         userId
       ]
     );
+    await this.syncUserAssignmentState(userId);
 
     await this.addNote(incidentId, userId, {
       noteType: status === 'Cleared' ? 'assignment' : 'status',
@@ -588,6 +580,68 @@ export class IncidentService {
     );
     const row = rows[0];
     return row ? `${row.cad_unit_number || userId} ${row.name}`.trim() : userId;
+  }
+
+  private static async syncUserAssignmentState(userId: string): Promise<void> {
+    const [rows] = await pool.execute<Array<{
+      status: IncidentUnitStatus;
+      call_number: string;
+      lat: string | number | null;
+      lon: string | number | null;
+    } & RowDataPacket>>(
+      `
+        SELECT
+          incident_units.status,
+          incidents.call_number,
+          incidents.lat,
+          incidents.lon
+        FROM incident_units
+        INNER JOIN incidents ON incidents.id = incident_units.incident_id
+        WHERE incident_units.user_id = ?
+          AND incident_units.status <> 'Cleared'
+          AND incidents.status NOT IN ('Closed', 'Canceled')
+        ORDER BY
+          FIELD(incidents.priority, 'Emergency', 'High', 'Normal', 'Low'),
+          incident_units.status_updated_at DESC,
+          incidents.created_at ASC
+        LIMIT 1
+      `,
+      [userId]
+    );
+
+    const assignment = rows[0];
+    if (!assignment) {
+      await pool.execute(
+        `
+          UPDATE users
+          SET status = 'Available',
+              destination_lat = NULL,
+              destination_lon = NULL,
+              destination_label = NULL
+          WHERE id = ? AND active = TRUE
+        `,
+        [userId]
+      );
+      return;
+    }
+
+    await pool.execute(
+      `
+        UPDATE users
+        SET status = ?,
+            destination_lat = ?,
+            destination_lon = ?,
+            destination_label = ?
+        WHERE id = ? AND active = TRUE
+      `,
+      [
+        unitStatusToUserStatus(assignment.status),
+        assignment.lat === null ? null : Number(assignment.lat),
+        assignment.lon === null ? null : Number(assignment.lon),
+        assignment.call_number,
+        userId
+      ]
+    );
   }
 
   private static async nextCallNumber(): Promise<string> {
