@@ -195,6 +195,7 @@ type MapCommandState = {
 type MapCommandChip = { label: string; value: string; tone?: 'neutral' | 'ready' | 'warning' | 'invalid' };
 type UnitLocationReliability = 'live' | 'stale' | 'offline';
 type UnitBoardSortKey = 'status' | 'unit' | 'name' | 'cadUnit' | 'district';
+type UnitBoardOptionalColumnId = 'cadUnit' | 'badge' | 'group' | 'gps' | 'coordinates' | 'speed' | 'destination';
 type SortDirection = 'asc' | 'desc';
 type UnitBoardUser = User & Partial<Pick<TrackedUnit, 'lat' | 'lon'>>;
 type RealtimeReadyPayload = { serverTime?: string; onlineUserIds?: string[] };
@@ -222,6 +223,19 @@ const useAnimatedPresence = (open: boolean, durationMs = 160) => {
 
   return present;
 };
+
+const UNIT_BOARD_COLUMNS_KEY = 'cad_unit_board_columns';
+const unitBoardOptionalColumns: Array<{ id: UnitBoardOptionalColumnId; label: string; width: string; minWidth: number }> = [
+  { id: 'cadUnit', label: 'CAD Unit', width: '76px', minWidth: 76 },
+  { id: 'badge', label: 'Badge', width: '54px', minWidth: 54 },
+  { id: 'group', label: 'Group', width: '78px', minWidth: 78 },
+  { id: 'gps', label: 'GPS', width: '86px', minWidth: 86 },
+  { id: 'coordinates', label: 'Coordinates', width: '112px', minWidth: 112 },
+  { id: 'speed', label: 'Speed', width: '56px', minWidth: 56 },
+  { id: 'destination', label: 'Destination', width: 'minmax(100px,0.9fr)', minWidth: 100 }
+];
+const defaultUnitBoardOptionalColumns = unitBoardOptionalColumns.map((column) => column.id);
+const unitBoardQuickFilters: Array<UnitStatus | 'all'> = ['all', 'Available', 'Dispatched', 'En Route', 'On Scene', 'Out of Service'];
 
 const quickLaunchOptions: Array<{ id: QuickLaunchId; label: string; icon: React.ReactNode }> = [
   { id: 'messages', label: 'Messages', icon: <MessageCircle size={18} /> },
@@ -741,6 +755,20 @@ export const Dashboard: React.FC = () => {
   const [unitBoardSearch, setUnitBoardSearch] = useState('');
   const [unitBoardStatusFilter, setUnitBoardStatusFilter] = useState<UnitStatus | 'all'>('all');
   const [unitBoardDistrictFilter, setUnitBoardDistrictFilter] = useState('all');
+  const [unitBoardColumnMenuOpen, setUnitBoardColumnMenuOpen] = useState(false);
+  const unitBoardColumnMenuVisible = useAnimatedPresence(unitBoardColumnMenuOpen);
+  const [visibleUnitBoardColumns, setVisibleUnitBoardColumns] = useState<UnitBoardOptionalColumnId[]>(() => {
+    const stored = localStorage.getItem(UNIT_BOARD_COLUMNS_KEY);
+    if (!stored) return defaultUnitBoardOptionalColumns;
+    try {
+      const parsed = JSON.parse(stored) as UnitBoardOptionalColumnId[];
+      const allowed = new Set(unitBoardOptionalColumns.map((column) => column.id));
+      const visible = parsed.filter((columnId) => allowed.has(columnId));
+      return visible.length ? visible : defaultUnitBoardOptionalColumns;
+    } catch {
+      return defaultUnitBoardOptionalColumns;
+    }
+  });
   const [unitBoardSort, setUnitBoardSort] = useState<{ key: UnitBoardSortKey; direction: SortDirection }>({
     key: 'status',
     direction: 'asc'
@@ -820,6 +848,32 @@ export const Dashboard: React.FC = () => {
         first.localeCompare(second)
       ),
     [unitBoardUnits]
+  );
+  const unitBoardVisibleOptionalColumns = useMemo(
+    () => unitBoardOptionalColumns.filter((column) => visibleUnitBoardColumns.includes(column.id)),
+    [visibleUnitBoardColumns]
+  );
+  const unitBoardGridTemplate = useMemo(
+    () => ['92px', '60px', 'minmax(120px,1.1fr)', ...unitBoardVisibleOptionalColumns.map((column) => column.width), '102px'].join(' '),
+    [unitBoardVisibleOptionalColumns]
+  );
+  const unitBoardMinWidth = useMemo(
+    () =>
+      Math.max(
+        720,
+        92 +
+          60 +
+          120 +
+          102 +
+          unitBoardVisibleOptionalColumns.reduce((total, column) => total + column.minWidth, 0) +
+          (unitBoardVisibleOptionalColumns.length + 3) * 8 +
+          24
+      ),
+    [unitBoardVisibleOptionalColumns]
+  );
+  const unitBoardGridStyle = useMemo<React.CSSProperties>(
+    () => ({ gridTemplateColumns: unitBoardGridTemplate }),
+    [unitBoardGridTemplate]
   );
   const unitBoardRows = useMemo(() => {
     const query = unitBoardSearch.trim().toLowerCase();
@@ -1035,6 +1089,10 @@ export const Dashboard: React.FC = () => {
   }, [accountPreferences]);
 
   useEffect(() => {
+    localStorage.setItem(UNIT_BOARD_COLUMNS_KEY, JSON.stringify(visibleUnitBoardColumns));
+  }, [visibleUnitBoardColumns]);
+
+  useEffect(() => {
     if (accountPreferences.themeMode !== 'schedule') return;
     const timer = window.setInterval(() => setTheme(resolveThemePreference(accountPreferences)), 60000);
     return () => window.clearInterval(timer);
@@ -1116,6 +1174,10 @@ export const Dashboard: React.FC = () => {
         setCustomizingSlot(null);
         return;
       }
+      if (unitBoardColumnMenuOpen) {
+        setUnitBoardColumnMenuOpen(false);
+        return;
+      }
       if (activeQuickModal) {
         closeQuickModal(activeQuickModal);
         return;
@@ -1127,7 +1189,7 @@ export const Dashboard: React.FC = () => {
 
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [accountSettingsOpen, activeQuickModal, addressSuggestionsOpen, closeQuickModal, customizingSlot, emojiOpen, settingsOpen]);
+  }, [accountSettingsOpen, activeQuickModal, addressSuggestionsOpen, closeQuickModal, customizingSlot, emojiOpen, settingsOpen, unitBoardColumnMenuOpen]);
 
   const playAlert = useCallback((kind: 'message' | 'call') => {
     playCadAlertSound(accountPreferences.newCallSound, kind);
@@ -2611,6 +2673,68 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const toggleUnitBoardColumn = (columnId: UnitBoardOptionalColumnId) => {
+    setVisibleUnitBoardColumns((current) => {
+      const next = current.includes(columnId)
+        ? current.filter((item) => item !== columnId)
+        : [...current, columnId];
+      return unitBoardOptionalColumns.map((column) => column.id).filter((item) => next.includes(item));
+    });
+  };
+
+  const centerUnitFromBoard = (unit: UnitBoardUser) => {
+    setSelectedUnitId(unit.id);
+    if (typeof unit.lat !== 'number' || typeof unit.lon !== 'number') {
+      pushToast({
+        tone: 'warning',
+        title: 'Location unavailable',
+        message: `${displayCadUnitNumber(unit)} has not shared a current GPS fix.`
+      });
+      return;
+    }
+    mapInstanceRef.current?.setCenter({ lat: unit.lat, lng: unit.lon });
+    mapInstanceRef.current?.setZoom(15);
+    pushToast({
+      tone: 'info',
+      title: 'Map centered',
+      message: `${displayCadUnitNumber(unit)} is centered on the dispatch map.`
+    });
+  };
+
+  const messageUnitFromBoard = (unit: UnitBoardUser) => {
+    setSelectedMessageUserId(unit.id);
+    setMessageSearch('');
+    focusQuickModal('messages');
+  };
+
+  const assignUnitFromBoard = async (unit: UnitBoardUser) => {
+    if (!selectedIncident || isClosedIncident(selectedIncident)) {
+      pushToast({
+        tone: 'warning',
+        title: 'No active call selected',
+        message: 'Select an active call before assigning a unit from the board.'
+      });
+      return;
+    }
+    try {
+      const incident = await authClient.assignIncidentUnit(selectedIncident.id, unit.id, 'Assigned');
+      setIncidents((current) => current.map((item) => (item.id === incident.id ? incident : item)));
+      setSelectedIncidentId(incident.id);
+      setIncidentError('');
+      pushToast({
+        tone: 'success',
+        title: 'Unit assigned',
+        message: `${displayCadUnitNumber(unit)} assigned to ${incident.callNumber}.`
+      });
+    } catch {
+      pushToast({
+        tone: 'warning',
+        title: 'Assignment failed',
+        message: `Unable to assign ${displayCadUnitNumber(unit)} to the selected call.`
+      });
+    }
+  };
+
   const addIncidentNote = async () => {
     if (!selectedIncident || !incidentNoteBody.trim()) return;
     await authClient.addIncidentNote(selectedIncident.id, incidentNoteBody);
@@ -3902,7 +4026,7 @@ export const Dashboard: React.FC = () => {
         <div className="grid h-full min-h-[520px] grid-rows-[auto_1fr] overflow-hidden rounded-lg border border-cad-line bg-white dark:border-slate-700 dark:bg-slate-900">
           <div className="border-b border-cad-line bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
             <h3 className="text-base font-semibold text-slate-950 dark:text-white">On Duty Officers</h3>
-            <div className="mt-3 grid gap-2 md:grid-cols-[1fr_9.5rem_9.5rem_auto]">
+            <div className="mt-3 grid gap-2 md:grid-cols-[1fr_9.5rem_9.5rem_auto_auto]">
               <input
                 value={unitBoardSearch}
                 onChange={(event) => setUnitBoardSearch(event.target.value)}
@@ -3940,22 +4064,83 @@ export const Dashboard: React.FC = () => {
               >
                 Clear
               </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setUnitBoardColumnMenuOpen((open) => !open)}
+                  className="flex h-10 items-center gap-2 rounded border border-gray-300 px-3 text-sm font-bold text-slate-700 hover:bg-white dark:border-gray-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  aria-expanded={unitBoardColumnMenuOpen}
+                >
+                  <SlidersHorizontal size={15} />
+                  Columns
+                </button>
+                {unitBoardColumnMenuVisible && (
+                  <div className={`absolute right-0 top-11 z-30 w-56 rounded border border-cad-blue/20 bg-white p-2 text-sm shadow-[0_18px_45px_rgba(15,23,42,0.18)] ring-1 ring-cad-blue/10 dark:border-blue-400/20 dark:bg-slate-900 ${unitBoardColumnMenuOpen ? 'cad-fade-pop-enter' : 'cad-fade-pop-exit'}`}>
+                    {unitBoardOptionalColumns.map((column) => {
+                      const visible = visibleUnitBoardColumns.includes(column.id);
+                      return (
+                        <button
+                          key={column.id}
+                          type="button"
+                          onClick={() => toggleUnitBoardColumn(column.id)}
+                          className="flex w-full items-center gap-2 rounded px-2 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                          aria-pressed={visible}
+                        >
+                          <span className={`flex h-5 w-5 items-center justify-center rounded border ${visible ? 'border-cad-blue bg-cad-blue text-white' : 'border-slate-300 dark:border-slate-600'}`}>
+                            {visible && <Check size={13} />}
+                          </span>
+                          {column.label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setVisibleUnitBoardColumns(defaultUnitBoardOptionalColumns)}
+                      className="mt-1 w-full rounded border border-slate-200 px-2 py-2 text-left text-xs font-black uppercase tracking-[0.08em] text-cad-blue hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    >
+                      Reset columns
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {unitBoardQuickFilters.map((status) => {
+                const count = status === 'all'
+                  ? unitBoardUnits.length
+                  : unitBoardUnits.filter((unit) => displayStatus(unit) === status).length;
+                const active = unitBoardStatusFilter === status;
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setUnitBoardStatusFilter(status)}
+                    className={`rounded border px-2.5 py-1.5 text-xs font-black uppercase tracking-[0.08em] transition ${
+                      active
+                        ? 'border-cad-blue bg-cad-blue text-white shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+                    }`}
+                  >
+                    {status === 'all' ? 'All' : status} <span className="font-semibold opacity-80">{count}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           {unitLoadError && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{unitLoadError}</p>}
           {(unitsLoading || directoryLoading) && unitBoardUnits.length === 0 ? (
             <div className="min-h-0 overflow-auto">
-              <div className="w-full min-w-[960px] text-sm">
-                <div className="grid grid-cols-[96px_64px_82px_minmax(120px,1.1fr)_58px_82px_96px_126px_58px_minmax(110px,1fr)] gap-2 border-b border-gray-200 bg-white px-3 py-3 dark:border-gray-800 dark:bg-slate-900">
-                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((item) => (
+              <div className="w-full text-sm" style={{ minWidth: unitBoardMinWidth }}>
+                <div className="grid gap-2 border-b border-gray-200 bg-white px-3 py-3 dark:border-gray-800 dark:bg-slate-900" style={unitBoardGridStyle}>
+                  {Array.from({ length: unitBoardVisibleOptionalColumns.length + 4 }).map((_, item) => (
                     <div key={item} className="cad-shimmer h-3 rounded" />
                   ))}
                 </div>
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">
                   {[0, 1, 2, 3, 4].map((row) => (
-                    <div key={row} className="grid grid-cols-[96px_64px_82px_minmax(120px,1.1fr)_58px_82px_96px_126px_58px_minmax(110px,1fr)] gap-2 bg-white px-3 py-3 dark:bg-slate-900">
-                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((item) => (
+                    <div key={row} className="grid gap-2 bg-white px-3 py-3 dark:bg-slate-900" style={unitBoardGridStyle}>
+                      {Array.from({ length: unitBoardVisibleOptionalColumns.length + 4 }).map((_, item) => (
                         <div key={item} className={`cad-shimmer h-5 rounded ${item === 2 ? 'w-11/12' : 'w-4/5'}`} />
                       ))}
                     </div>
@@ -3973,7 +4158,7 @@ export const Dashboard: React.FC = () => {
             </div>
           ) : (
             <div className="min-h-0 overflow-auto">
-              <div className="w-full min-w-[960px] text-sm">
+              <div className="w-full text-sm" style={{ minWidth: unitBoardMinWidth }}>
                 {unitBoardRows.length === 0 && (
                   <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No units match the current filters.</p>
                 )}
@@ -3985,17 +4170,18 @@ export const Dashboard: React.FC = () => {
                         {group.units.length} {group.units.length === 1 ? 'unit' : 'units'}
                       </span>
                     </div>
-                    <div className="grid grid-cols-[96px_64px_82px_minmax(120px,1.1fr)_58px_82px_96px_126px_58px_minmax(110px,1fr)] gap-2 border-b border-gray-200 bg-white px-3 py-3 text-xs font-black uppercase tracking-[0.08em] text-slate-500 dark:border-gray-800 dark:bg-slate-900 dark:text-slate-400">
+                    <div className="grid gap-2 border-b border-gray-200 bg-white px-3 py-3 text-xs font-black uppercase tracking-[0.08em] text-slate-500 dark:border-gray-800 dark:bg-slate-900 dark:text-slate-400" style={unitBoardGridStyle}>
                       <SortHeader label="Status" active={unitBoardSort.key === 'status'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('status')} />
                       <SortHeader label="Unit" active={unitBoardSort.key === 'unit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('unit')} />
-                      <SortHeader label="CAD Unit" active={unitBoardSort.key === 'cadUnit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('cadUnit')} />
                       <SortHeader label="Officer" active={unitBoardSort.key === 'name'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('name')} />
-                      <span>Badge</span>
-                      <span>Group</span>
-                      <span>GPS</span>
-                      <span>Coordinates</span>
-                      <span>Speed</span>
-                      <span>Destination</span>
+                      {visibleUnitBoardColumns.includes('cadUnit') && <SortHeader label="CAD Unit" active={unitBoardSort.key === 'cadUnit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('cadUnit')} />}
+                      {visibleUnitBoardColumns.includes('badge') && <span>Badge</span>}
+                      {visibleUnitBoardColumns.includes('group') && <span>Group</span>}
+                      {visibleUnitBoardColumns.includes('gps') && <span>GPS</span>}
+                      {visibleUnitBoardColumns.includes('coordinates') && <span>Coordinates</span>}
+                      {visibleUnitBoardColumns.includes('speed') && <span>Speed</span>}
+                      {visibleUnitBoardColumns.includes('destination') && <span>Destination</span>}
+                      <span>Actions</span>
                     </div>
                     <div className="divide-y divide-gray-100 dark:divide-gray-800">
                       {group.units.map((unit) => {
@@ -4011,13 +4197,21 @@ export const Dashboard: React.FC = () => {
                             ? routeShareLabel(unit as TrackedUnit)
                             : 'No shared route';
                         return (
-                          <button
+                          <div
                             key={unit.id}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             onClick={() => setSelectedUnitId(unit.id)}
-                            className={`grid w-full grid-cols-[96px_64px_82px_minmax(120px,1.1fr)_58px_82px_96px_126px_58px_minmax(110px,1fr)] gap-2 border-l-4 bg-white px-3 py-3 text-left transition hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 ${
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setSelectedUnitId(unit.id);
+                              }
+                            }}
+                            className={`grid w-full cursor-pointer gap-2 border-l-4 bg-white px-3 py-3 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-cad-blue/45 dark:bg-slate-900 dark:hover:bg-slate-800 ${
                               selectedUnitBoardUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/35' : ''
                             } ${colors.row}`}
+                            style={unitBoardGridStyle}
                           >
                             <span className="flex min-w-0 items-center gap-2">
                               <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.dot}`} />
@@ -4026,17 +4220,56 @@ export const Dashboard: React.FC = () => {
                               </span>
                             </span>
                             <span className="truncate font-bold text-slate-900 dark:text-white">{displayUnitNumber(unit)}</span>
-                            <span className="truncate font-bold text-cad-blue dark:text-blue-100">{displayCadUnitNumber(unit)}</span>
                             <span className="truncate font-semibold text-slate-700 dark:text-slate-200">
                               {[name.firstName, name.lastName].filter(Boolean).join(' ') || unit.name || 'N/A'}
                             </span>
-                            <span className="truncate text-slate-600 dark:text-slate-300">{unit.badge || 'N/A'}</span>
-                            <span className="truncate text-slate-600 dark:text-slate-300">{unit.group || 'Unassigned'}</span>
-                            <span className="truncate text-slate-500 dark:text-slate-400">{locationReliabilityText(unit, locationClock)}</span>
-                            <span className="truncate font-mono text-xs text-slate-600 dark:text-slate-300">{coordinates}</span>
-                            <span className="truncate text-slate-600 dark:text-slate-300">{typeof unit.speedMph === 'number' ? `${unit.speedMph.toFixed(1)} mph` : '--'}</span>
-                            <span className="truncate text-slate-500 dark:text-slate-400">{destination}</span>
-                          </button>
+                            {visibleUnitBoardColumns.includes('cadUnit') && <span className="truncate font-bold text-cad-blue dark:text-blue-100">{displayCadUnitNumber(unit)}</span>}
+                            {visibleUnitBoardColumns.includes('badge') && <span className="truncate text-slate-600 dark:text-slate-300">{unit.badge || 'N/A'}</span>}
+                            {visibleUnitBoardColumns.includes('group') && <span className="truncate text-slate-600 dark:text-slate-300">{unit.group || 'Unassigned'}</span>}
+                            {visibleUnitBoardColumns.includes('gps') && <span className="truncate text-slate-500 dark:text-slate-400">{locationReliabilityText(unit, locationClock)}</span>}
+                            {visibleUnitBoardColumns.includes('coordinates') && <span className="truncate font-mono text-xs text-slate-600 dark:text-slate-300">{coordinates}</span>}
+                            {visibleUnitBoardColumns.includes('speed') && <span className="truncate text-slate-600 dark:text-slate-300">{typeof unit.speedMph === 'number' ? `${unit.speedMph.toFixed(1)} mph` : '--'}</span>}
+                            {visibleUnitBoardColumns.includes('destination') && <span className="truncate text-slate-500 dark:text-slate-400">{destination}</span>}
+                            <span className="flex min-w-0 items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  centerUnitFromBoard(unit);
+                                }}
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:text-slate-300"
+                                aria-label={`Center ${displayCadUnitNumber(unit)} on map`}
+                                title="Center on map"
+                              >
+                                <MapPin size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  messageUnitFromBoard(unit);
+                                }}
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:text-slate-300"
+                                aria-label={`Message ${unit.name}`}
+                                title="Message"
+                              >
+                                <MessageCircle size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  assignUnitFromBoard(unit);
+                                }}
+                                disabled={!selectedIncident || isClosedIncident(selectedIncident)}
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-cad-blue hover:text-cad-blue disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:text-slate-300"
+                                aria-label={`Assign ${displayCadUnitNumber(unit)} to selected call`}
+                                title={selectedIncident && !isClosedIncident(selectedIncident) ? `Assign to ${selectedIncident.callNumber}` : 'Select an active call first'}
+                              >
+                                <Plus size={13} />
+                              </button>
+                            </span>
+                          </div>
                         );
                       })}
                     </div>
