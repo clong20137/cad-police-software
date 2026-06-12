@@ -421,6 +421,27 @@
     will-change: opacity, transform, filter;
   }
 
+  .dispatch-toast {
+    max-height: 8rem;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    animation: dispatchToastEnter 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    transition:
+      max-height 220ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 180ms ease,
+      transform 180ms ease,
+      margin 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: max-height, opacity, transform;
+  }
+
+  .dispatch-toast-exit {
+    max-height: 0;
+    opacity: 0;
+    margin-bottom: -0.5rem;
+    pointer-events: none;
+    transform: translateY(-10px) scale(0.98);
+  }
+
   .dispatch-command-shell {
     border: 1px solid rgba(26, 54, 93, 0.2);
     background:
@@ -550,6 +571,20 @@
       opacity: 0;
       transform: translateY(14px) scale(0.96);
       filter: blur(1px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes dispatchToastEnter {
+    0% {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.98);
+      filter: blur(2px);
     }
 
     100% {

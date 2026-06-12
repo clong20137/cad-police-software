@@ -185,7 +185,7 @@ interface GoogleAutocompleteService {
 type TrackedUnit = User & { lat: number; lon: number };
 type QuickLaunchId = 'messages' | 'calls' | 'new-call' | 'units' | 'unit-detail' | 'call-detail' | 'inquiries' | 'protective-orders' | 'settings';
 type QuickLaunchSlot = DockSlotValue<QuickLaunchId>;
-type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning' };
+type ToastNotice = { id: string; title: string; message: string; tone: 'info' | 'success' | 'warning'; exiting?: boolean };
 type MapCommandSuggestion = { command: string; label: string; detail: string; target?: QuickLaunchId };
 type MapCommandState = {
   tone: 'idle' | 'ready' | 'warning' | 'invalid';
@@ -1108,13 +1108,20 @@ export const Dashboard: React.FC = () => {
     playCadAlertSound(accountPreferences.newCallSound, kind);
   }, [accountPreferences.newCallSound]);
 
-  const pushToast = useCallback((notice: Omit<ToastNotice, 'id'>) => {
+  const dismissToast = useCallback((id: string) => {
+    setToasts((current) => current.map((item) => (item.id === id ? { ...item, exiting: true } : item)));
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((item) => item.id !== id));
+    }, 240);
+  }, []);
+
+  const pushToast = useCallback((notice: Omit<ToastNotice, 'id' | 'exiting'>) => {
     const id = `${Date.now()}-${Math.random()}`;
     setToasts((current) => [{ ...notice, id }, ...current].slice(0, 5));
     window.setTimeout(() => {
-      setToasts((current) => current.filter((item) => item.id !== id));
+      dismissToast(id);
     }, 5200);
-  }, []);
+  }, [dismissToast]);
 
   const publishLiveLocation = useCallback(async (position: GeolocationPosition) => {
     if (locationPublishInFlightRef.current) {
@@ -4519,11 +4526,11 @@ export const Dashboard: React.FC = () => {
         onDrop={swapQuickLaunchSlots}
       />
 
-      <div className="pointer-events-none fixed right-4 top-20 z-50 grid w-[min(24rem,calc(100vw-2rem))] gap-2">
+      <div className="pointer-events-none fixed right-4 top-20 z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto overflow-hidden rounded-md border bg-white shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 animate-[dockModalIn_120ms_ease-out] dark:bg-slate-950 ${
+            className={`dispatch-toast pointer-events-auto overflow-hidden rounded-md border bg-white shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 dark:bg-slate-950 ${toast.exiting ? 'dispatch-toast-exit' : ''} ${
               toast.tone === 'warning'
                 ? 'border-red-200 text-red-950 ring-red-200/70 dark:border-red-800 dark:text-white dark:ring-red-900/70'
                 : toast.tone === 'success'
@@ -4550,7 +4557,7 @@ export const Dashboard: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setToasts((current) => current.filter((item) => item.id !== toast.id))}
+                onClick={() => dismissToast(toast.id)}
                 className="ml-auto rounded p-1 text-slate-500 hover:bg-black/5 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                 aria-label="Dismiss notification"
               >
