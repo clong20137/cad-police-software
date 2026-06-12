@@ -3946,15 +3946,15 @@ export const Dashboard: React.FC = () => {
           {unitLoadError && <p className="mb-3 rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">{unitLoadError}</p>}
           {(unitsLoading || directoryLoading) && unitBoardUnits.length === 0 ? (
             <div className="min-h-0 overflow-auto">
-              <div className="min-w-[1120px] text-sm">
-                <div className="grid grid-cols-[122px_90px_110px_180px_90px_120px_130px_155px_82px_160px] gap-2 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-slate-900">
+              <div className="w-full min-w-[960px] text-sm">
+                <div className="grid grid-cols-[96px_64px_82px_minmax(120px,1.1fr)_58px_82px_96px_126px_58px_minmax(110px,1fr)] gap-2 border-b border-gray-200 bg-white px-3 py-3 dark:border-gray-800 dark:bg-slate-900">
                   {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((item) => (
                     <div key={item} className="cad-shimmer h-3 rounded" />
                   ))}
                 </div>
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">
                   {[0, 1, 2, 3, 4].map((row) => (
-                    <div key={row} className="grid grid-cols-[122px_90px_110px_180px_90px_120px_130px_155px_82px_160px] gap-2 bg-white px-4 py-3 dark:bg-slate-900">
+                    <div key={row} className="grid grid-cols-[96px_64px_82px_minmax(120px,1.1fr)_58px_82px_96px_126px_58px_minmax(110px,1fr)] gap-2 bg-white px-3 py-3 dark:bg-slate-900">
                       {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((item) => (
                         <div key={item} className={`cad-shimmer h-5 rounded ${item === 2 ? 'w-11/12' : 'w-4/5'}`} />
                       ))}
@@ -3973,7 +3973,7 @@ export const Dashboard: React.FC = () => {
             </div>
           ) : (
             <div className="min-h-0 overflow-auto">
-              <div className="min-w-[1120px] text-sm">
+              <div className="w-full min-w-[960px] text-sm">
                 {unitBoardRows.length === 0 && (
                   <p className="px-4 py-8 text-center text-sm font-semibold text-slate-500">No units match the current filters.</p>
                 )}
@@ -3985,7 +3985,7 @@ export const Dashboard: React.FC = () => {
                         {group.units.length} {group.units.length === 1 ? 'unit' : 'units'}
                       </span>
                     </div>
-                    <div className="grid grid-cols-[122px_90px_110px_180px_90px_120px_130px_155px_82px_160px] gap-2 border-b border-gray-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500 dark:border-gray-800 dark:bg-slate-900 dark:text-slate-400">
+                    <div className="grid grid-cols-[96px_64px_82px_minmax(120px,1.1fr)_58px_82px_96px_126px_58px_minmax(110px,1fr)] gap-2 border-b border-gray-200 bg-white px-3 py-3 text-xs font-black uppercase tracking-[0.08em] text-slate-500 dark:border-gray-800 dark:bg-slate-900 dark:text-slate-400">
                       <SortHeader label="Status" active={unitBoardSort.key === 'status'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('status')} />
                       <SortHeader label="Unit" active={unitBoardSort.key === 'unit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('unit')} />
                       <SortHeader label="CAD Unit" active={unitBoardSort.key === 'cadUnit'} direction={unitBoardSort.direction} onClick={() => setUnitBoardSortKey('cadUnit')} />
@@ -4015,7 +4015,7 @@ export const Dashboard: React.FC = () => {
                             key={unit.id}
                             type="button"
                             onClick={() => setSelectedUnitId(unit.id)}
-                            className={`grid w-full grid-cols-[122px_90px_110px_180px_90px_120px_130px_155px_82px_160px] gap-2 border-l-4 bg-white px-4 py-3 text-left transition hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 ${
+                            className={`grid w-full grid-cols-[96px_64px_82px_minmax(120px,1.1fr)_58px_82px_96px_126px_58px_minmax(110px,1fr)] gap-2 border-l-4 bg-white px-3 py-3 text-left transition hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 ${
                               selectedUnitBoardUnit?.id === unit.id ? 'ring-2 ring-inset ring-cad-blue/35' : ''
                             } ${colors.row}`}
                           >
