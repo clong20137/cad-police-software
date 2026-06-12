@@ -1,3 +1,8 @@
+-- Legacy reference schema.
+-- The application now manages MySQL schema through the migration/bootstrap code in
+-- server/src/db/mysql.ts. Run `npm run migrate --workspace=server` from the repo root
+-- before deployment instead of applying this file directly.
+
 CREATE DATABASE IF NOT EXISTS cad_police
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;

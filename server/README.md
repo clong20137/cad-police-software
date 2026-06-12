@@ -19,9 +19,20 @@ cp .env.example .env
 ## Scripts
 
 - `npm run dev` - Start development server with hot reload
+- `npm run migrate` - Create/update MySQL schema and record applied migrations
 - `npm run build` - Compile TypeScript to JavaScript
 - `npm start` - Run compiled server
 - `npm run lint` - Lint TypeScript files
+
+## Database Migrations
+
+Run migrations before starting the server in deployment:
+
+```bash
+npm run migrate
+```
+
+Migrations are tracked in MySQL with the `cad_schema_migrations` table. The server still verifies the schema at startup for local development, but production release steps should run migrations explicitly.
 
 ## Architecture
 

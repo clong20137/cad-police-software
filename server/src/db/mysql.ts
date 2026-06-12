@@ -27,6 +27,10 @@ const mysqlSslOptions = (): PoolOptions['ssl'] | undefined => {
 };
 
 const ssl = mysqlSslOptions();
+const BASELINE_SCHEMA_MIGRATION = {
+  version: '202606120001',
+  name: 'baseline_schema'
+};
 
 export const pool: Pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
@@ -40,7 +44,7 @@ export const pool: Pool = mysql.createPool({
   ssl
 });
 
-export const initializeDatabase = async (): Promise<void> => {
+const ensureDatabaseExists = async (): Promise<void> => {
   const connection = await mysql.createConnection({
     host: process.env.MYSQL_HOST || 'localhost',
     port: Number(process.env.MYSQL_PORT || 3306),
@@ -56,7 +60,40 @@ export const initializeDatabase = async (): Promise<void> => {
   } finally {
     await connection.end();
   }
+};
 
+const initializeMigrationLedger = async (): Promise<void> => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cad_schema_migrations (
+      version VARCHAR(32) PRIMARY KEY,
+      name VARCHAR(160) NOT NULL,
+      applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+};
+
+const markMigrationApplied = async (version: string, name: string): Promise<void> => {
+  await pool.execute(
+    `
+      INSERT INTO cad_schema_migrations (version, name)
+      VALUES (?, ?)
+      ON DUPLICATE KEY UPDATE name = VALUES(name)
+    `,
+    [version, name]
+  );
+};
+
+export const getAppliedMigrations = async (): Promise<Array<{ version: string; name: string; appliedAt: Date }>> => {
+  await initializeMigrationLedger();
+  const [rows] = await pool.execute<Array<{ version: string; name: string; applied_at: Date } & RowDataPacket>>(
+    'SELECT version, name, applied_at FROM cad_schema_migrations ORDER BY version ASC'
+  );
+  return rows.map((row) => ({ version: row.version, name: row.name, appliedAt: row.applied_at }));
+};
+
+export const initializeDatabase = async (): Promise<void> => {
+  await ensureDatabaseExists();
+  await initializeMigrationLedger();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(36) PRIMARY KEY,
@@ -118,6 +155,7 @@ export const initializeDatabase = async (): Promise<void> => {
   await initializeUrgentAlertTables();
   await initializeAuditLogTables();
   await initializeAdminConfigurationTables();
+  await markMigrationApplied(BASELINE_SCHEMA_MIGRATION.version, BASELINE_SCHEMA_MIGRATION.name);
 };
 
 export const initializePasswordHistoryTables = async (): Promise<void> => {

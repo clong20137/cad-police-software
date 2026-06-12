@@ -205,12 +205,17 @@ FRONTEND_URL=https://yourdomain.com
 
 ### Database
 
-Currently uses in-memory storage. Integrate with MongoDB, PostgreSQL, or other databases:
+The backend uses MySQL through `server/src/db/mysql.ts`. Schema setup is idempotent and tracked in the
+`cad_schema_migrations` table.
 
-1. Update `AuthService.ts` to use database client
-2. Create migration scripts
-3. Add connection pooling
-4. Use transactions for critical operations
+Run database migrations explicitly before deployment or after pulling schema changes:
+
+```bash
+npm run migrate --workspace=server
+```
+
+The server also verifies the schema during startup so local development stays forgiving, but production
+deployments should run the migration command as a separate release step.
 
 ## Security Considerations
 
