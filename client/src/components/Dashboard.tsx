@@ -762,7 +762,7 @@ export const Dashboard: React.FC = () => {
   const settingsMenuVisible = useAnimatedPresence(settingsOpen);
   const [unitBoardSearch, setUnitBoardSearch] = useState('');
   const [unitBoardStatusFilter, setUnitBoardStatusFilter] = useState<UnitStatus | 'all'>('all');
-  const [unitBoardDistrictFilter, setUnitBoardDistrictFilter] = useState('all');
+  const [unitBoardDistrictFilter, setUnitBoardDistrictFilter] = useState(() => user?.district || 'all');
   const [unitRailCollapsed, setUnitRailCollapsed] = useState(() => localStorage.getItem(UNIT_RAIL_COLLAPSED_KEY) === 'true');
   const [unitRailWide, setUnitRailWide] = useState(() => localStorage.getItem(UNIT_RAIL_WIDE_KEY) === 'true');
   const [unitRailClosing, setUnitRailClosing] = useState(false);
@@ -803,6 +803,7 @@ export const Dashboard: React.FC = () => {
   const activeQuickModalRef = useRef<QuickLaunchId | null>(null);
   const unitRailCollapseTimerRef = useRef<number | null>(null);
   const unitRailOpenTimerRef = useRef<number | null>(null);
+  const userDistrictDefaultAppliedRef = useRef(false);
   const directoryRef = useRef<User[]>([]);
   const latestPositionRef = useRef<GeolocationPosition | null>(null);
   const locationPublishInFlightRef = useRef(false);
@@ -955,7 +956,7 @@ export const Dashboard: React.FC = () => {
     });
   }, [unitBoardRows]);
   const unitRailGroups = useMemo(() => {
-    const sortedUnits = [...unitBoardUnits].sort((first, second) => {
+    const sortedUnits = [...unitBoardRows].sort((first, second) => {
       const firstStatus = displayStatus(first);
       const secondStatus = displayStatus(second);
       return (
@@ -980,7 +981,7 @@ export const Dashboard: React.FC = () => {
       if (second.district === 'Unassigned') return -1;
       return first.district.localeCompare(second.district);
     });
-  }, [unitBoardUnits]);
+  }, [unitBoardRows]);
   const unitRailStatusCounts = useMemo(
     () =>
       unitBoardUnits.reduce<Record<string, number>>((counts, unit) => {
@@ -1149,6 +1150,12 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(UNIT_RAIL_WIDE_KEY, String(unitRailWide));
   }, [unitRailWide]);
+
+  useEffect(() => {
+    if (userDistrictDefaultAppliedRef.current || unitBoardDistrictFilter !== 'all' || !user?.district) return;
+    setUnitBoardDistrictFilter(user.district);
+    userDistrictDefaultAppliedRef.current = true;
+  }, [unitBoardDistrictFilter, user?.district]);
 
   useEffect(() => {
     return () => {
@@ -4558,6 +4565,28 @@ export const Dashboard: React.FC = () => {
             </button>
           </div>
         </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_8.75rem] gap-2 border-b border-slate-200 bg-white px-2 py-2 dark:border-slate-800 dark:bg-slate-950">
+          <label className="relative min-w-0">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+            <input
+              value={unitBoardSearch}
+              onChange={(event) => setUnitBoardSearch(event.target.value)}
+              placeholder="Search units"
+              className="h-8 w-full rounded border border-slate-200 bg-white pl-8 pr-2 text-xs font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-cad-blue focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-blue-950"
+            />
+          </label>
+          <select
+            value={unitBoardDistrictFilter}
+            onChange={(event) => setUnitBoardDistrictFilter(event.target.value)}
+            className="h-8 min-w-0 rounded border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 outline-none transition focus:border-cad-blue focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-blue-950"
+            aria-label="Filter units by district"
+          >
+            <option value="all">All Districts</option>
+            {unitBoardDistricts.map((district) => (
+              <option key={district} value={district}>{district}</option>
+            ))}
+          </select>
+        </div>
         <div className="grid grid-cols-5 gap-1 border-b border-slate-200 bg-slate-50 px-2 py-2 dark:border-slate-800 dark:bg-slate-900/80">
           {priorityStatuses.map((status) => {
             const colors = unitBoardStatusStyles(status);
@@ -4588,7 +4617,7 @@ export const Dashboard: React.FC = () => {
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {unitRailGroups.length === 0 ? (
             <div className="flex h-full items-center justify-center p-4 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
-              No units are currently online.
+              No units match the current filters.
             </div>
           ) : (
             unitRailGroups.map((group) => (
