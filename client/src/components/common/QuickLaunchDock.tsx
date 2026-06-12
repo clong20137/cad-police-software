@@ -58,7 +58,7 @@ export const QuickLaunchDock = <T extends string>({
     onClick: () => void;
     iconOnly?: boolean;
   }>;
-  onDesktopDockWidthChange?: (width: number) => void;
+  onDesktopDockWidthChange?: (width: number, defaultWidth: number) => void;
   onOpen: (item: T) => void;
   onCustomize: (index: number | null) => void;
   onAssignSlot: (index: number, value: QuickLaunchSlot<T>) => void;
@@ -197,7 +197,14 @@ export const QuickLaunchDock = <T extends string>({
     const dock = desktopDockRef.current;
     if (!dock) return undefined;
 
-    const updateWidth = () => onDesktopDockWidthChange(dock.getBoundingClientRect().width);
+    const updateWidth = () => {
+      const dockRect = dock.getBoundingClientRect();
+      const secondAppSlotFromRight = desktopSlotRefs.current[Math.max(0, slots.length - 2)];
+      const defaultWidth = secondAppSlotFromRight
+        ? Math.max(260, dockRect.right - secondAppSlotFromRight.getBoundingClientRect().left)
+        : Math.min(440, dockRect.width);
+      onDesktopDockWidthChange(dockRect.width, defaultWidth);
+    };
     updateWidth();
 
     if (typeof ResizeObserver === 'undefined') {
