@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { io, Socket } from 'socket.io-client';
 import {
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Bell,
   ClipboardList,
@@ -225,6 +227,7 @@ const useAnimatedPresence = (open: boolean, durationMs = 160) => {
 };
 
 const UNIT_BOARD_COLUMNS_KEY = 'cad_unit_board_columns';
+const UNIT_RAIL_COLLAPSED_KEY = 'cad_unit_rail_collapsed';
 const unitBoardOptionalColumns: Array<{ id: UnitBoardOptionalColumnId; label: string; width: string; minWidth: number }> = [
   { id: 'cadUnit', label: 'CAD Unit', width: '76px', minWidth: 76 },
   { id: 'badge', label: 'Badge', width: '54px', minWidth: 54 },
@@ -755,6 +758,7 @@ export const Dashboard: React.FC = () => {
   const [unitBoardSearch, setUnitBoardSearch] = useState('');
   const [unitBoardStatusFilter, setUnitBoardStatusFilter] = useState<UnitStatus | 'all'>('all');
   const [unitBoardDistrictFilter, setUnitBoardDistrictFilter] = useState('all');
+  const [unitRailCollapsed, setUnitRailCollapsed] = useState(() => localStorage.getItem(UNIT_RAIL_COLLAPSED_KEY) === 'true');
   const [unitBoardColumnMenuOpen, setUnitBoardColumnMenuOpen] = useState(false);
   const unitBoardColumnMenuVisible = useAnimatedPresence(unitBoardColumnMenuOpen);
   const [visibleUnitBoardColumns, setVisibleUnitBoardColumns] = useState<UnitBoardOptionalColumnId[]>(() => {
@@ -940,6 +944,42 @@ export const Dashboard: React.FC = () => {
       return first.district.localeCompare(second.district);
     });
   }, [unitBoardRows]);
+  const unitRailGroups = useMemo(() => {
+    const sortedUnits = [...unitBoardUnits].sort((first, second) => {
+      const firstStatus = displayStatus(first);
+      const secondStatus = displayStatus(second);
+      return (
+        (first.district || 'Unassigned').localeCompare(second.district || 'Unassigned') ||
+        unitBoardStatusRank(firstStatus) - unitBoardStatusRank(secondStatus) ||
+        displayUnitNumber(first).localeCompare(displayUnitNumber(second))
+      );
+    });
+    const groups = sortedUnits.reduce<Array<{ district: string; units: UnitBoardUser[] }>>((list, unit) => {
+      const district = unit.district || 'Unassigned';
+      const existing = list.find((group) => group.district === district);
+      if (existing) {
+        existing.units.push(unit);
+      } else {
+        list.push({ district, units: [unit] });
+      }
+      return list;
+    }, []);
+
+    return groups.sort((first, second) => {
+      if (first.district === 'Unassigned') return 1;
+      if (second.district === 'Unassigned') return -1;
+      return first.district.localeCompare(second.district);
+    });
+  }, [unitBoardUnits]);
+  const unitRailStatusCounts = useMemo(
+    () =>
+      unitBoardUnits.reduce<Record<string, number>>((counts, unit) => {
+        const status = displayStatus(unit);
+        counts[status] = (counts[status] || 0) + 1;
+        return counts;
+      }, {}),
+    [unitBoardUnits]
+  );
   const recommendedUnits = useMemo(() => {
     if (!selectedIncident) {
       return [];
@@ -1091,6 +1131,10 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(UNIT_BOARD_COLUMNS_KEY, JSON.stringify(visibleUnitBoardColumns));
   }, [visibleUnitBoardColumns]);
+
+  useEffect(() => {
+    localStorage.setItem(UNIT_RAIL_COLLAPSED_KEY, String(unitRailCollapsed));
+  }, [unitRailCollapsed]);
 
   useEffect(() => {
     if (accountPreferences.themeMode !== 'schedule') return;
@@ -4347,6 +4391,198 @@ export const Dashboard: React.FC = () => {
     warning: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/70 dark:text-amber-200',
     invalid: 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/70 dark:text-red-200'
   }[tone]);
+  const renderUnitRail = () => {
+    const totalUnits = unitBoardUnits.length;
+    const priorityStatuses: UnitStatus[] = ['Available', 'Dispatched', 'En Route', 'On Scene', 'Out of Service'];
+
+    if (unitRailCollapsed) {
+      return (
+        <aside className="pointer-events-auto absolute bottom-24 right-3 top-20 z-20 flex w-16 flex-col overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95">
+          <button
+            type="button"
+            onClick={() => setUnitRailCollapsed(false)}
+            className="flex h-11 items-center justify-center border-b border-slate-200 text-cad-blue hover:bg-slate-50 dark:border-slate-800 dark:text-blue-100 dark:hover:bg-slate-900"
+            aria-label="Expand units rail"
+            title="Expand units"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => focusQuickModal('units')}
+            className="flex flex-col items-center gap-1 border-b border-slate-200 px-1 py-3 text-cad-blue hover:bg-slate-50 dark:border-slate-800 dark:text-blue-100 dark:hover:bg-slate-900"
+            aria-label="Open full units board"
+            title="Open units board"
+          >
+            <Radio size={18} />
+            <span className="text-lg font-black leading-none">{totalUnits}</span>
+          </button>
+          <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-2">
+            <div className="grid gap-1.5">
+              {priorityStatuses.map((status) => {
+                const colors = unitBoardStatusStyles(status);
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => {
+                      setUnitBoardStatusFilter(status);
+                      focusQuickModal('units');
+                    }}
+                    className="flex flex-col items-center rounded border border-slate-200 bg-white py-1.5 text-[10px] font-black text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+                    title={status}
+                  >
+                    <span className={`mb-1 h-2 w-2 rounded-full ${colors.dot}`} />
+                    {unitRailStatusCounts[status] || 0}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </aside>
+      );
+    }
+
+    return (
+      <aside className="pointer-events-auto absolute bottom-24 right-3 top-20 z-20 flex w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
+          <div className="min-w-0">
+            <h3 className="text-sm font-black text-slate-950 dark:text-white">Units</h3>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{totalUnits} on duty</p>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => focusQuickModal('units')}
+              className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:text-slate-300"
+              aria-label="Open full units board"
+              title="Full board"
+            >
+              <SlidersHorizontal size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setUnitRailCollapsed(true)}
+              className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:text-slate-300"
+              aria-label="Collapse units rail"
+              title="Collapse units"
+            >
+              <ChevronRight size={15} />
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-5 gap-1 border-b border-slate-200 bg-slate-50 px-2 py-2 dark:border-slate-800 dark:bg-slate-900/80">
+          {priorityStatuses.map((status) => {
+            const colors = unitBoardStatusStyles(status);
+            const active = unitBoardStatusFilter === status;
+            return (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setUnitBoardStatusFilter(active ? 'all' : status)}
+                className={`rounded border px-1 py-1.5 text-center text-[10px] font-black transition ${
+                  active
+                    ? 'border-cad-blue bg-cad-blue text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300'
+                }`}
+                title={status}
+              >
+                <span className={`mx-auto mb-1 block h-1.5 w-1.5 rounded-full ${active ? 'bg-white' : colors.dot}`} />
+                {unitRailStatusCounts[status] || 0}
+              </button>
+            );
+          })}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {unitRailGroups.length === 0 ? (
+            <div className="flex h-full items-center justify-center p-4 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
+              No units are currently online.
+            </div>
+          ) : (
+            unitRailGroups.map((group) => (
+              <section key={group.district} className="border-b border-slate-200 last:border-b-0 dark:border-slate-800">
+                <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-100 px-3 py-1.5 dark:bg-slate-900">
+                  <h4 className="truncate text-[11px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-300">{group.district}</h4>
+                  <span className="text-[11px] font-black text-cad-blue dark:text-blue-100">{group.units.length}</span>
+                </div>
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {group.units.map((unit) => {
+                    const status = displayStatus(unit);
+                    const colors = unitBoardStatusStyles(status);
+                    const selected = selectedUnitBoardUnit?.id === unit.id;
+                    return (
+                      <div
+                        key={unit.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedUnitId(unit.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setSelectedUnitId(unit.id);
+                          }
+                        }}
+                        className={`grid cursor-pointer grid-cols-[1fr_auto] gap-2 border-l-4 px-3 py-2 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-cad-blue/45 dark:hover:bg-slate-900 ${selected ? 'bg-blue-50/80 dark:bg-blue-950/40' : 'bg-white/80 dark:bg-slate-950/80'} ${colors.row}`}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.dot}`} />
+                            <span className="truncate text-sm font-black text-slate-950 dark:text-white">{displayCadUnitNumber(unit)}</span>
+                            <span className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">{displayStatus(unit)}</span>
+                          </div>
+                          <p className="mt-0.5 truncate text-xs font-semibold text-slate-600 dark:text-slate-300">{unit.name || displayUnitNumber(unit)}</p>
+                          <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-400">{locationReliabilityText(unit, locationClock)}</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              centerUnitFromBoard(unit);
+                            }}
+                            className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:text-slate-300"
+                            aria-label={`Center ${displayCadUnitNumber(unit)} on map`}
+                            title="Center on map"
+                          >
+                            <MapPin size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              messageUnitFromBoard(unit);
+                            }}
+                            className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:text-slate-300"
+                            aria-label={`Message ${unit.name}`}
+                            title="Message"
+                          >
+                            <MessageCircle size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              assignUnitFromBoard(unit);
+                            }}
+                            disabled={!selectedIncident || isClosedIncident(selectedIncident)}
+                            className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-cad-blue hover:text-cad-blue disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:text-slate-300"
+                            aria-label={`Assign ${displayCadUnitNumber(unit)} to selected call`}
+                            title={selectedIncident && !isClosedIncident(selectedIncident) ? `Assign to ${selectedIncident.callNumber}` : 'Select an active call first'}
+                          >
+                            <Plus size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ))
+          )}
+        </div>
+      </aside>
+    );
+  };
 
   return (
     <div className={`dashboard-enter flex h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-gray-950 text-gray-100' : 'bg-gray-50 text-cad-ink'}`}>
@@ -4518,6 +4754,8 @@ export const Dashboard: React.FC = () => {
             onSelectIncident={(incident) => openIncidentDetail(incident.id)}
           />
         )}
+
+        {renderUnitRail()}
 
         <div className="dispatch-command-enter absolute bottom-4 left-4 z-20 w-[min(28rem,calc(100vw-2rem))]">
           {commandSuggestionsVisible && (
