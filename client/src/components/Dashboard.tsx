@@ -4554,7 +4554,7 @@ export const Dashboard: React.FC = () => {
     return (
       <aside
         className={`pointer-events-auto absolute bottom-24 right-3 top-20 z-20 flex select-none flex-col overflow-visible rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md transition-[width,transform,opacity] duration-200 ease-out dark:border-blue-400/20 dark:bg-slate-950/95 sm:right-5 ${
-          unitRailWide ? '' : 'w-[min(22rem,calc(100vw-2rem))]'
+          unitRailWide ? '' : 'w-[min(27.5rem,calc(100vw-2rem))]'
         } ${unitRailClosing || unitRailOpening ? 'translate-x-[calc(100%+1.25rem)] opacity-0' : 'translate-x-0 opacity-100'}`}
         onContextMenu={(event) => event.preventDefault()}
         style={wideRailStyle}
