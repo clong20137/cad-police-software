@@ -766,6 +766,7 @@ export const Dashboard: React.FC = () => {
   const [unitRailCollapsed, setUnitRailCollapsed] = useState(() => localStorage.getItem(UNIT_RAIL_COLLAPSED_KEY) === 'true');
   const [unitRailWide, setUnitRailWide] = useState(() => localStorage.getItem(UNIT_RAIL_WIDE_KEY) === 'true');
   const [unitRailClosing, setUnitRailClosing] = useState(false);
+  const [unitRailOpening, setUnitRailOpening] = useState(false);
   const [unitBoardColumnMenuOpen, setUnitBoardColumnMenuOpen] = useState(false);
   const unitBoardColumnMenuVisible = useAnimatedPresence(unitBoardColumnMenuOpen);
   const [visibleUnitBoardColumns, setVisibleUnitBoardColumns] = useState<UnitBoardOptionalColumnId[]>(() => {
@@ -801,6 +802,7 @@ export const Dashboard: React.FC = () => {
   const lastTypingSentRef = useRef(0);
   const activeQuickModalRef = useRef<QuickLaunchId | null>(null);
   const unitRailCollapseTimerRef = useRef<number | null>(null);
+  const unitRailOpenTimerRef = useRef<number | null>(null);
   const directoryRef = useRef<User[]>([]);
   const latestPositionRef = useRef<GeolocationPosition | null>(null);
   const locationPublishInFlightRef = useRef(false);
@@ -1152,6 +1154,9 @@ export const Dashboard: React.FC = () => {
     return () => {
       if (unitRailCollapseTimerRef.current) {
         window.clearTimeout(unitRailCollapseTimerRef.current);
+      }
+      if (unitRailOpenTimerRef.current) {
+        window.clearTimeout(unitRailOpenTimerRef.current);
       }
     };
   }, []);
@@ -2758,15 +2763,28 @@ export const Dashboard: React.FC = () => {
       window.clearTimeout(unitRailCollapseTimerRef.current);
       unitRailCollapseTimerRef.current = null;
     }
+    if (unitRailOpenTimerRef.current) {
+      window.clearTimeout(unitRailOpenTimerRef.current);
+    }
+    setUnitRailOpening(true);
     setUnitRailClosing(false);
     setUnitRailCollapsed(false);
     if (wide) setUnitRailWide(true);
+    unitRailOpenTimerRef.current = window.setTimeout(() => {
+      setUnitRailOpening(false);
+      unitRailOpenTimerRef.current = null;
+    }, 20);
   };
 
   const collapseUnitRail = () => {
     if (unitRailCollapseTimerRef.current) {
       window.clearTimeout(unitRailCollapseTimerRef.current);
     }
+    if (unitRailOpenTimerRef.current) {
+      window.clearTimeout(unitRailOpenTimerRef.current);
+      unitRailOpenTimerRef.current = null;
+    }
+    setUnitRailOpening(false);
     setUnitRailClosing(true);
     unitRailCollapseTimerRef.current = window.setTimeout(() => {
       setUnitRailCollapsed(true);
@@ -4508,10 +4526,10 @@ export const Dashboard: React.FC = () => {
         className={`pointer-events-auto absolute bottom-24 right-3 top-20 z-20 flex select-none flex-col overflow-visible rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md transition-[width,transform,opacity] duration-200 ease-out dark:border-blue-400/20 dark:bg-slate-950/95 sm:right-5 ${
           unitRailWide
             ? appSidebarCollapsed
-              ? 'left-[27rem]'
-              : 'left-[24rem]'
+              ? 'w-[calc(100%-29.25rem)]'
+              : 'w-[calc(100%-25.25rem)]'
             : 'w-[min(22rem,calc(100vw-2rem))]'
-        } ${unitRailClosing ? 'translate-x-[calc(100%+1.25rem)] opacity-0' : 'translate-x-0 opacity-100'}`}
+        } ${unitRailClosing || unitRailOpening ? 'translate-x-[calc(100%+1.25rem)] opacity-0' : 'translate-x-0 opacity-100'}`}
         onContextMenu={(event) => event.preventDefault()}
       >
         <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
