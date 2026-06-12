@@ -228,6 +228,7 @@ const useAnimatedPresence = (open: boolean, durationMs = 160) => {
 
 const UNIT_BOARD_COLUMNS_KEY = 'cad_unit_board_columns';
 const UNIT_RAIL_COLLAPSED_KEY = 'cad_unit_rail_collapsed';
+const UNIT_RAIL_WIDE_KEY = 'cad_unit_rail_wide';
 const unitBoardOptionalColumns: Array<{ id: UnitBoardOptionalColumnId; label: string; width: string; minWidth: number }> = [
   { id: 'cadUnit', label: 'CAD Unit', width: '76px', minWidth: 76 },
   { id: 'badge', label: 'Badge', width: '54px', minWidth: 54 },
@@ -759,6 +760,7 @@ export const Dashboard: React.FC = () => {
   const [unitBoardStatusFilter, setUnitBoardStatusFilter] = useState<UnitStatus | 'all'>('all');
   const [unitBoardDistrictFilter, setUnitBoardDistrictFilter] = useState('all');
   const [unitRailCollapsed, setUnitRailCollapsed] = useState(() => localStorage.getItem(UNIT_RAIL_COLLAPSED_KEY) === 'true');
+  const [unitRailWide, setUnitRailWide] = useState(() => localStorage.getItem(UNIT_RAIL_WIDE_KEY) === 'true');
   const [unitBoardColumnMenuOpen, setUnitBoardColumnMenuOpen] = useState(false);
   const unitBoardColumnMenuVisible = useAnimatedPresence(unitBoardColumnMenuOpen);
   const [visibleUnitBoardColumns, setVisibleUnitBoardColumns] = useState<UnitBoardOptionalColumnId[]>(() => {
@@ -1135,6 +1137,10 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(UNIT_RAIL_COLLAPSED_KEY, String(unitRailCollapsed));
   }, [unitRailCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem(UNIT_RAIL_WIDE_KEY, String(unitRailWide));
+  }, [unitRailWide]);
 
   useEffect(() => {
     if (accountPreferences.themeMode !== 'schedule') return;
@@ -4394,10 +4400,11 @@ export const Dashboard: React.FC = () => {
   const renderUnitRail = () => {
     const totalUnits = unitBoardUnits.length;
     const priorityStatuses: UnitStatus[] = ['Available', 'Dispatched', 'En Route', 'On Scene', 'Out of Service'];
+    const tooltipClass = 'pointer-events-none absolute right-full top-1/2 z-40 mr-2 hidden -translate-y-1/2 whitespace-nowrap rounded border border-slate-200 bg-slate-950 px-2 py-1 text-xs font-bold text-white shadow-lg group-hover:block group-focus-within:block dark:border-slate-700';
 
     if (unitRailCollapsed) {
       return (
-        <aside className="pointer-events-auto absolute bottom-24 right-3 top-20 z-20 flex w-16 flex-col overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95">
+        <aside className="pointer-events-auto absolute right-3 top-20 z-20 flex w-16 flex-col overflow-visible rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95">
           <button
             type="button"
             onClick={() => setUnitRailCollapsed(false)}
@@ -4409,32 +4416,40 @@ export const Dashboard: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => focusQuickModal('units')}
+            onClick={() => {
+              setUnitRailCollapsed(false);
+              setUnitRailWide(true);
+            }}
             className="flex flex-col items-center gap-1 border-b border-slate-200 px-1 py-3 text-cad-blue hover:bg-slate-50 dark:border-slate-800 dark:text-blue-100 dark:hover:bg-slate-900"
-            aria-label="Open full units board"
-            title="Open units board"
+            aria-label="Expand units rail"
+            title="Expand units rail"
           >
             <Radio size={18} />
             <span className="text-lg font-black leading-none">{totalUnits}</span>
           </button>
-          <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-2">
+          <div className="px-1.5 py-2">
             <div className="grid gap-1.5">
               {priorityStatuses.map((status) => {
                 const colors = unitBoardStatusStyles(status);
+                const count = unitRailStatusCounts[status] || 0;
                 return (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => {
-                      setUnitBoardStatusFilter(status);
-                      focusQuickModal('units');
-                    }}
-                    className="flex flex-col items-center rounded border border-slate-200 bg-white py-1.5 text-[10px] font-black text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
-                    title={status}
-                  >
-                    <span className={`mb-1 h-2 w-2 rounded-full ${colors.dot}`} />
-                    {unitRailStatusCounts[status] || 0}
-                  </button>
+                  <span key={status} className="group relative block">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUnitBoardStatusFilter(status);
+                        setUnitRailCollapsed(false);
+                      }}
+                      className="flex w-full flex-col items-center rounded border border-slate-200 bg-white py-1.5 text-[10px] font-black text-slate-600 hover:border-cad-blue hover:text-cad-blue focus:border-cad-blue focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+                      aria-label={`${status}: ${count} units`}
+                    >
+                      <span className={`mb-1 h-2 w-2 rounded-full ${colors.dot}`} />
+                      {count}
+                    </button>
+                    <span className={tooltipClass}>
+                      {status}: {count}
+                    </span>
+                  </span>
                 );
               })}
             </div>
@@ -4444,7 +4459,9 @@ export const Dashboard: React.FC = () => {
     }
 
     return (
-      <aside className="pointer-events-auto absolute bottom-24 right-3 top-20 z-20 flex w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md dark:border-blue-400/20 dark:bg-slate-950/95">
+      <aside className={`pointer-events-auto absolute bottom-24 right-3 top-20 z-20 flex flex-col overflow-visible rounded-lg border border-cad-blue/20 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.24)] ring-1 ring-cad-blue/10 backdrop-blur-md transition-[width] duration-200 ease-out dark:border-blue-400/20 dark:bg-slate-950/95 ${
+        unitRailWide ? 'w-[min(34rem,calc(100vw-2rem))]' : 'w-[min(22rem,calc(100vw-2rem))]'
+      }`}>
         <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
           <div className="min-w-0">
             <h3 className="text-sm font-black text-slate-950 dark:text-white">Units</h3>
@@ -4453,10 +4470,10 @@ export const Dashboard: React.FC = () => {
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => focusQuickModal('units')}
+              onClick={() => setUnitRailWide((wide) => !wide)}
               className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:text-slate-300"
-              aria-label="Open full units board"
-              title="Full board"
+              aria-label={unitRailWide ? 'Narrow units rail' : 'Expand units rail'}
+              title={unitRailWide ? 'Narrow rail' : 'Expand rail'}
             >
               <SlidersHorizontal size={14} />
             </button>
@@ -4475,25 +4492,30 @@ export const Dashboard: React.FC = () => {
           {priorityStatuses.map((status) => {
             const colors = unitBoardStatusStyles(status);
             const active = unitBoardStatusFilter === status;
+            const count = unitRailStatusCounts[status] || 0;
             return (
-              <button
-                key={status}
-                type="button"
-                onClick={() => setUnitBoardStatusFilter(active ? 'all' : status)}
-                className={`rounded border px-1 py-1.5 text-center text-[10px] font-black transition ${
-                  active
-                    ? 'border-cad-blue bg-cad-blue text-white'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-cad-blue hover:text-cad-blue dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300'
-                }`}
-                title={status}
-              >
-                <span className={`mx-auto mb-1 block h-1.5 w-1.5 rounded-full ${active ? 'bg-white' : colors.dot}`} />
-                {unitRailStatusCounts[status] || 0}
-              </button>
+              <span key={status} className="group relative min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setUnitBoardStatusFilter(active ? 'all' : status)}
+                  className={`w-full rounded border px-1 py-1.5 text-center text-[10px] font-black transition focus:outline-none ${
+                    active
+                      ? 'border-cad-blue bg-cad-blue text-white'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-cad-blue hover:text-cad-blue focus:border-cad-blue dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300'
+                  }`}
+                  aria-label={`${active ? 'Clear' : 'Filter'} ${status}: ${count} units`}
+                >
+                  <span className={`mx-auto mb-1 block h-1.5 w-1.5 rounded-full ${active ? 'bg-white' : colors.dot}`} />
+                  {count}
+                </button>
+                <span className={tooltipClass}>
+                  {active ? 'Clear' : 'Show'} {status}: {count}
+                </span>
+              </span>
             );
           })}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {unitRailGroups.length === 0 ? (
             <div className="flex h-full items-center justify-center p-4 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
               No units are currently online.
