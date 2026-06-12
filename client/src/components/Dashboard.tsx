@@ -1591,7 +1591,7 @@ export const Dashboard: React.FC = () => {
       }
 
       if (mapLayers.calls) incidents
-        .filter((incident) => incident.lat !== undefined && incident.lon !== undefined)
+        .filter((incident) => !isClosedIncident(incident) && incident.lat !== undefined && incident.lon !== undefined)
         .forEach((incident) => {
           const incidentOverlay = addGooglePulseMarker({
             map,
@@ -4770,7 +4770,7 @@ const FallbackMap: React.FC<{
   const visibleGeofences = mapLayers.geofences ? geofences : [];
   const pinnedIncidents = (mapLayers.calls ? incidents : []).filter(
     (incident): incident is Incident & { lat: number; lon: number } =>
-      incident.lat !== undefined && incident.lon !== undefined
+      !isClosedIncident(incident) && incident.lat !== undefined && incident.lon !== undefined
   );
   const destinations = visibleUnits
     .filter((unit) => unit.destinationLat !== undefined && unit.destinationLon !== undefined)
