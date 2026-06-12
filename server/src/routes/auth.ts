@@ -502,7 +502,7 @@ router.post(
     try {
       const changed = await AuthService.resetUserPassword(req.params.id, req.body);
       if (!changed) {
-        res.status(400).json({ error: 'User not found or password is too short' });
+        res.status(400).json({ error: 'User not found or password is invalid.' });
         return;
       }
 

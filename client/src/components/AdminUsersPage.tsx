@@ -9,6 +9,14 @@ import { APP_NAME } from '../constants/branding';
 
 const unitStatuses: UnitStatus[] = ['Available', 'Dispatched', 'En Route', 'On Scene', 'Transporting', 'Traffic Stop'];
 
+const apiErrorMessage = (error: unknown, fallback: string): string =>
+  typeof error === 'object' &&
+  error !== null &&
+  'response' in error &&
+  typeof (error as { response?: { data?: { error?: unknown } } }).response?.data?.error === 'string'
+    ? (error as { response: { data: { error: string } } }).response.data.error
+    : fallback;
+
 export const AdminUsersPage: React.FC = () => {
   const { hasPermission } = useAuth();
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
@@ -102,7 +110,7 @@ export const AdminUsersPage: React.FC = () => {
 
   const resetUserPassword = async () => {
     if (!selectedUser) return;
-    if (resetPassword.length < 12) {
+    if (resetPassword.length < 14) {
       setMessage('Password must be at least 14 characters.');
       return;
     }
@@ -110,8 +118,8 @@ export const AdminUsersPage: React.FC = () => {
       await authClient.resetUserPassword(selectedUser.id, { newPassword: resetPassword });
       setResetPassword('');
       setMessage('Password reset. Existing sessions were revoked.');
-    } catch {
-      setMessage('Unable to reset password.');
+    } catch (error) {
+      setMessage(apiErrorMessage(error, 'Unable to reset password.'));
     }
   };
 

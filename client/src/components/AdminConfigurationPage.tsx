@@ -95,6 +95,11 @@ const sections: Array<{ id: AdminSection; label: string; icon: React.ReactNode }
 const isConfigSection = (section: AdminSection): section is EditableConfigSection =>
   configSections.includes(section as EditableConfigSection);
 
+const apiErrorMessage = (error: unknown, fallback: string): string =>
+  axios.isAxiosError(error) && typeof error.response?.data?.error === 'string'
+    ? error.response.data.error
+    : fallback;
+
 const getSecurityNumber = (items: AdminConfigurationItem[], code: string, fallback: number): number => {
   const value = items.find((item) => item.section === 'security' && item.code === code)?.metadata?.value;
   return typeof value === 'number' ? value : fallback;
@@ -296,7 +301,7 @@ export const AdminConfigurationPage: React.FC = () => {
 
   const resetUserPassword = async () => {
     if (!selectedUser) return;
-    if (resetPassword.length < 12) {
+    if (resetPassword.length < 14) {
       addToast('Password too short', 'Use at least 14 characters.', 'error');
       return;
     }
@@ -304,14 +309,14 @@ export const AdminConfigurationPage: React.FC = () => {
       await authClient.resetUserPassword(selectedUser.id, { newPassword: resetPassword });
       setResetPassword('');
       addToast('Password reset', `${selectedUser.name} will need to sign in again.`);
-    } catch {
-      addToast('Password reset failed', 'Unable to reset that password.', 'error');
+    } catch (error) {
+      addToast('Password reset failed', apiErrorMessage(error, 'Unable to reset that password.'), 'error');
     }
   };
 
   const createUser = async () => {
     if (!newUser.email.trim() || !newUser.name.trim() || newUser.password.length < 14) {
-      addToast('User not created', 'Email, name, and a 12 character password are required.', 'error');
+      addToast('User not created', 'Email, name, and a 14 character password are required.', 'error');
       return;
     }
 
